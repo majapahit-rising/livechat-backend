@@ -816,7 +816,7 @@ app.post("/ai/chat", async (req, res) => {
         // CALL N8N
         // ===============================
         const n8nResponse = await fetch(
-            "https://n8n.ihubtechnologies.com.au/webhook/ihubs_chat",
+            "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
             {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1972,8 +1972,7 @@ async function getAgentPrompt(agent_type, forceGeneralFallback = false) {
 
 // Bangun enhanced prompt dengan learning
 
-
-async function callN8NWebhook(data, endpoint = "ihubs_chat") {
+async function callN8NWebhook(data, endpoint = "wastevantage-chatbot") {
     const n8nUrl = `https://n8n.ihubtechnologies.com.au/webhook/${endpoint}`;
     
     console.log(`🔗 Calling N8N: ${n8nUrl}`);
@@ -2192,7 +2191,7 @@ function updateConfidenceScore(conversation_id, direction) {
 // Fallback ke N8N
 async function handleWithN8N(req, res) {
     try {
-        const n8nResponse = await fetch("https://n8n.ihubtechnologies.com.au/webhook/ihubs_chat", {
+        const n8nResponse = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(req.body)
@@ -3653,6 +3652,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
