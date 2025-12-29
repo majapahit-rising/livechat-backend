@@ -32,7 +32,7 @@ app.use(cors({
     },
     credentials: true,
     methods: ['GET','POST','OPTIONS','PUT','DELETE','PATCH'],
-    allowedHeaders: ['Content-Type','Authorization','X-Requested-With']
+    allowedHeaders: ['Content-Type','Authorization','X-Requested-With', 'x-debug']
 }));
 
 // Manual CORS headers for extra safety
@@ -3653,6 +3653,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
