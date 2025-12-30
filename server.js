@@ -3,6 +3,7 @@ const mysql = require("mysql2");
 const cors = require("cors");
 const { v4: uuid } = require("uuid");
 const nodemailer = require("nodemailer");
+const admin = require("firebase-admin");
 
 const app = express();
 
@@ -130,6 +131,12 @@ function notifyAdmins(payload) {
     
     console.log(`📊 Successfully sent to ${sentCount}/${adminClients.length} admins`);
 }
+
+admin.initializeApp({
+  credential: admin.credential.cert(
+    JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+  )
+});
 
 // -----------------------------------------------------
 // SESSION CLEANUP - UPDATED WITH 2-MINUTE TIMEOUT
@@ -3652,6 +3659,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
