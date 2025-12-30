@@ -344,6 +344,19 @@ app.post("/api/send-contact-email", (req, res) => {
 
 
 
+app.post("/push/register", (req, res) => {
+  const { token } = req.body;
+
+  db.query(
+    "INSERT IGNORE INTO admin_push_tokens (fcm_token) VALUES (?)",
+    [token]
+  );
+
+  res.json({ success: true });
+});
+
+
+
 // -----------------------------------------------------
 // ENHANCED AI CHAT ENDPOINT (WITH FALLBACK HANDLING)
 // -----------------------------------------------------
@@ -3658,6 +3671,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
