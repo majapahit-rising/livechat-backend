@@ -2558,9 +2558,9 @@ app.post("/livechat/request", (req, res) => {
     const safeName = name && name !== "null" ? name : "Guest";
     const safeEmail = email || "";
 
-    /* =========================
-       1️⃣ CREATE SESSION (MEMORY)
-    ========================= */
+    // =========================
+    // 1️⃣ CREATE SESSION (MEMORY)
+    // =========================
     sessions[sessionId] = {
         id: sessionId,
         userName: safeName,
@@ -2575,78 +2575,64 @@ app.post("/livechat/request", (req, res) => {
         warningSent: false
     };
 
-    /* =========================
-       2️⃣ INSERT DB (WAJIB)
-    ========================= */
+    // =========================
+    // 2️⃣ INSERT DB
+    // =========================
     db.query(
         `INSERT INTO chatbot_conversations_liveagent
          (session_id, client_name, client_email, conversation_text, created_at, status)
          VALUES (?, ?, ?, '', NOW(), 'active')`,
-        [sessionId, safeName, safeEmail],
-        (err) => {
-            if (err) {
-                console.error("❌ DB create conversation error:", err.message);
-            }
-        }
+        [sessionId, safeName, safeEmail]
     );
 
-    /* =========================
-       3️⃣ 🔔 PUSH NOTIFICATION (DATA ONLY — WAJIB)
-    ========================= */
-    db.query(
-        "SELECT fcm_token FROM admin_push_tokens",
-        async (err, rows) => {
-            if (err) {
-                console.error("❌ Failed to fetch FCM tokens:", err.message);
-                return;
-            }
+    // =========================
+    // 3️⃣ 🔔 FIREBASE WEB PUSH (INI KUNCI)
+    // =========================
+    db.query("SELECT fcm_token FROM admin_push_tokens", async (_, rows) => {
+        if (!rows || rows.length === 0) {
+            console.log("⚠️ No admin FCM tokens");
+            return;
+        }
 
-            if (!rows || rows.length === 0) {
-                console.log("⚠️ No admin FCM tokens registered");
-                return;
-            }
+        for (const row of rows) {
+            try {
+                await admin.messaging().send({
+                    token: row.fcm_token,
 
-            console.log(`📲 Sending DATA push to ${rows.length} admins`);
-
-            for (const row of rows) {
-                try {
-                    await admin.messaging().send({
-                        token: row.fcm_token,
-                        data: {
+                    webpush: {
+                        notification: {
                             title: "📞 Incoming Live Chat",
                             body: `${safeName} wants ${requestedRole} support`,
-                            session_id: sessionId,              // ✅ SAMA DENGAN SW
+                            icon: "/icons/chat.png",
+                            requireInteraction: true
+                        },
+                        data: {
+                            session_id: sessionId,
                             requestedRole: requestedRole.toLowerCase(),
                             type: "incoming_call"
                         }
-                    });
-                } catch (e) {
-                    console.error("❌ Push failed:", e.message);
-                }
+                    }
+                });
+            } catch (e) {
+                console.error("❌ Push failed:", e.message);
             }
         }
-    );
+    });
 
-    /* =========================
-       4️⃣ SSE NOTIFY ADMINS (TAB AKTIF)
-    ========================= */
+    // =========================
+    // 4️⃣ SSE → UI ONLY
+    // =========================
     notifyAdmins({
         type: "new_session",
         sessionId,
         userName: safeName,
-        userEmail: safeEmail,
-        requestedRole: requestedRole.toLowerCase(),
-        timestamp: new Date().toISOString(),
-        timeoutIn: SESSION_CLAIM_TIMEOUT / 1000
+        requestedRole: requestedRole.toLowerCase()
     });
 
-    /* =========================
-       5️⃣ RESPONSE KE CLIENT
-    ========================= */
     res.json({
         sessionId,
         timeout: SESSION_CLAIM_TIMEOUT / 1000,
-        message: "Live agent session created. Waiting for agent assignment..."
+        message: "Session created"
     });
 });
 
@@ -3743,6 +3729,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
