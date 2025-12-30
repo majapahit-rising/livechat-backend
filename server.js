@@ -2558,9 +2558,9 @@ app.post("/livechat/request", (req, res) => {
     const safeName = name && name !== "null" ? name : "Guest";
     const safeEmail = email || "";
 
-    // =========================
-    // 1️⃣ CREATE SESSION (MEMORY)
-    // =========================
+    /* =========================
+       1️⃣ CREATE SESSION (MEMORY)
+    ========================= */
     sessions[sessionId] = {
         id: sessionId,
         userName: safeName,
@@ -2575,9 +2575,9 @@ app.post("/livechat/request", (req, res) => {
         warningSent: false
     };
 
-    // =========================
-    // 2️⃣ INSERT DB (WAJIB)
-    // =========================
+    /* =========================
+       2️⃣ INSERT DB (WAJIB)
+    ========================= */
     db.query(
         `INSERT INTO chatbot_conversations_liveagent
          (session_id, client_name, client_email, conversation_text, created_at, status)
@@ -2590,9 +2590,9 @@ app.post("/livechat/request", (req, res) => {
         }
     );
 
-    // =========================
-    // 3️⃣ 🔔 PUSH NOTIFICATION (INI YANG HILANG)
-    // =========================
+    /* =========================
+       3️⃣ 🔔 PUSH NOTIFICATION (DATA ONLY — WAJIB)
+    ========================= */
     db.query(
         "SELECT fcm_token FROM admin_push_tokens",
         async (err, rows) => {
@@ -2606,26 +2606,18 @@ app.post("/livechat/request", (req, res) => {
                 return;
             }
 
-            console.log(`📲 Sending push to ${rows.length} admins`);
+            console.log(`📲 Sending DATA push to ${rows.length} admins`);
 
             for (const row of rows) {
                 try {
                     await admin.messaging().send({
                         token: row.fcm_token,
-                        notification: {
-                            title: "📞 Incoming Live Chat",
-                            body: `${safeName} is requesting ${requestedRole} support`
-                        },
                         data: {
-                            sessionId: sessionId,
+                            title: "📞 Incoming Live Chat",
+                            body: `${safeName} wants ${requestedRole} support`,
+                            session_id: sessionId,              // ✅ SAMA DENGAN SW
                             requestedRole: requestedRole.toLowerCase(),
                             type: "incoming_call"
-                        },
-                        webpush: {
-                            notification: {
-                                icon: "/icons/chat.png",
-                                requireInteraction: true
-                            }
                         }
                     });
                 } catch (e) {
@@ -2635,9 +2627,9 @@ app.post("/livechat/request", (req, res) => {
         }
     );
 
-    // =========================
-    // 4️⃣ SSE NOTIFY ADMINS (TAB AKTIF)
-    // =========================
+    /* =========================
+       4️⃣ SSE NOTIFY ADMINS (TAB AKTIF)
+    ========================= */
     notifyAdmins({
         type: "new_session",
         sessionId,
@@ -2648,15 +2640,16 @@ app.post("/livechat/request", (req, res) => {
         timeoutIn: SESSION_CLAIM_TIMEOUT / 1000
     });
 
-    // =========================
-    // 5️⃣ RESPONSE KE CLIENT
-    // =========================
+    /* =========================
+       5️⃣ RESPONSE KE CLIENT
+    ========================= */
     res.json({
         sessionId,
         timeout: SESSION_CLAIM_TIMEOUT / 1000,
         message: "Live agent session created. Waiting for agent assignment..."
     });
 });
+
 
 // Endpoint untuk menerima rating
 app.post('/livechat/rating', (req, res) => {
@@ -3750,6 +3743,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
