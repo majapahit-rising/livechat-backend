@@ -362,7 +362,7 @@ app.post("/api/send-contact-email", (req, res) => {
 
 
 
-app.post("/push/register", (req, res) => {
+app.post("https://livechat-backend-3sft.onrender.com/push/register", (req, res) => {
   const { token } = req.body;
 
   db.query(
@@ -3689,6 +3689,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
