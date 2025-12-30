@@ -4,6 +4,7 @@ const cors = require("cors");
 const { v4: uuid } = require("uuid");
 const nodemailer = require("nodemailer");
 const admin = require("firebase-admin");
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 const app = express();
 
@@ -133,9 +134,7 @@ function notifyAdmins(payload) {
 }
 
 admin.initializeApp({
-  credential: admin.credential.cert(
-    JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-  )
+  credential: admin.credential.cert(serviceAccount),
 });
 
 // -----------------------------------------------------
@@ -3659,6 +3658,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
