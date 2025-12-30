@@ -133,9 +133,27 @@ function notifyAdmins(payload) {
     console.log(`📊 Successfully sent to ${sentCount}/${adminClients.length} admins`);
 }
 
+
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
+
+function sendIncomingCall(agent_type, session_id) {
+  db.query("SELECT fcm_token FROM admin_push_tokens", async (_, rows) => {
+    for (const row of rows) {
+      await admin.messaging().send({
+        token: row.fcm_token,
+        notification: {
+          title: "📞 Incoming Call",
+          body: `There's customer want to connect with ${agent_type}`
+        },
+        data: { session_id }
+      });
+    }
+  });
+}
+
 
 // -----------------------------------------------------
 // SESSION CLEANUP - UPDATED WITH 2-MINUTE TIMEOUT
@@ -3671,6 +3689,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
