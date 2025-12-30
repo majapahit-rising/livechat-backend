@@ -2547,12 +2547,20 @@ app.options("/livechat/stream", (req, res) => {
 
 // Create Session with timeout info
 app.post("/livechat/request", (req, res) => {
-    const { name = "Guest", email = "", requestedRole = "support", initialMessages = [] } = req.body;
+    const {
+        name = "Guest",
+        email = "",
+        requestedRole = "support",
+        initialMessages = []
+    } = req.body;
 
     const sessionId = uuid();
     const safeName = name && name !== "null" ? name : "Guest";
     const safeEmail = email || "";
 
+    // =========================
+    // 1️⃣ CREATE SESSION (MEMORY)
+    // =========================
     sessions[sessionId] = {
         id: sessionId,
         userName: safeName,
@@ -2562,12 +2570,14 @@ app.post("/livechat/request", (req, res) => {
         messages: [...initialMessages],
         createdAt: new Date(),
         lastActivity: new Date(),
-        status: 'waiting',
+        status: "waiting",
         timeoutAt: new Date(Date.now() + SESSION_CLAIM_TIMEOUT),
         warningSent: false
     };
 
-    // 🔥 INSERT AWAL (WAJIB)
+    // =========================
+    // 2️⃣ INSERT DB (WAJIB)
+    // =========================
     db.query(
         `INSERT INTO chatbot_conversations_liveagent
          (session_id, client_name, client_email, conversation_text, created_at, status)
@@ -2575,11 +2585,59 @@ app.post("/livechat/request", (req, res) => {
         [sessionId, safeName, safeEmail],
         (err) => {
             if (err) {
-                console.error('❌ DB create conversation error:', err.message);
+                console.error("❌ DB create conversation error:", err.message);
             }
         }
     );
 
+    // =========================
+    // 3️⃣ 🔔 PUSH NOTIFICATION (INI YANG HILANG)
+    // =========================
+    db.query(
+        "SELECT fcm_token FROM admin_push_tokens",
+        async (err, rows) => {
+            if (err) {
+                console.error("❌ Failed to fetch FCM tokens:", err.message);
+                return;
+            }
+
+            if (!rows || rows.length === 0) {
+                console.log("⚠️ No admin FCM tokens registered");
+                return;
+            }
+
+            console.log(`📲 Sending push to ${rows.length} admins`);
+
+            for (const row of rows) {
+                try {
+                    await admin.messaging().send({
+                        token: row.fcm_token,
+                        notification: {
+                            title: "📞 Incoming Live Chat",
+                            body: `${safeName} is requesting ${requestedRole} support`
+                        },
+                        data: {
+                            sessionId: sessionId,
+                            requestedRole: requestedRole.toLowerCase(),
+                            type: "incoming_call"
+                        },
+                        webpush: {
+                            notification: {
+                                icon: "/icons/chat.png",
+                                requireInteraction: true
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.error("❌ Push failed:", e.message);
+                }
+            }
+        }
+    );
+
+    // =========================
+    // 4️⃣ SSE NOTIFY ADMINS (TAB AKTIF)
+    // =========================
     notifyAdmins({
         type: "new_session",
         sessionId,
@@ -2590,9 +2648,12 @@ app.post("/livechat/request", (req, res) => {
         timeoutIn: SESSION_CLAIM_TIMEOUT / 1000
     });
 
+    // =========================
+    // 5️⃣ RESPONSE KE CLIENT
+    // =========================
     res.json({
         sessionId,
-        timeout: 120,
+        timeout: SESSION_CLAIM_TIMEOUT / 1000,
         message: "Live agent session created. Waiting for agent assignment..."
     });
 });
@@ -3689,6 +3750,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
