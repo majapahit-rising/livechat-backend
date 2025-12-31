@@ -2546,95 +2546,99 @@ app.options("/livechat/stream", (req, res) => {
 // -----------------------------------------------------
 
 // Create Session with timeout info
-app.post("/livechat/request", (req, res) => {
-    const {
-        name = "Guest",
-        email = "",
-        requestedRole = "support",
-        initialMessages = []
-    } = req.body;
+app.post("/livechat/request", async (req, res) => {
+    try {
+        const {
+            name = "Guest",
+            email = "",
+            requestedRole = "support",
+            initialMessages = []
+        } = req.body;
 
-    const sessionId = uuid();
-    const safeName = name && name !== "null" ? name : "Guest";
-    const safeEmail = email || "";
+        const sessionId = uuid();
+        const safeName  = name && name !== "null" ? name : "Guest";
+        const safeEmail = email || "";
+        const role      = requestedRole.toLowerCase();
 
-    // =========================
-    // 1️⃣ CREATE SESSION (MEMORY)
-    // =========================
-    sessions[sessionId] = {
-        id: sessionId,
-        userName: safeName,
-        userEmail: safeEmail,
-        requestedRole: requestedRole.toLowerCase(),
-        agentName: null,
-        messages: [...initialMessages],
-        createdAt: new Date(),
-        lastActivity: new Date(),
-        status: "waiting",
-        timeoutAt: new Date(Date.now() + SESSION_CLAIM_TIMEOUT),
-        warningSent: false
-    };
+        // =========================
+        // 1️⃣ CREATE SESSION (MEMORY)
+        // =========================
+        sessions[sessionId] = {
+            id: sessionId,
+            userName: safeName,
+            userEmail: safeEmail,
+            requestedRole: role,
+            agentName: null,
+            messages: [...initialMessages],
+            createdAt: new Date(),
+            lastActivity: new Date(),
+            status: "waiting",
+            timeoutAt: new Date(Date.now() + SESSION_CLAIM_TIMEOUT),
+            warningSent: false
+        };
 
-    // =========================
-    // 2️⃣ INSERT DB
-    // =========================
-    db.query(
-        `INSERT INTO chatbot_conversations_liveagent
-         (session_id, client_name, client_email, conversation_text, created_at, status)
-         VALUES (?, ?, ?, '', NOW(), 'active')`,
-        [sessionId, safeName, safeEmail]
-    );
+        // =========================
+        // 2️⃣ INSERT DB
+        // =========================
+        await db.query(
+            `INSERT INTO chatbot_conversations_liveagent
+             (session_id, client_name, client_email, conversation_text, created_at, status)
+             VALUES (?, ?, ?, '', NOW(), 'active')`,
+            [sessionId, safeName, safeEmail]
+        );
 
-    // =========================
-    // 3️⃣ 🔔 FIREBASE WEB PUSH (INI KUNCI)
-    // =========================
-    db.query("SELECT fcm_token FROM admin_push_tokens", async (_, rows) => {
-        if (!rows || rows.length === 0) {
-            console.log("⚠️ No admin FCM tokens");
-            return;
-        }
+        // =========================
+        // 3️⃣ 🔔 FIREBASE DATA PUSH
+        // =========================
+        await sendAdminPush(sessionId, safeName, role);
 
-        for (const row of rows) {
-            try {
-                await admin.messaging().send({
-                    token: row.fcm_token,
+        // =========================
+        // 4️⃣ SSE → ADMIN UI
+        // =========================
+        notifyAdmins({
+            type: "new_session",
+            sessionId,
+            userName: safeName,
+            requestedRole: role
+        });
 
-                    webpush: {
-                        notification: {
-                            title: "📞 Incoming Live Chat",
-                            body: `${safeName} wants ${requestedRole} support`,
-                            icon: "/icons/chat.png",
-                            requireInteraction: true
-                        },
-                        data: {
-                            session_id: sessionId,
-                            requestedRole: requestedRole.toLowerCase(),
-                            type: "incoming_call"
-                        }
-                    }
-                });
-            } catch (e) {
-                console.error("❌ Push failed:", e.message);
-            }
-        }
-    });
+        res.json({
+            sessionId,
+            timeout: SESSION_CLAIM_TIMEOUT / 1000,
+            message: "Session created"
+        });
 
-    // =========================
-    // 4️⃣ SSE → UI ONLY
-    // =========================
-    notifyAdmins({
-        type: "new_session",
-        sessionId,
-        userName: safeName,
-        requestedRole: requestedRole.toLowerCase()
-    });
-
-    res.json({
-        sessionId,
-        timeout: SESSION_CLAIM_TIMEOUT / 1000,
-        message: "Session created"
-    });
+    } catch (err) {
+        console.error("❌ /livechat/request error:", err);
+        res.status(500).json({ error: "Failed to create session" });
+    }
 });
+
+
+async function sendAdminPush(sessionId, userName, requestedRole) {
+    try {
+        const [rows] = await db.query("SELECT fcm_token FROM admin_push_tokens");
+        const tokens = rows.map(r => r.fcm_token).filter(Boolean);
+        if (!tokens.length) return;
+
+        const message = {
+            data: {
+                title: "📞 Incoming Live Chat",
+                body: `${userName} wants ${requestedRole} support`,
+                session_id: sessionId,
+                requestedRole,
+                type: "incoming_call"
+            },
+            tokens
+        };
+
+        await admin.messaging().sendEachForMulticast(message);
+        console.log("🔥 DATA PUSH SENT:", sessionId);
+    } catch (err) {
+        console.error("❌ sendAdminPush error:", err);
+    }
+}
+
 
 
 // Endpoint untuk menerima rating
@@ -3756,6 +3760,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
