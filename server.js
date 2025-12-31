@@ -2833,39 +2833,31 @@ app.get('/livechat/stream', (req, res) => {
 
 // Admin SSE Stream with timeout notifications
 app.get("/livechat/admin/stream", (req, res) => {
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
+    res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+        "X-Accel-Buffering": "no"
+    });
 
-    const clientId = Math.random().toString(36).slice(2, 8);
-    console.log("🖥️ Admin client connected:", clientId);
-
+    const clientId = Math.random().toString(36).slice(2,8);
     adminClients.push(res);
 
-    // kirim connected event
-    res.write(`data: ${JSON.stringify({ type:"admin_connected", clientId })}\n\n`);
+    console.log("🖥️ Admin SSE connected:", clientId);
 
-    // heartbeat tiap 15 detik (AMAN untuk Render)
+    res.write(`data: ${JSON.stringify({ type:"connected", clientId })}\n\n`);
+
     const heartbeat = setInterval(() => {
-        if (res.writableEnded) return;
         try {
             res.write(`data: ${JSON.stringify({ type:"heartbeat" })}\n\n`);
-        } catch(e) {
-            clearInterval(heartbeat);
-        }
+        } catch (e) {}
     }, 15000);
 
     req.on("close", () => {
-        console.log("📴 Admin client disconnected:", clientId);
         clearInterval(heartbeat);
         adminClients = adminClients.filter(r => r !== res);
-    });
-
-    req.on("error", () => {
-        clearInterval(heartbeat);
-        adminClients = adminClients.filter(r => r !== res);
+        console.log("📴 Admin SSE disconnected:", clientId);
     });
 });
 
@@ -3737,6 +3729,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
