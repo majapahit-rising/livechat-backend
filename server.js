@@ -3011,6 +3011,33 @@ app.post("/test-message-to-admin", (req, res) => {
     });
 });
 
+
+app.post("/livechat/queue/add", async (req, res) => {
+    const { sessionId } = req.body;
+
+    try {
+        await db.query(`
+            INSERT INTO chat_queue (session_id, agent_type, queue_number, status, created_at)
+            VALUES (?, ?, 
+                (SELECT IFNULL(MAX(queue_number),0)+1 FROM chat_queue),
+                'waiting', NOW()
+            )
+        `, [sessionId, 'support']);
+
+        // kirim pesan ke client via SSE
+        sendToClient(sessionId, {
+            type: "queue_status",
+            message: "You are in queue. Live agent will connect to you shortly."
+        });
+
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success:false, error:e.message });
+    }
+});
+
+
+
 // Admin Send Message to Client
 app.post('/livechat/admin-send', async (req, res) => {
     try {
@@ -3729,6 +3756,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
