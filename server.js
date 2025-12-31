@@ -76,6 +76,13 @@ app.options('/n8n/get-prompt', (req, res) => {
     res.status(200).end();
 });
 
+app.options("/push/register", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(200);
+});
+
 
 
 
@@ -363,14 +370,21 @@ app.post("/api/send-contact-email", (req, res) => {
 
 
 app.post("/push/register", (req, res) => {
-  const { token } = req.body;
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: "Token required" });
 
-  db.query(
-    "INSERT IGNORE INTO admin_push_tokens (fcm_token) VALUES (?)",
-    [token]
-  );
-
-  res.json({ success: true });
+    db.query(
+        "INSERT IGNORE INTO admin_push_tokens (fcm_token, created_at) VALUES (?, NOW())",
+        [token],
+        err => {
+            if (err) {
+                console.error("❌ Token save error:", err);
+                return res.status(500).json({ error: "DB error" });
+            }
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.json({ success: true });
+        }
+    );
 });
 
 
@@ -3723,6 +3737,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
