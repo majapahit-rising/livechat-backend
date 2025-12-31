@@ -2819,90 +2819,39 @@ app.get('/livechat/stream', (req, res) => {
 
 // Admin SSE Stream with timeout notifications
 app.get("/livechat/admin/stream", (req, res) => {
-    console.log("🖥️ Admin dashboard connecting to SSE stream");
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
 
-    res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "Connection": "keep-alive",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Cache-Control, Content-Type, Accept",
-        "Access-Control-Expose-Headers": "Content-Type, Cache-Control",
-        "X-Accel-Buffering": "no"
-    });
-
-    const clientId = Math.random().toString(36).substring(7);
-    console.log(`Admin client connected: ${clientId}`);
-
-    res.write(`data: ${JSON.stringify({ 
-        type: "admin_connected", 
-        message: "SSE Connected Successfully",
-        clientId,
-        timestamp: new Date().toISOString()
-    })}\n\n`);
-
-    const sendInitialData = () => {
-        try {
-            const waitingSessions = Object.values(sessions).filter(s => !s.agentName && s.status !== 'timed_out');
-            const timedOutSessions = Object.values(sessions).filter(s => s.status === 'timed_out');
-            
-            // Calculate time remaining for each waiting session
-            const sessionsWithTime = waitingSessions.map(session => {
-                const timeRemaining = Math.max(0, SESSION_CLAIM_TIMEOUT - (Date.now() - new Date(session.createdAt).getTime()));
-                return {
-                    ...session,
-                    timeRemaining: Math.ceil(timeRemaining / 1000)
-                };
-            });
-            
-            res.write(`data: ${JSON.stringify({ 
-                type: "initial_data", 
-                waitingSessions: waitingSessions.length,
-                timedOutSessions: timedOutSessions.length,
-                totalSessions: Object.keys(sessions).length,
-                sessions: sessionsWithTime,
-                clientId
-            })}\n\n`);
-        } catch (error) {
-            console.log('Initial data send failed');
-        }
-    };
-
-    const heartbeatInterval = setInterval(() => {
-        try {
-            if (!res.writableEnded) {
-                res.write(`data: ${JSON.stringify({ 
-                    type: "heartbeat", 
-                    clientId,
-                    timestamp: Date.now(),
-                    adminConnections: adminClients.length
-                })}\n\n`);
-            }
-        } catch (error) {
-            console.log(`💔 Heartbeat failed for client ${clientId}`);
-            clearInterval(heartbeatInterval);
-        }
-    }, 25000);
-
-    setTimeout(sendInitialData, 100);
+    const clientId = Math.random().toString(36).slice(2, 8);
+    console.log("🖥️ Admin client connected:", clientId);
 
     adminClients.push(res);
 
-    req.on("close", () => {
-        console.log(`📴 Admin client disconnected: ${clientId}`);
-        clearInterval(heartbeatInterval);
-        const index = adminClients.indexOf(res);
-        if (index !== -1) {
-            adminClients.splice(index, 1);
-            console.log(`Remaining admin connections: ${adminClients.length}`);
+    // kirim connected event
+    res.write(`data: ${JSON.stringify({ type:"admin_connected", clientId })}\n\n`);
+
+    // heartbeat tiap 15 detik (AMAN untuk Render)
+    const heartbeat = setInterval(() => {
+        if (res.writableEnded) return;
+        try {
+            res.write(`data: ${JSON.stringify({ type:"heartbeat" })}\n\n`);
+        } catch(e) {
+            clearInterval(heartbeat);
         }
+    }, 15000);
+
+    req.on("close", () => {
+        console.log("📴 Admin client disconnected:", clientId);
+        clearInterval(heartbeat);
+        adminClients = adminClients.filter(r => r !== res);
     });
 
-    req.on("error", (err) => {
-        console.log(`❌ Admin stream error for ${clientId}:`, err.message);
-        clearInterval(heartbeatInterval);
-        const index = adminClients.indexOf(res);
-        if (index !== -1) adminClients.splice(index, 1);
+    req.on("error", () => {
+        clearInterval(heartbeat);
+        adminClients = adminClients.filter(r => r !== res);
     });
 });
 
@@ -3774,6 +3723,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
