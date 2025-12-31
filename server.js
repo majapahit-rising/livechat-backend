@@ -2546,72 +2546,86 @@ app.options("/livechat/stream", (req, res) => {
 // -----------------------------------------------------
 
 // Create Session with timeout info
-app.post("/livechat/request", async (req, res) => {
-    try {
-        const {
-            name = "Guest",
-            email = "",
-            requestedRole = "support",
-            initialMessages = []
-        } = req.body;
+app.post("/livechat/request", (req, res) => {
 
-        const sessionId = uuid();
-        const safeName  = name && name !== "null" ? name : "Guest";
-        const safeEmail = email || "";
-        const role      = requestedRole.toLowerCase();
+    const {
+        name = "Guest",
+        email = "",
+        requestedRole = "support",
+        initialMessages = []
+    } = req.body;
 
-        // =========================
-        // 1️⃣ CREATE SESSION (MEMORY)
-        // =========================
-        sessions[sessionId] = {
-            id: sessionId,
-            userName: safeName,
-            userEmail: safeEmail,
-            requestedRole: role,
-            agentName: null,
-            messages: [...initialMessages],
-            createdAt: new Date(),
-            lastActivity: new Date(),
-            status: "waiting",
-            timeoutAt: new Date(Date.now() + SESSION_CLAIM_TIMEOUT),
-            warningSent: false
-        };
+    const sessionId = uuid();
+    const safeName  = name && name !== "null" ? name : "Guest";
+    const safeEmail = email || "";
+    const role      = requestedRole.toLowerCase();
 
-        // =========================
-        // 2️⃣ INSERT DB
-        // =========================
-        await db.query(
-            `INSERT INTO chatbot_conversations_liveagent
-             (session_id, client_name, client_email, conversation_text, created_at, status)
-             VALUES (?, ?, ?, '', NOW(), 'active')`,
-            [sessionId, safeName, safeEmail]
-        );
+    // 1️⃣ CREATE SESSION
+    sessions[sessionId] = {
+        id: sessionId,
+        userName: safeName,
+        userEmail: safeEmail,
+        requestedRole: role,
+        agentName: null,
+        messages: [...initialMessages],
+        createdAt: new Date(),
+        lastActivity: new Date(),
+        status: "waiting",
+        timeoutAt: new Date(Date.now() + SESSION_CLAIM_TIMEOUT),
+        warningSent: false
+    };
 
-        // =========================
-        // 3️⃣ 🔔 FIREBASE DATA PUSH
-        // =========================
-        await sendAdminPush(sessionId, safeName, role);
+    // 2️⃣ INSERT DB
+    db.query(
+        `INSERT INTO chatbot_conversations_liveagent
+         (session_id, client_name, client_email, conversation_text, created_at, status)
+         VALUES (?, ?, ?, '', NOW(), 'active')`,
+        [sessionId, safeName, safeEmail],
+        (err) => {
+            if (err) {
+                console.error("❌ DB insert error:", err);
+                return res.status(500).json({ error: "DB insert failed" });
+            }
 
-        // =========================
-        // 4️⃣ SSE → ADMIN UI
-        // =========================
-        notifyAdmins({
-            type: "new_session",
-            sessionId,
-            userName: safeName,
-            requestedRole: role
-        });
+            // 3️⃣ FIREBASE DATA PUSH
+            db.query("SELECT fcm_token FROM admin_push_tokens", (e, rows) => {
+                if (!rows || rows.length === 0) {
+                    console.log("⚠️ No admin FCM tokens");
+                } else {
+                    const tokens = rows.map(r => r.fcm_token).filter(Boolean);
 
-        res.json({
-            sessionId,
-            timeout: SESSION_CLAIM_TIMEOUT / 1000,
-            message: "Session created"
-        });
+                    if (tokens.length) {
+                        admin.messaging().sendEachForMulticast({
+                            data: {
+                                title: "📞 Incoming Live Chat",
+                                body: `${safeName} wants ${role} support`,
+                                session_id: sessionId,
+                                requestedRole: role,
+                                type: "incoming_call"
+                            },
+                            tokens
+                        }).catch(err => {
+                            console.error("❌ FCM send error:", err.message);
+                        });
+                    }
+                }
+            });
 
-    } catch (err) {
-        console.error("❌ /livechat/request error:", err);
-        res.status(500).json({ error: "Failed to create session" });
-    }
+            // 4️⃣ SSE
+            notifyAdmins({
+                type: "new_session",
+                sessionId,
+                userName: safeName,
+                requestedRole: role
+            });
+
+            res.json({
+                sessionId,
+                timeout: SESSION_CLAIM_TIMEOUT / 1000,
+                message: "Session created"
+            });
+        }
+    );
 });
 
 
@@ -3760,6 +3774,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
