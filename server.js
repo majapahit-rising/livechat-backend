@@ -2851,12 +2851,13 @@ app.get("/livechat/admin/stream", (req, res) => {
     const heartbeat = setInterval(() => {
         try {
             res.write(`data: ${JSON.stringify({ type:"heartbeat" })}\n\n`);
-        } catch (e) {}
+        } catch {}
     }, 15000);
 
     req.on("close", () => {
         clearInterval(heartbeat);
-        adminClients = adminClients.filter(r => r !== res);
+        const idx = adminClients.indexOf(res);
+        if (idx !== -1) adminClients.splice(idx, 1);
         console.log("📴 Admin SSE disconnected:", clientId);
     });
 });
@@ -3729,6 +3730,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
