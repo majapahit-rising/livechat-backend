@@ -5,6 +5,9 @@ const { v4: uuid } = require("uuid");
 const nodemailer = require("nodemailer");
 const admin = require("firebase-admin");
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+const OpenAI = require("openai");
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
 
 const app = express();
 
@@ -175,12 +178,36 @@ function extractSearchTerms(message) {
 
 function isConversationEnded(text = "") {
     const msg = text.toLowerCase().trim();
-    const patterns = [
-        /\bbye\b/, /\bgoodbye\b/, /\bend\b/, /\bend chat\b/,
-        /\bthank(s| you|you)?\b/, /\bok(ay)? bye\b/,
-        /\bok(ay)? thanks\b/, /\bdone\b/
-    ];
-    return patterns.some(rx => rx.test(msg));
+    return [
+        "bye","goodbye","thanks","thank you","end","end chat","ok bye","okay bye",
+        "ok thanks","okay thanks","done","finished"
+    ].some(x => msg === x || msg.includes(x));
+}
+
+async function generateConversationSummary(conversationId) {
+    const messages = await dbQuery(
+        `
+        SELECT role, content
+        FROM conversation_logs
+        WHERE conversation_id = ?
+        ORDER BY timestamp ASC
+        LIMIT 20
+        `,
+        [conversationId]
+    );
+
+    if (!messages.length) return null;
+
+    const userMessages = messages
+        .filter(m => m.role === 'user')
+        .map(m => m.content)
+        .join(" ");
+
+    return `User asked about: ${userMessages.substring(0, 300)}...`;
+}
+
+async function generateAIReply({ message, agent_type }) {
+    return `Thank you for your message. I'm glad I could help.`;
 }
 
 
@@ -413,94 +440,77 @@ app.post("/push/register", (req, res) => {
 // -----------------------------------------------------
 // ENHANCED AI CHAT ENDPOINT (WITH FALLBACK HANDLING)
 // -----------------------------------------------------
-app.post("/ai/chat", async (req, res) => {
-    const startTime = Date.now();
-
+app.post("/ai/chat", async (req,res)=>{
+    const start = Date.now();
     try {
         const {
-            message = "",
-            agent_type = "general",
-            conversation_id = `conv_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-            user_name = "Guest",
-            user_email = null,
-            context = {}
+            message="",
+            agent_type="general",
+            conversation_id,
+            user_name="Guest",
+            user_email
         } = req.body;
 
-        const finalAgentType = ["general","sales","support","automation"].includes(agent_type)
-            ? agent_type : "general";
+        const sessionId = conversation_id || `conv_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
-        // ===== FAQ SEARCH =====
-        const searchTerms = extractSearchTerms(message);
-        let relevantFaqs = [];
-        let faqIdsUsed = [];
-        let confidence = 0.7;
+        // Save user message
+        await db.promise().query(
+            `INSERT INTO chatbot_conversations(session_id,message_type,message_content,created_at)
+             VALUES(?,?,?,NOW())`,
+            [sessionId,"user",message]
+        );
 
-        if (searchTerms.length) {
-            const likes = searchTerms.map(()=>"(question LIKE ? OR answer LIKE ?)").join(" OR ");
-            const sql = `SELECT id,question,answer,confidence_score FROM chatbot_faq WHERE status='active' AND (${likes}) LIMIT 5`;
-            const params = [];
-            searchTerms.forEach(t => params.push(`%${t}%`,`%${t}%`));
-            const [rows] = await db.promise().query(sql, params);
-            relevantFaqs = rows;
-            faqIdsUsed = rows.map(r=>r.id);
+        // === END CHAT DETECTION ===
+        if(isConversationEnded(message)){
+            const [history] = await db.promise().query(
+                `SELECT message_type,message_content FROM chatbot_conversations WHERE session_id=? ORDER BY id ASC`,
+                [sessionId]
+            );
+
+            let summary = "Conversation ended.";
+            try{
+                const text = history.map(h=>`${h.message_type}: ${h.message_content}`).join("\n");
+                const ai = await openai.chat.completions.create({
+                    model:"gpt-3.5-turbo",
+                    messages:[{role:"user",content:`Summarize this conversation:\n${text}`}],
+                    max_tokens:150
+                });
+                summary = ai.choices[0].message.content.trim();
+            }catch(e){ console.log("Summary fallback"); }
+
+            await db.promise().query(
+                `INSERT INTO chatbot_conversation_sessions(conversation_id,summary,ended_at,created_at)
+                 VALUES(?,?,NOW(),NOW())`,
+                [sessionId,summary]
+            );
+
+            return res.json({success:true,reply:"Thank you, the conversation has ended."});
         }
 
-        // ===== SEND TO N8N =====
-        const n8nPayload = {
-            agent_type: finalAgentType,
-            message,
-            context: { ...context, relevant_faqs: relevantFaqs },
-            conversation_id,
-            user_name,
-            user_email
-        };
-
-        const n8nResponse = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(n8nPayload)
+        // === SEND TO N8N ===
+        const n8n = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({message,agent_type,conversation_id:sessionId,user_name,user_email})
         });
 
-        const n8nData = await n8nResponse.json();
-        const aiReply = n8nData.reply || n8nData.message || "No response";
-        const responseTime = Date.now() - startTime;
+        const data = await n8n.json();
 
-        // ===== SAVE MESSAGE =====
-        await db.promise().query(`
-            INSERT INTO chatbot_conversations
-            (session_id,agent_type,user_message,ai_response,faq_ids_used,confidence,response_time_ms,created_at)
-            VALUES (?,?,?,?,?,?,?,NOW())
-        `,[
-            conversation_id,
-            finalAgentType,
-            message,
-            aiReply,
-            faqIdsUsed.length ? JSON.stringify(faqIdsUsed) : null,
-            confidence,
-            responseTime
-        ]);
+        // Save AI message
+        await db.promise().query(
+            `INSERT INTO chatbot_conversations(session_id,message_type,message_content,response_time_ms,created_at)
+             VALUES(?,?,?,?,NOW())`,
+            [sessionId,"ai",data.reply || data.message,Date.now()-start]
+        );
 
-        const clientResponse = {
-            success:true,
-            reply:aiReply,
-            agent_type:finalAgentType,
-            session_id:conversation_id
-        };
-
-        // ===== END SESSION IF USER SAYS THANKS / BYE =====
-        if (isConversationEnded(message)) {
-            await saveSessionSummary(conversation_id,user_name,finalAgentType,message,aiReply);
-            clientResponse.session_ended = true;
-            clientResponse.show_rating = true;
-        }
-
-        res.json(clientResponse);
+        res.json({success:true,reply:data.reply || data.message,conversation_id:sessionId});
 
     } catch(err){
-        console.error("❌ AI CHAT ERROR:",err);
-        res.status(500).json({ success:false, reply:"AI temporarily unavailable" });
+        console.error("AI CHAT ERROR:",err);
+        res.status(500).json({success:false,reply:"AI temporarily unavailable"});
     }
 });
+
 
 
 
@@ -3216,6 +3226,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
