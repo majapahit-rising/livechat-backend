@@ -450,7 +450,8 @@ app.post("/ai/chat", async (req, res) => {
       agent_type = "general",
       user_name = "Guest",
       user_email = null,
-      context = {}
+      context = {},
+      conversation_id     // ← Juga periksa jika ada
     } = req.body;
 
     // ======================================================
@@ -512,7 +513,6 @@ app.post("/ai/chat", async (req, res) => {
     // END CONVERSATION CHECK
     // ======================================================
     if (isConversationEnded(message)) {
-
       const [rows] = await db.promise().query(
         `
         SELECT user_message, ai_response, created_at
@@ -596,7 +596,9 @@ app.post("/ai/chat", async (req, res) => {
         success: true,
         ended: true,
         reply: "Thank you, the conversation has ended.",
-        session_id: sessionId
+        session_id: sessionId,
+        agent_type: finalAgentType,  // ← TAMBAHKAN DI SINI JUGA
+        conversation_id: conversation_id || sessionId
       });
     }
 
@@ -639,17 +641,26 @@ app.post("/ai/chat", async (req, res) => {
       ]
     );
 
+    // ======================================================
+    // RESPONSE TO CLIENT (WITH agent_type)
+    // ======================================================
     return res.json({
       success: true,
       reply: n8nData.reply || n8nData.message,
-      session_id: sessionId
+      session_id: sessionId,
+      agent_type: finalAgentType,  // ← INI YANG DITAMBAHKAN
+      conversation_id: conversation_id || sessionId,
+      source: 'n8n',
+      timestamp: new Date().toISOString(),
+      response_time_ms: Date.now() - startTime
     });
 
   } catch (err) {
     console.error("🔥 /ai/chat FATAL:", err);
     return res.status(500).json({
       success: false,
-      reply: "AI temporarily unavailable"
+      reply: "AI temporarily unavailable",
+      agent_type: req.body.agent_type || "general"  // ← Tetap sertakan agent_type meski error
     });
   }
 });
@@ -3369,6 +3380,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
