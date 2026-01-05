@@ -440,14 +440,15 @@ app.post("/push/register", (req, res) => {
 // -----------------------------------------------------
 // ENHANCED AI CHAT ENDPOINT (WITH FALLBACK HANDLING)
 // -----------------------------------------------------
-app.post("/ai/chat", async (req,res)=>{
+app.post("/ai/chat", async (req, res) => {
     const start = Date.now();
+
     try {
         const {
-            message="",
-            agent_type="general",
+            message = "",
+            agent_type = "general",
             conversation_id,
-            user_name="Guest",
+            user_name = "Guest",
             user_email
         } = req.body;
 
@@ -457,40 +458,56 @@ app.post("/ai/chat", async (req,res)=>{
         await db.promise().query(
             `INSERT INTO chatbot_conversations(session_id,message_type,message_content,created_at)
              VALUES(?,?,?,NOW())`,
-            [sessionId,"user",message]
+            [sessionId, "user", message]
         );
 
-        // === END CHAT DETECTION ===
-        if(isConversationEnded(message)){
+        // ===== END CHAT DETECTION =====
+        if (isConversationEnded(message)) {
+
             const [history] = await db.promise().query(
-                `SELECT message_type,message_content FROM chatbot_conversations WHERE session_id=? ORDER BY id ASC`,
+                `SELECT message_type,message_content FROM chatbot_conversations 
+                 WHERE session_id=? ORDER BY id ASC LIMIT 30`,
                 [sessionId]
             );
 
             let summary = "Conversation ended.";
-            try{
-                const text = history.map(h=>`${h.message_type}: ${h.message_content}`).join("\n");
+
+            try {
+                const conversationText = history
+                    .map(h => `${h.message_type.toUpperCase()}: ${h.message_content}`)
+                    .join("\n");
+
                 const summaryResp = await openai.responses.create({
-                   model: "gpt-4.1-mini",
-                   input: `Summarize this conversation:\n${conversationText}`
-               });
-               const summary = summaryResp.output_text;
-            }catch(e){ console.log("Summary fallback"); }
+                    model: "gpt-4.1-mini",
+                    input: `Summarize this conversation in 3 sentences:\n${conversationText}`
+                });
+
+                summary = summaryResp.output[0].content[0].text;
+
+            } catch (e) {
+                console.error("❌ Summary AI failed:", e.message);
+            }
 
             await db.promise().query(
-                `INSERT INTO chatbot_conversation_sessions(conversation_id,conversation_summary,ended_at,created_at)
-                 VALUES(?,?,NOW(),NOW())`,
-                [sessionId,summary]
+                `INSERT INTO chatbot_conversation_sessions
+                 (conversation_id, conversation_summary, started_at, ended_at, created_at)
+                 VALUES (?, ?, NOW(), NOW(), NOW())`,
+                [sessionId, summary]
             );
 
-            return res.json({success:true,reply:"Thank you, the conversation has ended."});
+            return res.json({
+                success: true,
+                reply: "Thank you, the conversation has ended.",
+                conversation_id: sessionId,
+                ended: true
+            });
         }
 
-        // === SEND TO N8N ===
-        const n8n = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({message,agent_type,conversation_id:sessionId,user_name,user_email})
+        // ===== SEND TO N8N =====
+        const n8n = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message, agent_type, conversation_id: sessionId, user_name, user_email })
         });
 
         const data = await n8n.json();
@@ -499,14 +516,18 @@ app.post("/ai/chat", async (req,res)=>{
         await db.promise().query(
             `INSERT INTO chatbot_conversations(session_id,message_type,message_content,response_time_ms,created_at)
              VALUES(?,?,?,?,NOW())`,
-            [sessionId,"ai",data.reply || data.message,Date.now()-start]
+            [sessionId, "ai", data.reply || data.message, Date.now() - start]
         );
 
-        res.json({success:true,reply:data.reply || data.message,conversation_id:sessionId});
+        res.json({
+            success: true,
+            reply: data.reply || data.message,
+            conversation_id: sessionId
+        });
 
-    } catch(err){
-        console.error("AI CHAT ERROR:",err);
-        res.status(500).json({success:false,reply:"AI temporarily unavailable"});
+    } catch (err) {
+        console.error("🔥 AI CHAT FATAL ERROR:", err);
+        res.status(500).json({ success: false, reply: "AI temporarily unavailable" });
     }
 });
 
@@ -3225,6 +3246,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
