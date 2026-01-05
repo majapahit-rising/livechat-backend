@@ -441,80 +441,122 @@ app.post("/push/register", (req, res) => {
 // ENHANCED AI CHAT ENDPOINT (WITH FALLBACK HANDLING)
 // -----------------------------------------------------
 app.post("/ai/chat", async (req, res) => {
-  const start = Date.now();
+  const startTime = Date.now();
 
   try {
     const {
-      message = "",
+      session_id,          // ✅ dari chat.js
+      message,
       agent_type = "general",
-      conversation_id,
       user_name = "Guest",
-      user_email,
+      user_email = null,
       context = {}
     } = req.body;
 
-    const finalAgentType = ["support","sales","automation","general"].includes(agent_type)
-        ? agent_type : "general";
+    // ======================================================
+    // VALIDATION (FRONTEND IS SOURCE OF TRUTH)
+    // ======================================================
+    if (!session_id) {
+      return res.status(400).json({
+        success: false,
+        error: "session_id is required"
+      });
+    }
 
-    const sessionId = conversation_id || `conv_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-    const userIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || null;
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "message is empty"
+      });
+    }
+
+    const finalAgentType = ["support", "sales", "automation", "general"]
+      .includes(agent_type)
+        ? agent_type
+        : "general";
+
+    const sessionId = session_id;
+    const userIp =
+      req.headers["x-forwarded-for"] ||
+      req.socket.remoteAddress ||
+      null;
 
     // ======================================================
     // SAVE USER MESSAGE
     // ======================================================
-    await db.promise().query(`
+    await db.promise().query(
+      `
       INSERT INTO chatbot_conversations
-      (session_id, user_email, user_name, user_ip, agent_type, user_message, created_at)
+      (
+        session_id,
+        user_email,
+        user_name,
+        user_ip,
+        agent_type,
+        user_message,
+        created_at
+      )
       VALUES (?, ?, ?, ?, ?, ?, NOW())
-    `,[
-      sessionId,
-      user_email || null,
-      user_name,
-      userIp,
-      finalAgentType,
-      message
-    ]);
+      `,
+      [
+        sessionId,
+        user_email,
+        user_name,
+        userIp,
+        finalAgentType,
+        message
+      ]
+    );
 
     // ======================================================
-    // END CHAT DETECTION
+    // END CONVERSATION CHECK
     // ======================================================
     if (isConversationEnded(message)) {
 
-      const [rows] = await db.promise().query(`
+      const [rows] = await db.promise().query(
+        `
         SELECT user_message, ai_response, created_at
         FROM chatbot_conversations
         WHERE session_id = ?
         ORDER BY created_at ASC
-      `,[sessionId]);
+        `,
+        [sessionId]
+      );
 
       let summary = "Conversation ended.";
 
       try {
-        const conversationText = rows.map(r =>
-          `User: ${r.user_message || ""}\nAI: ${r.ai_response || ""}`
-        ).join("\n");
+        const conversationText = rows
+          .map(r =>
+            `User: ${r.user_message || ""}\nAI: ${r.ai_response || ""}`
+          )
+          .join("\n");
 
         const aiResp = await openai.responses.create({
           model: "gpt-4.1-mini",
           input: `Summarize this conversation in 3 sentences:\n${conversationText}`
         });
 
-        summary = aiResp.output[0].content[0].text;
-      } catch (e) {
-        console.error("❌ SUMMARY ERROR:", e.message);
+        summary = aiResp.output?.[0]?.content?.[0]?.text || summary;
+      } catch (err) {
+        console.error("❌ SUMMARY ERROR:", err.message);
       }
 
       const totalMessages = rows.length;
       const aiMessages = rows.filter(r => r.ai_response).length;
       const startedAt = rows[0]?.created_at || new Date();
       const endedAt = new Date();
-      const duration = Math.floor((endedAt - new Date(startedAt)) / 1000);
+      const durationSeconds =
+        Math.floor((endedAt - new Date(startedAt)) / 1000);
 
-      await db.promise().query(`
+      // ======================================================
+      // SAVE SESSION SUMMARY (1 SESSION = 1 ROW)
+      // ======================================================
+      await db.promise().query(
+        `
         INSERT INTO chatbot_conversation_sessions
         (
           session_id,
-          conversation_id,
           user_email,
           user_name,
           user_ip,
@@ -527,67 +569,90 @@ app.post("/ai/chat", async (req, res) => {
           ended_at,
           created_at
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())
-      `,[
-        `session_${Date.now()}`,
-        sessionId,
-        user_email || null,
-        user_name,
-        userIp,
-        finalAgentType,
-        totalMessages,
-        aiMessages,
-        summary,
-        duration,
-        startedAt,
-        endedAt
-      ]);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+          total_messages = VALUES(total_messages),
+          ai_messages = VALUES(ai_messages),
+          conversation_summary = VALUES(conversation_summary),
+          session_duration = VALUES(session_duration),
+          ended_at = VALUES(ended_at)
+        `,
+        [
+          sessionId,
+          user_email,
+          user_name,
+          userIp,
+          finalAgentType,
+          totalMessages,
+          aiMessages,
+          summary,
+          durationSeconds,
+          startedAt,
+          endedAt
+        ]
+      );
 
       return res.json({
         success: true,
+        ended: true,
         reply: "Thank you, the conversation has ended.",
-        conversation_id: sessionId,
-        ended: true
+        session_id: sessionId
       });
     }
 
     // ======================================================
-    // SEND TO N8N
+    // SEND TO N8N (SAME session_id)
     // ======================================================
-    const n8n = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, agent_type: finalAgentType, conversation_id: sessionId, user_name, user_email, context })
-    });
+    const n8nResp = await fetch(
+      "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          message,
+          agent_type: finalAgentType,
+          user_name,
+          user_email,
+          context
+        })
+      }
+    );
 
-    const data = await n8n.json();
+    const n8nData = await n8nResp.json();
 
     // ======================================================
-    // UPDATE AI RESPONSE
+    // UPDATE AI RESPONSE (LAST MESSAGE ONLY)
     // ======================================================
-    await db.promise().query(`
+    await db.promise().query(
+      `
       UPDATE chatbot_conversations
       SET ai_response = ?, response_time_ms = ?
       WHERE session_id = ?
-      ORDER BY id DESC LIMIT 1
-    `,[
-      data.reply || data.message || "No response",
-      Date.now() - start,
-      sessionId
-    ]);
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [
+        n8nData.reply || n8nData.message || "No response",
+        Date.now() - startTime,
+        sessionId
+      ]
+    );
 
-    res.json({
+    return res.json({
       success: true,
-      reply: data.reply || data.message,
-      conversation_id: sessionId
+      reply: n8nData.reply || n8nData.message,
+      session_id: sessionId
     });
 
   } catch (err) {
-    console.error("🔥 AI CHAT MYSQL FATAL:", err);
-    res.status(500).json({ success: false, reply: "AI temporarily unavailable" });
+    console.error("🔥 /ai/chat FATAL:", err);
+    return res.status(500).json({
+      success: false,
+      reply: "AI temporarily unavailable"
+    });
   }
 });
-
 
 
 
@@ -3304,6 +3369,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
