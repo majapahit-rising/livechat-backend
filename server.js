@@ -441,95 +441,153 @@ app.post("/push/register", (req, res) => {
 // ENHANCED AI CHAT ENDPOINT (WITH FALLBACK HANDLING)
 // -----------------------------------------------------
 app.post("/ai/chat", async (req, res) => {
-    const start = Date.now();
+  const start = Date.now();
 
-    try {
-        const {
-            message = "",
-            agent_type = "general",
-            conversation_id,
-            user_name = "Guest",
-            user_email
-        } = req.body;
+  try {
+    const {
+      message = "",
+      agent_type = "general",
+      conversation_id,
+      user_name = "Guest",
+      user_email,
+      context = {}
+    } = req.body;
 
-        const sessionId = conversation_id || `conv_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    const finalAgentType = ["support","sales","automation","general"].includes(agent_type)
+        ? agent_type : "general";
 
-        // Save user message
-        await db.promise().query(
-            `INSERT INTO chatbot_conversations(session_id,message_type,message_content,created_at)
-             VALUES(?,?,?,NOW())`,
-            [sessionId, "user", message]
-        );
+    const sessionId = conversation_id || `conv_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    const userIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || null;
 
-        // ===== END CHAT DETECTION =====
-        if (isConversationEnded(message)) {
+    // ======================================================
+    // SAVE USER MESSAGE
+    // ======================================================
+    await db.promise().query(`
+      INSERT INTO chatbot_conversations
+      (session_id, user_email, user_name, user_ip, agent_type, user_message, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, NOW())
+    `,[
+      sessionId,
+      user_email || null,
+      user_name,
+      userIp,
+      finalAgentType,
+      message
+    ]);
 
-            const [history] = await db.promise().query(
-                `SELECT message_type,message_content FROM chatbot_conversations 
-                 WHERE session_id=? ORDER BY id ASC LIMIT 30`,
-                [sessionId]
-            );
+    // ======================================================
+    // END CHAT DETECTION
+    // ======================================================
+    if (isConversationEnded(message)) {
 
-            let summary = "Conversation ended.";
+      const [rows] = await db.promise().query(`
+        SELECT user_message, ai_response, created_at
+        FROM chatbot_conversations
+        WHERE session_id = ?
+        ORDER BY created_at ASC
+      `,[sessionId]);
 
-            try {
-                const conversationText = history
-                    .map(h => `${h.message_type.toUpperCase()}: ${h.message_content}`)
-                    .join("\n");
+      let summary = "Conversation ended.";
 
-                const summaryResp = await openai.responses.create({
-                    model: "gpt-4.1-mini",
-                    input: `Summarize this conversation in 3 sentences:\n${conversationText}`
-                });
+      try {
+        const conversationText = rows.map(r =>
+          `User: ${r.user_message || ""}\nAI: ${r.ai_response || ""}`
+        ).join("\n");
 
-                summary = summaryResp.output[0].content[0].text;
-
-            } catch (e) {
-                console.error("❌ Summary AI failed:", e.message);
-            }
-
-            await db.promise().query(
-                `INSERT INTO chatbot_conversation_sessions
-                 (conversation_id, conversation_summary, started_at, ended_at, created_at)
-                 VALUES (?, ?, NOW(), NOW(), NOW())`,
-                [sessionId, summary]
-            );
-
-            return res.json({
-                success: true,
-                reply: "Thank you, the conversation has ended.",
-                conversation_id: sessionId,
-                ended: true
-            });
-        }
-
-        // ===== SEND TO N8N =====
-        const n8n = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message, agent_type, conversation_id: sessionId, user_name, user_email })
+        const aiResp = await openai.responses.create({
+          model: "gpt-4.1-mini",
+          input: `Summarize this conversation in 3 sentences:\n${conversationText}`
         });
 
-        const data = await n8n.json();
+        summary = aiResp.output[0].content[0].text;
+      } catch (e) {
+        console.error("❌ SUMMARY ERROR:", e.message);
+      }
 
-        // Save AI message
-        await db.promise().query(
-            `INSERT INTO chatbot_conversations(session_id,message_type,message_content,response_time_ms,created_at)
-             VALUES(?,?,?,?,NOW())`,
-            [sessionId, "ai", data.reply || data.message, Date.now() - start]
-        );
+      const totalMessages = rows.length;
+      const aiMessages = rows.filter(r => r.ai_response).length;
+      const startedAt = rows[0]?.created_at || new Date();
+      const endedAt = new Date();
+      const duration = Math.floor((endedAt - new Date(startedAt)) / 1000);
 
-        res.json({
-            success: true,
-            reply: data.reply || data.message,
-            conversation_id: sessionId
-        });
+      await db.promise().query(`
+        INSERT INTO chatbot_conversation_sessions
+        (
+          session_id,
+          conversation_id,
+          user_email,
+          user_name,
+          user_ip,
+          agent_type,
+          total_messages,
+          ai_messages,
+          conversation_summary,
+          session_duration,
+          started_at,
+          ended_at,
+          created_at
+        )
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+      `,[
+        `session_${Date.now()}`,
+        sessionId,
+        user_email || null,
+        user_name,
+        userIp,
+        finalAgentType,
+        totalMessages,
+        aiMessages,
+        summary,
+        duration,
+        startedAt,
+        endedAt
+      ]);
 
-    } catch (err) {
-        console.error("🔥 AI CHAT FATAL ERROR:", err);
-        res.status(500).json({ success: false, reply: "AI temporarily unavailable" });
+      return res.json({
+        success: true,
+        reply: "Thank you, the conversation has ended.",
+        conversation_id: sessionId,
+        ended: true
+      });
     }
+
+    // ======================================================
+    // SEND TO N8N
+    // ======================================================
+    const n8n = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, agent_type: finalAgentType, conversation_id: sessionId, user_name, user_email, context })
+    });
+
+    const data = await n8n.json();
+
+    // ======================================================
+    // UPDATE AI RESPONSE
+    // ======================================================
+    await db.promise().query(`
+      UPDATE chatbot_conversations
+      SET ai_response = ?, response_time_ms = ?
+      WHERE session_id = ?
+      ORDER BY id DESC LIMIT 1
+    `,[
+      data.reply || data.message || "No response",
+      Date.now() - start,
+      sessionId
+    ]);
+
+    res.json({
+      success: true,
+      reply: data.reply || data.message,
+      conversation_id: sessionId
+    });
+
+  } catch (err) {
+    console.error("🔥 AI CHAT MYSQL FATAL:", err);
+    res.status(500).json({ success: false, reply: "AI temporarily unavailable" });
+  }
 });
+
 
 
 
@@ -3246,6 +3304,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
