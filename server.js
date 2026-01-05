@@ -479,7 +479,7 @@ app.post("/ai/chat", async (req,res)=>{
             }catch(e){ console.log("Summary fallback"); }
 
             await db.promise().query(
-                `INSERT INTO chatbot_conversation_sessions(conversation_id,summary,ended_at,created_at)
+                `INSERT INTO chatbot_conversation_sessions(conversation_id,conversation_summary,ended_at,created_at)
                  VALUES(?,?,NOW(),NOW())`,
                 [sessionId,summary]
             );
@@ -3226,6 +3226,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
