@@ -1116,44 +1116,6 @@ function sendHardcodedFallbackResponse(requestedAgentType, context, res, reason)
   });
 }
 
-function sendHardcodedFallbackResponse(requestedAgentType, context, res) {
-  console.log(`🔄 Sending hardcoded fallback response`);
-  
-  // SELALU gunakan "general" untuk fallback hardcoded
-  const fallbackAgentType = "general";
-  
-  const fallbackPrompt = {
-    identity: `${fallbackAgentType.charAt(0).toUpperCase() + fallbackAgentType.slice(1)} Assistant`,
-    context_knowledge: "General information about iHub products and services.",
-    role_description: `Assist with ${fallbackAgentType} related inquiries.`,
-    language: "australian_english",
-    tone: "professional"
-  };
-  
-  const systemPrompt = buildSystemPromptForN8N(fallbackPrompt, context, fallbackAgentType);
-
-  res.json({
-    success: true,
-    prompt: {
-      system_prompt: systemPrompt,
-      identity: fallbackPrompt.identity,
-      agent_type: fallbackAgentType, // ⚠️ GUNAKAN "general"
-      language: fallbackPrompt.language,
-      tone: fallbackPrompt.tone,
-      version: "hardcoded_fallback",
-      context_knowledge: fallbackPrompt.context_knowledge,
-      role_description: fallbackPrompt.role_description
-    },
-    is_fallback: true,
-    timestamp: new Date().toISOString(),
-    debug: {
-      requested_agent_type: requestedAgentType,
-      response_agent_type: fallbackAgentType,
-      fallback_reason: "no_prompts_in_database"
-    }
-  });
-}
-
 // 🔧 Helper function to handle query results
 function handleQueryResults(error, results, rawAgentType, queryAgentType, context, res) {
   if (error) {
@@ -3380,6 +3342,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
