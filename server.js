@@ -173,6 +173,16 @@ function extractSearchTerms(message) {
         .slice(0,5);
 }
 
+function isConversationEnded(text = "") {
+    const msg = text.toLowerCase().trim();
+    const patterns = [
+        /\bbye\b/, /\bgoodbye\b/, /\bend\b/, /\bend chat\b/,
+        /\bthank(s| you|you)?\b/, /\bok(ay)? bye\b/,
+        /\bok(ay)? thanks\b/, /\bdone\b/
+    ];
+    return patterns.some(rx => rx.test(msg));
+}
+
 
 // -----------------------------------------------------
 // SESSION CLEANUP - UPDATED WITH 2-MINUTE TIMEOUT
@@ -407,13 +417,19 @@ app.post("/ai/chat", async (req, res) => {
     const startTime = Date.now();
 
     try {
-        const { message="", agent_type="general", conversation_id, user_name="Guest", user_email, context={} } = req.body;
+        const {
+            message = "",
+            agent_type = "general",
+            conversation_id = `conv_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+            user_name = "Guest",
+            user_email = null,
+            context = {}
+        } = req.body;
 
-        const finalAgentType = ["general","sales","support","automation"].includes(agent_type) ? agent_type : "general";
+        const finalAgentType = ["general","sales","support","automation"].includes(agent_type)
+            ? agent_type : "general";
 
-        let categoryId = 18;
-        let categoryName = "general_faq";
-
+        // ===== FAQ SEARCH =====
         const searchTerms = extractSearchTerms(message);
         let relevantFaqs = [];
         let faqIdsUsed = [];
@@ -423,17 +439,18 @@ app.post("/ai/chat", async (req, res) => {
             const likes = searchTerms.map(()=>"(question LIKE ? OR answer LIKE ?)").join(" OR ");
             const sql = `SELECT id,question,answer,confidence_score FROM chatbot_faq WHERE status='active' AND (${likes}) LIMIT 5`;
             const params = [];
-            searchTerms.forEach(t => { params.push(`%${t}%`,`%${t}%`); });
+            searchTerms.forEach(t => params.push(`%${t}%`,`%${t}%`));
             const [rows] = await db.promise().query(sql, params);
             relevantFaqs = rows;
             faqIdsUsed = rows.map(r=>r.id);
         }
 
+        // ===== SEND TO N8N =====
         const n8nPayload = {
             agent_type: finalAgentType,
             message,
             context: { ...context, relevant_faqs: relevantFaqs },
-            conversation_id: conversation_id || `conv_${Date.now()}`,
+            conversation_id,
             user_name,
             user_email
         };
@@ -445,44 +462,63 @@ app.post("/ai/chat", async (req, res) => {
         });
 
         const n8nData = await n8nResponse.json();
+        const aiReply = n8nData.reply || n8nData.message || "No response";
         const responseTime = Date.now() - startTime;
 
-        db.query(`INSERT INTO chatbot_conversations
+        // ===== SAVE MESSAGE =====
+        await db.promise().query(`
+            INSERT INTO chatbot_conversations
             (session_id,agent_type,user_message,ai_response,faq_ids_used,confidence,response_time_ms,created_at)
-            VALUES (?,?,?,?,?,?,?,NOW())`,[
-            n8nPayload.conversation_id,
+            VALUES (?,?,?,?,?,?,?,NOW())
+        `,[
+            conversation_id,
             finalAgentType,
             message,
-            n8nData.reply || n8nData.message,
-            faqIdsUsed.length?JSON.stringify(faqIdsUsed):null,
+            aiReply,
+            faqIdsUsed.length ? JSON.stringify(faqIdsUsed) : null,
             confidence,
             responseTime
         ]);
 
-        res.json({
+        const clientResponse = {
             success:true,
-            ...n8nData,
+            reply:aiReply,
             agent_type:finalAgentType,
-            faq_ids:faqIdsUsed,
-            response_time_ms:responseTime
-        });
+            session_id:conversation_id
+        };
+
+        // ===== END SESSION IF USER SAYS THANKS / BYE =====
+        if (isConversationEnded(message)) {
+            await saveSessionSummary(conversation_id,user_name,finalAgentType,message,aiReply);
+            clientResponse.session_ended = true;
+            clientResponse.show_rating = true;
+        }
+
+        res.json(clientResponse);
 
     } catch(err){
-        console.error("AI CHAT ERROR:",err);
+        console.error("❌ AI CHAT ERROR:",err);
         res.status(500).json({ success:false, reply:"AI temporarily unavailable" });
     }
 });
+
 
 
 app.post("/ai/save-rating",(req,res)=>{
     const { session_id, rating, feedback } = req.body;
     if(!session_id||!rating) return res.status(400).json({success:false});
 
-    db.query(`UPDATE chatbot_conversation_sessions SET ai_rating=?,ai_feedback=? WHERE conversation_id=? ORDER BY created_at DESC LIMIT 1`,
-        [rating,feedback,session_id]);
+    db.query(`
+        UPDATE chatbot_conversation_sessions
+        SET ai_rating=?, ai_feedback=?, updated_at=NOW()
+        WHERE conversation_id=?
+        ORDER BY created_at DESC LIMIT 1`,
+        [rating,feedback,session_id]
+    );
 
     res.json({success:true});
 });
+
 
 
 app.post("/test-ai-fallback",(req,res)=>{
@@ -3180,6 +3216,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
