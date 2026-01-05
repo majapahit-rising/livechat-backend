@@ -5,7 +5,7 @@ const { v4: uuid } = require("uuid");
 const nodemailer = require("nodemailer");
 const admin = require("firebase-admin");
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-const OpenAI = require("openai");
+const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 
@@ -470,12 +470,11 @@ app.post("/ai/chat", async (req,res)=>{
             let summary = "Conversation ended.";
             try{
                 const text = history.map(h=>`${h.message_type}: ${h.message_content}`).join("\n");
-                const ai = await openai.chat.completions.create({
-                    model:"gpt-3.5-turbo",
-                    messages:[{role:"user",content:`Summarize this conversation:\n${text}`}],
-                    max_tokens:150
-                });
-                summary = ai.choices[0].message.content.trim();
+                const summaryResp = await openai.responses.create({
+                   model: "gpt-4.1-mini",
+                   input: `Summarize this conversation:\n${conversationText}`
+               });
+               const summary = summaryResp.output_text;
             }catch(e){ console.log("Summary fallback"); }
 
             await db.promise().query(
@@ -3226,6 +3225,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
