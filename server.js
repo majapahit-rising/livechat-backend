@@ -634,92 +634,136 @@ app.get("/api/chat/config", async (req, res) => {
     console.log("🔍 /api/chat/config endpoint called from:", req.headers.origin);
     
     try {
-        // GANTI pool dengan db - INI YANG SALAH
-        // let conn = await pool.promise().getConnection(); // ❌ SALAH
-        
-        // YANG BENAR - pakai db Anda:
-        let conn = await db.promise().getConnection(); // ✅ BENAR
-        
+        let conn = await db.promise().getConnection();
         console.log("✅ Database connection established");
         
         try {
-            // Query with joins
-            const [rows] = await conn.query(`
+            // Query untuk mendapatkan data dari chatbot_prompts dengan join ke system_types
+            const [prompts] = await conn.query(`
                 SELECT 
-                    cc.id,
-                    cc.internal_identifier as code,
-                    cc.display_name as name,
-                    cc.description,
-                    cc.agent_type,
-                    cc.system_type_id,
-                    cc.sort_order as menu_order,
-                    cc.active,
-                    st.name as system_name,
-                    st.description as system_description,
+                    cp.id,
+                    cp.identity,
+                    cp.agent_type,
                     cp.role_description,
                     cp.primary_goals,
-                    cp.identity as agent_identity,
-                    cp.agent_type as prompt_agent_type
-                FROM chatbot_categories cc
-                LEFT JOIN system_types st ON cc.system_type_id = st.id
-                LEFT JOIN chatbot_prompts cp ON cc.agent_type = cp.agent_type 
-                    AND cp.status = 'active' 
-                    AND cp.is_active = 1
-                WHERE cc.active = 1
-                ORDER BY cc.sort_order ASC, cc.id ASC
-                LIMIT 20
+                    cp.status,
+                    cp.is_active,
+                    cp.version,
+                    st.id as system_type_id,
+                    st.name as system_name,
+                    st.description as system_description
+                FROM chatbot_prompts cp
+                LEFT JOIN system_types st ON 
+                    (cp.agent_type = 'support' AND st.name LIKE '%WasteVantage%') OR
+                    (cp.agent_type = 'sales' AND st.name LIKE '%WasteVantage%') OR
+                    (cp.agent_type = 'automation' AND st.name LIKE '%WasteVantage%') OR
+                    (cp.agent_type = 'general' AND st.name IN ('WasteVantage', 'IHUB CRM'))
+                WHERE cp.status = 'active' 
+                  AND cp.is_active = 1
+                ORDER BY 
+                    CASE cp.agent_type
+                        WHEN 'general' THEN 1
+                        WHEN 'sales' THEN 2
+                        WHEN 'automation' THEN 3
+                        WHEN 'support' THEN 4
+                        ELSE 5
+                    END,
+                    cp.id ASC
+                LIMIT 10
             `);
             
-            console.log(`📊 Database query successful: ${rows.length} rows`);
+            console.log(`📊 Database query successful: ${prompts.length} rows`);
             
-            // If database has data, use it
-            if (rows.length > 0) {
-                // Map to agentTypes format
-                const agentTypes = rows.map((row, index) => {
-                    const productMap = {
-                        'WasteVantage': 'wastevantage',
-                        'TaskIT': 'taskit',
-                        'Drilling CRM': 'drillingcrm',
-                        'IHUB CRM': 'ihub',
-                        'SOMS': 'soms',
-                        'HiThereAI': 'hithatereai'
-                    };
+            // Jika ada data di database, gunakan dari chatbot_prompts
+            if (prompts.length > 0) {
+                // Map ke format agentTypes
+                const agentTypes = prompts.map((prompt, index) => {
+                    // Tentukan product berdasarkan system_name atau agent_type
+                    let product = 'ihub';
+                    let code = '';
                     
-                    const product = productMap[row.system_name] || 'ihub';
-                    const code = row.code || `${product}_${row.agent_type}`;
-                    const name = row.name || `${row.system_name} ${row.agent_type}`;
+                    if (prompt.system_name) {
+                        const productMap = {
+                            'WasteVantage': 'wastevantage',
+                            'TaskIT': 'taskit', 
+                            'Drilling CRM': 'drillingcrm',
+                            'IHUB CRM': 'ihub',
+                            'SOMS': 'soms',
+                            'HiThereAI': 'hithatereai'
+                        };
+                        product = productMap[prompt.system_name] || 'ihub';
+                        code = `${product}_${prompt.agent_type}`;
+                    } else {
+                        code = `${prompt.agent_type}_${index}`;
+                    }
+                    
+                    // Gunakan identity sebagai display name, atau buat dari agent_type
+                    const displayName = prompt.identity || 
+                        `${prompt.agent_type.charAt(0).toUpperCase() + prompt.agent_type.slice(1)} Agent`;
                     
                     return {
-                        id: row.id,
+                        id: prompt.id,
                         code: code,
-                        name: name,
+                        name: displayName,  // ⭐ INI YANG AKAN DITAMPILKAN DI MENU
                         product: product,
-                        category: row.agent_type || 'general',
-                        system_type_id: row.system_type_id,
-                        system_name: row.system_name,
-                        menu_order: row.menu_order || index + 1,
+                        category: prompt.agent_type,
+                        system_type_id: prompt.system_type_id,
+                        system_name: prompt.system_name,
+                        menu_order: index + 1,
                         is_default: index === 0,
                         display: {
-                            name: name,
-                            icon: getIconByAgentType(row.agent_type),
-                            color: getColorByAgentType(row.agent_type)
+                            name: displayName,
+                            icon: getIconByAgentType(prompt.agent_type),
+                            color: getColorByAgentType(prompt.agent_type)
                         },
                         messages: {
-                            on_select: row.role_description || row.description || `I specialize in ${name}. How can I help you?`,
-                            follow_up: row.primary_goals || `What would you like to know about ${row.system_name}?`,
-                            default: `For ${row.system_name} regarding ":message", I can help you with that.`,
-                            fallback: `Regarding ":message", I can assist with ${name}. What specific information do you need?`
+                            on_select: prompt.role_description || 
+                                `I am ${displayName}. How can I assist you today?`,
+                            follow_up: prompt.primary_goals?.split('\n')[0] || 
+                                `What would you like to know about ${prompt.system_name || 'our services'}?`,
+                            default: `Regarding ":message", as ${displayName}, I can help you with that.`,
+                            fallback: `I understand you're asking about ":message". As ${displayName}, how can I assist you further?`
                         },
                         metadata: {
-                            description: row.description,
-                            system_description: row.system_description,
-                            active: row.active === 1,
+                            description: prompt.role_description,
+                            system_description: prompt.system_description,
+                            agent_type: prompt.agent_type,
+                            version: prompt.version,
+                            status: prompt.status,
                             from_database: true
                         }
                     };
                 });
                 
-                // Build liveAgents from your hardcoded CHAT_CONFIG
+                // Pastikan tidak ada duplikat agent_type
+                const uniqueAgents = agentTypes.reduce((acc, agent) => {
+                    // Cari apakah sudah ada agent dengan agent_type yang sama
+                    const existingIndex = acc.findIndex(a => 
+                        a.metadata.agent_type === agent.metadata.agent_type
+                    );
+                    
+                    if (existingIndex === -1) {
+                        acc.push(agent);
+                    } else {
+                        // Jika duplikat, pilih yang lebih spesifik (ada system_name)
+                        const existing = acc[existingIndex];
+                        if (!existing.system_name && agent.system_name) {
+                            acc[existingIndex] = agent;
+                        }
+                    }
+                    return acc;
+                }, []);
+                
+                // Urutkan kembali
+                uniqueAgents.sort((a, b) => a.menu_order - b.menu_order);
+                
+                // Update menu_order agar berurutan
+                uniqueAgents.forEach((agent, index) => {
+                    agent.menu_order = index + 1;
+                    agent.is_default = index === 0;
+                });
+                
+                // Build liveAgents
                 const liveAgents = [
                     {
                         id: 1,
@@ -732,7 +776,7 @@ app.get("/api/chat/config", async (req, res) => {
                         id: 2,
                         role: "consultant",
                         name: "Consultant Team",
-                        related_agent_type: "automation", // sesuai dengan konfigurasi Anda
+                        related_agent_type: "automation",
                         keywords: consultantKeywords
                     },
                     {
@@ -751,11 +795,11 @@ app.get("/api/chat/config", async (req, res) => {
                     }
                 ];
                 
-                // Return database-driven config
+                // Return config dari database
                 res.json({
                     success: true,
                     data: {
-                        agentTypes: agentTypes,
+                        agentTypes: uniqueAgents,
                         liveAgents: liveAgents,
                         triggers: [
                             {
@@ -773,27 +817,42 @@ app.get("/api/chat/config", async (req, res) => {
                         ],
                         meta: {
                             serverTime: new Date().toISOString(),
-                            totalAgents: agentTypes.length,
-                            source: "database",
-                            version: "1.0"
+                            totalAgents: uniqueAgents.length,
+                            source: "chatbot_prompts_database",
+                            version: "1.0",
+                            note: "Menu based on chatbot_prompts.identity"
                         }
                     }
                 });
                 
             } else {
-                // If no data in database, use your hardcoded CHAT_CONFIG
-                console.log("📝 No database data, using hardcoded config");
+                // Fallback ke CHAT_CONFIG yang ada
+                console.log("📝 No active chatbot_prompts, using hardcoded config");
                 
-                // Use the CHAT_CONFIG that you already have defined
+                // Buat agentTypes dari CHAT_CONFIG tapi dengan identity dari chatbot_prompts
+                const hardcodedAgents = CHAT_CONFIG.agentTypes.map(agent => {
+                    // Coba match dengan agent_type di chatbot_prompts
+                    let identity = agent.display.name;
+                    
+                    return {
+                        ...agent,
+                        name: identity,  // Gunakan identity/display.name
+                        display: {
+                            ...agent.display,
+                            name: identity
+                        }
+                    };
+                });
+                
                 res.json({
                     success: true,
                     data: {
-                        agentTypes: CHAT_CONFIG.agentTypes,
+                        agentTypes: hardcodedAgents,
                         liveAgents: CHAT_CONFIG.liveAgents,
                         triggers: CHAT_CONFIG.triggers,
                         meta: {
                             serverTime: new Date().toISOString(),
-                            totalAgents: CHAT_CONFIG.agentTypes.length,
+                            totalAgents: hardcodedAgents.length,
                             source: "hardcoded_fallback",
                             version: "1.0"
                         }
@@ -802,7 +861,6 @@ app.get("/api/chat/config", async (req, res) => {
             }
             
         } finally {
-            // Always release connection
             conn.release();
             console.log("🔓 Database connection released");
         }
@@ -811,53 +869,18 @@ app.get("/api/chat/config", async (req, res) => {
         console.error("❌ /api/chat/config error:", err.message);
         console.error("Stack trace:", err.stack);
         
-        // Fallback to hardcoded config on error
-        console.log("🔄 Using hardcoded fallback config due to error");
-        
+        // Fallback dengan pesan error
         res.json({
             success: true,
             data: {
-                agentTypes: CHAT_CONFIG.agentTypes,
-                liveAgents: [
-                    {
-                        id: 1,
-                        role: "sales",
-                        name: "Sales Team",
-                        related_agent_type: "sales",
-                        keywords: salesKeywords
-                    },
-                    {
-                        id: 2,
-                        role: "consultant",
-                        name: "Consultant Team", 
-                        related_agent_type: "automation",
-                        keywords: consultantKeywords
-                    },
-                    {
-                        id: 3,
-                        role: "support",
-                        name: "Support Team",
-                        related_agent_type: "support",
-                        keywords: supportKeywords
-                    },
-                    {
-                        id: 4,
-                        role: "account",
-                        name: "Account Manager Team",
-                        related_agent_type: "sales",
-                        keywords: accountKeywords
-                    }
-                ],
-                triggers: [
-                    {
-                        type: "pricing",
-                        keywords: ["price", "pricing", "cost", "how much", "quote", "buy"]
-                    }
-                ],
+                agentTypes: [],
+                liveAgents: [],
+                triggers: [],
                 meta: {
                     serverTime: new Date().toISOString(),
-                    source: "error_fallback",
-                    error: err.message
+                    source: "error",
+                    error: err.message,
+                    note: "Could not load chatbot_prompts"
                 }
             }
         });
@@ -3863,6 +3886,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
