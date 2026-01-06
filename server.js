@@ -573,54 +573,37 @@ const CHAT_CONFIG = {
 
 
 app.get("/api/chat/config", async (req, res) => {
+    let conn;
     try {
-        // clone base config (jangan mutate const)
-        const config = JSON.parse(JSON.stringify(CHAT_CONFIG));
+        conn = await pool.promise().getConnection();
 
-        const [rows] = await db.promise().query(`
-            SELECT
-                agent_type,
-                identity,
-                role_description,
-                primary_goals
+        const [rows] = await conn.query(`
+            SELECT id, agent_type, identity, role_description, primary_goals
             FROM chatbot_prompts
             WHERE status = 'active' AND is_active = 1
+            ORDER BY id ASC
         `);
 
-        // merge DB prompts ke agentTypes
-        rows.forEach(row => {
-            const agent = config.agentTypes.find(
-                a => a.code === row.agent_type
-            );
-
-            if (!agent) return;
-
-            // override hanya CONTENT
-            if (row.identity) {
-                agent.name = row.identity;
-                agent.display.name = row.identity;
+        const agentTypes = rows.map((row, index) => ({
+            code: row.agent_type,
+            name: row.identity || row.agent_type,
+            menu_order: index + 1,
+            messages: {
+                on_select: row.role_description || "How can I help you?",
+                follow_up: row.primary_goals || ""
             }
+        }));
 
-            if (row.role_description) {
-                agent.messages.on_select = row.role_description;
-            }
-
-            if (row.primary_goals) {
-                agent.messages.follow_up = row.primary_goals;
-            }
-        });
-
-        res.json({
-            success: true,
-            data: config
-        });
+        res.json({ success: true, data: { agentTypes } });
 
     } catch (err) {
         console.error("❌ /api/chat/config error:", err);
         res.status(500).json({
             success: false,
-            error: "Failed to load chat configuration"
+            error: "Database connection failed"
         });
+    } finally {
+        if (conn) conn.release();
     }
 });
 
@@ -3624,6 +3607,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
