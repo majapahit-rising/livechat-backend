@@ -574,51 +574,45 @@ const CHAT_CONFIG = {
 
 app.get("/api/chat/config", async (req, res) => {
     try {
-        // CLONE config (JANGAN MUTATE GLOBAL)
-        const config = JSON.parse(JSON.stringify(CHAT_CONFIG));
-
-        const [rows] = await db.promise().query(
-            `
-            SELECT agent_type, version, identity
+        // Ambil semua agent prompts yang aktif
+        const [rows] = await db.promise().query(`
+            SELECT *
             FROM chatbot_prompts
-            WHERE is_active = 1 AND status = 'active'
-            `
-        );
+            WHERE status = 'active' AND is_active = 1
+        `);
 
-        const activePromptMap = {};
-        rows.forEach(row => {
-            activePromptMap[row.agent_type] = row;
-        });
+        // Map menjadi format agentTypes untuk frontend
+        const agentTypes = rows.map(row => ({
+            id: row.id,
+            code: row.agent_type,
+            name: row.identity || row.agent_type, // fallback kalau identity null
+            product: row.product || null,         // pastikan field product ada di DB
+            category: row.category || null,       // pastikan category ada
+            system_type_id: row.system_type_id || null,
+            menu_order: row.menu_order || 999,    // default urutan
+            is_default: row.is_default || false,
+            display: {
+                name: row.identity || row.agent_type,
+                icon: row.icon || '🤖',          // fallback icon
+                color: row.color || '#1976d2'   // fallback color
+            },
+            messages: {
+                on_select: row.on_select_message || '',
+                follow_up: row.follow_up_message || '',
+                default: row.default_message || '',
+                fallback: row.fallback_message || ''
+            }
+        }));
 
-        // FILTER + MERGE agentTypes
-        config.agentTypes = config.agentTypes
-            .filter(type => activePromptMap[type.code]) // hanya active
-            .map(type => {
-                const prompt = activePromptMap[type.code];
-
-                return {
-                    ...type,
-                    version: prompt.version,
-                    name: prompt.identity,              // label menu
-                    display: {
-                        ...type.display,
-                        name: prompt.identity
-                    }
-                };
-            })
-            .sort((a, b) => a.menu_order - b.menu_order); // JAGA URUTAN
-
+        // Kirim ke frontend
         res.json({
             success: true,
-            data: config
+            data: { agentTypes }
         });
 
     } catch (err) {
         console.error("❌ /api/chat/config error:", err);
-        res.status(500).json({
-            success: false,
-            error: "Failed to load chat configuration"
-        });
+        res.status(500).json({ success: false, error: "Failed to load chat configuration" });
     }
 });
 
@@ -3622,6 +3616,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
