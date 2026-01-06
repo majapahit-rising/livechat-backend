@@ -572,292 +572,252 @@ const CHAT_CONFIG = {
 
 
 
+// Tambahkan ini sebelum endpoint /api/chat/config
+const salesKeywords = [
+    'talk to a live sales person', 'connect me to sales',
+    'i want to speak with a sales rep', 'can i talk to someone about pricing',
+    'sales team', 'sales person', 'sales rep', 'connect me with sales agent',
+    'speak to sales', 'contact sales', 'sales contact', 'sales department',
+    'sales representative', 'i need sales', 'get sales', 'live sales',
+    'connect with sales'
+];
+
+const consultantKeywords = [
+    'i want to talk to a consultant', 'connect me with a waste management consultant',
+    'i need expert advice from a person', 'consultant team', 'expert advice',
+    'speak with consultant', 'consulting services', 'professional consultant', 'connect me with consultant'
+];
+
+const supportKeywords = [
+    'i want to talk to a real person', 'transfer me to a human',
+    'can i speak with someone on your team', 'i don\'t want the bot – i want a person',
+    'real person', 'human agent', 'live person', 'speak to human',
+    'talk to a person', 'contact support person'
+];
+
+const accountKeywords = [
+    'i want to talk to an account manager', 'connect me with account manager',
+    'account manager team', 'account management', 'billing issue',
+    'account problem', 'payment issue', 'subscription help', 'invoice problem',
+    'speak to account manager', 'billing department', 'finance team'
+];
+
+// Helper functions (tambahkan sebelum endpoint)
+function getIconByAgentType(agentType) {
+    const icons = {
+        'support': '🔧',
+        'sales': '💰',
+        'automation': '⚙️',
+        'general': '🌐',
+        'consultant': '👨‍💼',
+        'account': '📊'
+    };
+    return icons[agentType] || '💬';
+}
+
+function getColorByAgentType(agentType) {
+    const colors = {
+        'support': '#FF9800',
+        'sales': '#4CAF50',
+        'automation': '#9C27B0',
+        'general': '#1976d2',
+        'consultant': '#607D8B',
+        'account': '#795548'
+    };
+    return colors[agentType] || '#1976d2';
+}
+
+// -----------------------------------------------------
+// /api/chat/config ENDPOINT YANG BENAR
+// -----------------------------------------------------
 app.get("/api/chat/config", async (req, res) => {
-    let conn;
+    console.log("🔍 /api/chat/config endpoint called from:", req.headers.origin);
+    
     try {
-        conn = await pool.promise().getConnection();
+        // GANTI pool dengan db - INI YANG SALAH
+        // let conn = await pool.promise().getConnection(); // ❌ SALAH
         
-        // Query with joins to get complete configuration
-        const [rows] = await conn.query(`
-            SELECT 
-                cc.id,
-                cc.internal_identifier as code,
-                cc.display_name as name,
-                cc.description,
-                cc.agent_type,
-                cc.system_type_id,
-                cc.sort_order as menu_order,
-                cc.active,
-                st.name as system_name,
-                st.description as system_description,
-                cp.role_description,
-                cp.primary_goals,
-                cp.identity as agent_identity,
-                cp.agent_type as prompt_agent_type
-            FROM chatbot_categories cc
-            LEFT JOIN system_types st ON cc.system_type_id = st.id
-            LEFT JOIN chatbot_prompts cp ON cc.agent_type = cp.agent_type 
-                AND cp.status = 'active' 
-                AND cp.is_active = 1
-            WHERE cc.active = 1
-            ORDER BY cc.sort_order ASC, cc.id ASC
-        `);
+        // YANG BENAR - pakai db Anda:
+        let conn = await db.promise().getConnection(); // ✅ BENAR
         
-        console.log("📊 Database query result:", rows.length, "rows");
+        console.log("✅ Database connection established");
         
-        // Map to agentTypes format
-        const agentTypes = rows.map((row, index) => {
-            // Determine product code from system_name
-            const productMap = {
-                'WasteVantage': 'wastevantage',
-                'TaskIT': 'taskit',
-                'Drilling CRM': 'drillingcrm',
-                'IHUB CRM': 'ihub',
-                'SOMS': 'soms',
-                'HiThereAI': 'hithatereai'
-            };
-            
-            const product = productMap[row.system_name] || 'ihub';
-            const code = row.code || `${product}_${row.agent_type}_${index}`;
-            const name = row.name || row.display_name || `${row.system_name} ${row.agent_type}`;
-            
-            return {
-                id: row.id,
-                code: code,
-                name: name,
-                product: product,
-                category: row.agent_type || 'general',
-                system_type_id: row.system_type_id,
-                system_name: row.system_name,
-                menu_order: row.menu_order || index + 1,
-                is_default: index === 0,
-                display: {
-                    name: name,
-                    icon: getIconByAgentType(row.agent_type),
-                    color: getColorByAgentType(row.agent_type)
-                },
-                messages: {
-                    on_select: row.role_description || row.description || `I specialize in ${name}. How can I help you?`,
-                    follow_up: row.primary_goals || `What would you like to know about ${row.system_name}?`,
-                    default: `For ${row.system_name} regarding ":message", I can help you with that.`,
-                    fallback: `Regarding ":message", I can assist with ${name}. What specific information do you need?`
-                },
-                metadata: {
-                    description: row.description,
-                    system_description: row.system_description,
-                    active: row.active === 1
-                }
-            };
-        });
-
-        // Helper functions
-        function getIconByAgentType(agentType) {
-            const icons = {
-                'support': '🔧',
-                'sales': '💰',
-                'automation': '⚙️',
-                'general': '🌐',
-                'consultant': '👨‍💼',
-                'account': '📊'
-            };
-            return icons[agentType] || '💬';
-        }
-
-        function getColorByAgentType(agentType) {
-            const colors = {
-                'support': '#FF9800',
-                'sales': '#4CAF50',
-                'automation': '#9C27B0',
-                'general': '#1976d2',
-                'consultant': '#607D8B',
-                'account': '#795548'
-            };
-            return colors[agentType] || '#1976d2';
-        }
-
-        // If no categories found, create default ones based on system_types
-        if (agentTypes.length === 0) {
-            console.log("⚠️ No chatbot categories found, creating defaults");
-            
-            // Get all active system types
-            const [systems] = await conn.query(`
-                SELECT id, name, description 
-                FROM system_types 
-                WHERE status = 1
-                ORDER BY id ASC
+        try {
+            // Query with joins
+            const [rows] = await conn.query(`
+                SELECT 
+                    cc.id,
+                    cc.internal_identifier as code,
+                    cc.display_name as name,
+                    cc.description,
+                    cc.agent_type,
+                    cc.system_type_id,
+                    cc.sort_order as menu_order,
+                    cc.active,
+                    st.name as system_name,
+                    st.description as system_description,
+                    cp.role_description,
+                    cp.primary_goals,
+                    cp.identity as agent_identity,
+                    cp.agent_type as prompt_agent_type
+                FROM chatbot_categories cc
+                LEFT JOIN system_types st ON cc.system_type_id = st.id
+                LEFT JOIN chatbot_prompts cp ON cc.agent_type = cp.agent_type 
+                    AND cp.status = 'active' 
+                    AND cp.is_active = 1
+                WHERE cc.active = 1
+                ORDER BY cc.sort_order ASC, cc.id ASC
+                LIMIT 20
             `);
             
-            systems.forEach((system, index) => {
-                const productMap = {
-                    'WasteVantage': 'wastevantage',
-                    'TaskIT': 'taskit',
-                    'Drilling CRM': 'drillingcrm',
-                    'IHUB CRM': 'ihub',
-                    'SOMS': 'soms',
-                    'HiThereAI': 'hithatereai'
-                };
-                
-                const product = productMap[system.name] || 'ihub';
-                
-                agentTypes.push({
-                    id: system.id * 1000, // Temporary ID
-                    code: `${product}_general`,
-                    name: `${system.name} General`,
-                    product: product,
-                    category: 'general',
-                    system_type_id: system.id,
-                    system_name: system.name,
-                    menu_order: index + 1,
-                    is_default: index === 0,
-                    display: {
-                        name: `${system.name} Assistant`,
-                        icon: '🌐',
-                        color: '#1976d2'
-                    },
-                    messages: {
-                        on_select: `Hello! I can help you with ${system.name}.`,
-                        follow_up: `What would you like to know about ${system.name}?`,
-                        default: `For ${system.name} regarding ":message", I can help you with that.`,
-                        fallback: `Regarding ":message", I can assist with ${system.name}.`
-                    },
-                    metadata: {
-                        description: system.description,
-                        is_fallback: true
-                    }
-                });
-            });
+            console.log(`📊 Database query successful: ${rows.length} rows`);
             
-            // Add a general fallback if no systems
-            if (agentTypes.length === 0) {
-                agentTypes.push({
-                    id: 0,
-                    code: 'general',
-                    name: 'General Assistant',
-                    product: 'ihub',
-                    category: 'general',
-                    system_type_id: 4, // IHUB CRM
-                    system_name: 'IHUB CRM',
-                    menu_order: 1,
-                    is_default: true,
-                    display: {
-                        name: 'General Assistant',
-                        icon: '🌐',
-                        color: '#1976d2'
+            // If database has data, use it
+            if (rows.length > 0) {
+                // Map to agentTypes format
+                const agentTypes = rows.map((row, index) => {
+                    const productMap = {
+                        'WasteVantage': 'wastevantage',
+                        'TaskIT': 'taskit',
+                        'Drilling CRM': 'drillingcrm',
+                        'IHUB CRM': 'ihub',
+                        'SOMS': 'soms',
+                        'HiThereAI': 'hithatereai'
+                    };
+                    
+                    const product = productMap[row.system_name] || 'ihub';
+                    const code = row.code || `${product}_${row.agent_type}`;
+                    const name = row.name || `${row.system_name} ${row.agent_type}`;
+                    
+                    return {
+                        id: row.id,
+                        code: code,
+                        name: name,
+                        product: product,
+                        category: row.agent_type || 'general',
+                        system_type_id: row.system_type_id,
+                        system_name: row.system_name,
+                        menu_order: row.menu_order || index + 1,
+                        is_default: index === 0,
+                        display: {
+                            name: name,
+                            icon: getIconByAgentType(row.agent_type),
+                            color: getColorByAgentType(row.agent_type)
+                        },
+                        messages: {
+                            on_select: row.role_description || row.description || `I specialize in ${name}. How can I help you?`,
+                            follow_up: row.primary_goals || `What would you like to know about ${row.system_name}?`,
+                            default: `For ${row.system_name} regarding ":message", I can help you with that.`,
+                            fallback: `Regarding ":message", I can assist with ${name}. What specific information do you need?`
+                        },
+                        metadata: {
+                            description: row.description,
+                            system_description: row.system_description,
+                            active: row.active === 1,
+                            from_database: true
+                        }
+                    };
+                });
+                
+                // Build liveAgents from your hardcoded CHAT_CONFIG
+                const liveAgents = [
+                    {
+                        id: 1,
+                        role: "sales",
+                        name: "Sales Team",
+                        related_agent_type: "sales",
+                        keywords: salesKeywords
                     },
-                    messages: {
-                        on_select: "Hello! I'm here to help you with general inquiries.",
-                        follow_up: "What would you like to know?",
-                        default: "Regarding your inquiry, I can help with general questions.",
-                        fallback: "I understand you're asking about \":message\". How can I assist you?"
+                    {
+                        id: 2,
+                        role: "consultant",
+                        name: "Consultant Team",
+                        related_agent_type: "automation", // sesuai dengan konfigurasi Anda
+                        keywords: consultantKeywords
                     },
-                    metadata: {
-                        is_fallback: true
+                    {
+                        id: 3,
+                        role: "support",
+                        name: "Support Team",
+                        related_agent_type: "support",
+                        keywords: supportKeywords
+                    },
+                    {
+                        id: 4,
+                        role: "account",
+                        name: "Account Manager Team",
+                        related_agent_type: "sales",
+                        keywords: accountKeywords
+                    }
+                ];
+                
+                // Return database-driven config
+                res.json({
+                    success: true,
+                    data: {
+                        agentTypes: agentTypes,
+                        liveAgents: liveAgents,
+                        triggers: [
+                            {
+                                type: "pricing",
+                                keywords: ["price", "pricing", "cost", "how much", "quote", "buy"]
+                            },
+                            {
+                                type: "demo",
+                                keywords: ["demo", "trial", "test", "free trial", "try"]
+                            },
+                            {
+                                type: "support",
+                                keywords: ["help", "support", "issue", "problem", "error", "bug"]
+                            }
+                        ],
+                        meta: {
+                            serverTime: new Date().toISOString(),
+                            totalAgents: agentTypes.length,
+                            source: "database",
+                            version: "1.0"
+                        }
+                    }
+                });
+                
+            } else {
+                // If no data in database, use your hardcoded CHAT_CONFIG
+                console.log("📝 No database data, using hardcoded config");
+                
+                // Use the CHAT_CONFIG that you already have defined
+                res.json({
+                    success: true,
+                    data: {
+                        agentTypes: CHAT_CONFIG.agentTypes,
+                        liveAgents: CHAT_CONFIG.liveAgents,
+                        triggers: CHAT_CONFIG.triggers,
+                        meta: {
+                            serverTime: new Date().toISOString(),
+                            totalAgents: CHAT_CONFIG.agentTypes.length,
+                            source: "hardcoded_fallback",
+                            version: "1.0"
+                        }
                     }
                 });
             }
+            
+        } finally {
+            // Always release connection
+            conn.release();
+            console.log("🔓 Database connection released");
         }
-
-        // Also get live agents configuration (using your existing arrays)
-        const liveAgents = [
-            {
-                id: 1,
-                role: "sales",
-                name: "Sales Team",
-                related_agent_type: "sales",
-                keywords: salesKeywords
-            },
-            {
-                id: 2,
-                role: "consultant",
-                name: "Consultant Team",
-                related_agent_type: "consultant",
-                keywords: consultantKeywords
-            },
-            {
-                id: 3,
-                role: "support",
-                name: "Support Team",
-                related_agent_type: "support",
-                keywords: supportKeywords
-            },
-            {
-                id: 4,
-                role: "account",
-                name: "Account Manager Team",
-                related_agent_type: "account",
-                keywords: accountKeywords
-            }
-        ];
-
-        // Build full configuration
-        const fullConfig = {
-            agentTypes: agentTypes,
-            liveAgents: liveAgents,
-            triggers: [
-                {
-                    type: "pricing",
-                    keywords: ["price", "pricing", "cost", "how much", "quote", "buy"]
-                },
-                {
-                    type: "demo",
-                    keywords: ["demo", "trial", "test", "free trial", "try"]
-                },
-                {
-                    type: "support",
-                    keywords: ["help", "support", "issue", "problem", "error", "bug"]
-                }
-            ],
-            meta: {
-                serverTime: new Date().toISOString(),
-                totalAgents: agentTypes.length,
-                categories: agentTypes.map(a => ({
-                    name: a.name,
-                    product: a.product,
-                    type: a.category
-                }))
-            }
-        };
-
-        console.log("✅ Sending config with", agentTypes.length, "agent types");
-        res.json({ 
-            success: true, 
-            data: fullConfig
-        });
-
+        
     } catch (err) {
         console.error("❌ /api/chat/config error:", err.message);
+        console.error("Stack trace:", err.stack);
         
-        // Return comprehensive fallback
+        // Fallback to hardcoded config on error
+        console.log("🔄 Using hardcoded fallback config due to error");
+        
         res.json({
             success: true,
             data: {
-                agentTypes: [
-                    {
-                        id: 0,
-                        code: 'general',
-                        name: 'General Assistant',
-                        product: 'ihub',
-                        category: 'general',
-                        system_type_id: 4,
-                        system_name: 'IHUB CRM',
-                        menu_order: 1,
-                        is_default: true,
-                        display: {
-                            name: 'General Assistant',
-                            icon: '🌐',
-                            color: '#1976d2'
-                        },
-                        messages: {
-                            on_select: "Hello! I'm here to help you.",
-                            follow_up: "What would you like to know?",
-                            default: "Regarding your inquiry, I can help with general questions.",
-                            fallback: "I understand you're asking about \":message\". How can I assist you?"
-                        },
-                        metadata: {
-                            is_fallback: true
-                        }
-                    }
-                ],
+                agentTypes: CHAT_CONFIG.agentTypes,
                 liveAgents: [
                     {
                         id: 1,
@@ -865,6 +825,27 @@ app.get("/api/chat/config", async (req, res) => {
                         name: "Sales Team",
                         related_agent_type: "sales",
                         keywords: salesKeywords
+                    },
+                    {
+                        id: 2,
+                        role: "consultant",
+                        name: "Consultant Team", 
+                        related_agent_type: "automation",
+                        keywords: consultantKeywords
+                    },
+                    {
+                        id: 3,
+                        role: "support",
+                        name: "Support Team",
+                        related_agent_type: "support",
+                        keywords: supportKeywords
+                    },
+                    {
+                        id: 4,
+                        role: "account",
+                        name: "Account Manager Team",
+                        related_agent_type: "sales",
+                        keywords: accountKeywords
                     }
                 ],
                 triggers: [
@@ -873,18 +854,13 @@ app.get("/api/chat/config", async (req, res) => {
                         keywords: ["price", "pricing", "cost", "how much", "quote", "buy"]
                     }
                 ],
-                isFallback: true,
-                error: err.message
+                meta: {
+                    serverTime: new Date().toISOString(),
+                    source: "error_fallback",
+                    error: err.message
+                }
             }
         });
-    } finally {
-        if (conn) {
-            try {
-                conn.release();
-            } catch (e) {
-                console.error('Error releasing connection:', e);
-            }
-        }
     }
 });
 
@@ -3887,6 +3863,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
