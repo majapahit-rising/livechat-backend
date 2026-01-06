@@ -638,171 +638,104 @@ app.get("/api/chat/config", async (req, res) => {
         console.log("✅ Database connection established");
         
         try {
-            // 1. QUERY DENGAN JOIN KE TABEL LAIN UNTUK GET PRODUCT INFO
+            // 1. QUERY HANYA YANG AKTIF
             const [prompts] = await conn.query(`
                 SELECT 
-                    cp.id,
-                    cp.agent_type,
-                    cp.identity,
-                    cp.role_description,
-                    cp.primary_goals,
-                    cp.status,
-                    cp.is_active,
-                    cc.system_type_id,
-                    st.name as system_name,
-                    st.code as system_code
-                FROM chatbot_prompts cp
-                LEFT JOIN chatbot_categories cc 
-                    ON cp.agent_type = cc.agent_type 
-                    AND cc.active = 1
-                LEFT JOIN system_types st 
-                    ON cc.system_type_id = st.id 
-                    AND st.status = 1
-                WHERE cp.status = 'active' 
-                  AND cp.is_active = 1
+                    id,
+                    agent_type,
+                    identity,
+                    role_description,
+                    primary_goals,
+                    status,
+                    is_active
+                FROM chatbot_prompts 
+                WHERE status = 'active' 
+                  AND is_active = 1
                 ORDER BY 
-                    CASE cp.agent_type
+                    CASE agent_type
                         WHEN 'general' THEN 1
                         WHEN 'sales' THEN 2
                         WHEN 'automation' THEN 3
                         WHEN 'support' THEN 4
                         ELSE 5
                     END,
-                    cp.id ASC
+                    id ASC
             `);
             
-            console.log(`📊 Found ${prompts.length} active prompts`);
+            console.log("========== DATABASE QUERY RESULT ==========");
+            console.log(`📊 Found ${prompts.length} ACTIVE prompts`);
+            prompts.forEach((p, i) => {
+                console.log(`  [${i+1}] ${p.agent_type}: "${p.identity}"`);
+            });
             
-            // 2. LOGIKA DINAMIS - BUAT MENU DARI DATABASE
+            // 2. BUILD MENU DARI DATA DATABASE
             const agentTypes = [];
             
             prompts.forEach((prompt, index) => {
-                // Tentukan product berdasarkan system_code atau agent_type
-                let product = 'ihub'; // default
-                let systemTypeId = prompt.system_type_id || null;
-                
-                // Mapping dari system_code ke product
-                if (prompt.system_code) {
-                    const systemToProduct = {
-                        'wastevantage': 'wastevantage',
-                        'hithatereai': 'hithatereai',
-                        'ihub_crm': 'ihub',
-                        'taskit': 'taskit',
-                        'soms': 'soms'
-                    };
-                    product = systemToProduct[prompt.system_code] || 'ihub';
-                } else {
-                    // Fallback: mapping berdasarkan agent_type
-                    const agentTypeToProduct = {
-                        'sales': 'wastevantage',
-                        'automation': 'hithatereai',
-                        'general': 'ihub',
-                        'support': 'ihub'
-                    };
-                    product = agentTypeToProduct[prompt.agent_type] || 'ihub';
-                }
-                
-                // Tentukan menu_order berdasarkan urutan di results
-                const menu_order = index + 1;
-                
-                // Tentukan apakah ini default (general pertama)
-                const is_default = prompt.agent_type === 'general' && index === 0;
-                
-                // Icon dan color berdasarkan agent_type
-                const displayConfig = {
-                    'general': { icon: '🌐', color: '#1976d2' },
-                    'sales': { icon: '💰', color: '#4CAF50' },
-                    'automation': { icon: '⚙️', color: '#9C27B0' },
-                    'support': { icon: '🔧', color: '#FF9800' }
+                // Tentukan product berdasarkan agent_type
+                const productMap = {
+                    'general': 'ihub',
+                    'sales': 'wastevantage',
+                    'automation': 'hithatereai',
+                    'support': 'ihub'
                 };
                 
-                const display = displayConfig[prompt.agent_type] || { icon: '💬', color: '#666' };
+                const product = productMap[prompt.agent_type] || 'ihub';
                 
-                // Buat agent type object
+                // Icon dan color mapping
+                const displayConfig = {
+                    'general': { icon: '🌐', color: '#1976d2', menu_name: 'General Questions' },
+                    'sales': { icon: '💰', color: '#4CAF50', menu_name: 'WasteVantage Sales' },
+                    'automation': { icon: '⚙️', color: '#9C27B0', menu_name: 'Automation Sales' },
+                    'support': { icon: '🔧', color: '#FF9800', menu_name: 'Ihub Product Support' }
+                };
+                
+                const config = displayConfig[prompt.agent_type] || { 
+                    icon: '💬', 
+                    color: '#666',
+                    menu_name: prompt.identity 
+                };
+                
+                // Gunakan menu_name dari mapping, bukan identity dari database
+                // Jika ingin menggunakan identity dari DB, ganti config.menu_name dengan prompt.identity
+                const menuName = config.menu_name;
+                
                 agentTypes.push({
                     id: prompt.id,
                     code: `${product}_${prompt.agent_type}`,
-                    name: prompt.identity, // ⭐ GUNAKAN identity DARI DATABASE
+                    name: menuName, // ⭐ Nama menu seperti yang Anda inginkan
                     product: product,
                     category: prompt.agent_type,
-                    system_type_id: systemTypeId,
-                    system_name: prompt.system_name,
-                    menu_order: menu_order,
-                    is_default: is_default,
+                    menu_order: index + 1,
+                    is_default: prompt.agent_type === 'general',
                     display: {
-                        name: prompt.identity,
-                        icon: display.icon,
-                        color: display.color
+                        name: menuName,
+                        icon: config.icon,
+                        color: config.color
                     },
                     messages: {
                         on_select: prompt.role_description || 
-                            `I am your ${prompt.identity}. How can I assist you today?`,
+                            `Hello! I'm your ${menuName} assistant. How can I help you?`,
                         follow_up: prompt.primary_goals ? 
                             prompt.primary_goals.split('\n')[0] : 
-                            `How can I help you with ${prompt.system_name || product}?`,
-                        default: `Regarding ":message", I can help you as ${prompt.identity}.`,
-                        fallback: `I understand you're asking about ":message". As ${prompt.identity}, how can I assist you?`
+                            `What would you like to know about ${product === 'wastevantage' ? 'WasteVantage' : 'HiThereAI'}?`
                     },
                     metadata: {
-                        agent_type: prompt.agent_type,
-                        status: prompt.status,
-                        is_active: prompt.is_active,
                         from_database: true,
-                        identity: prompt.identity,
-                        system_code: prompt.system_code
+                        agent_type: prompt.agent_type,
+                        database_identity: prompt.identity, // Simpan identity asli dari DB
+                        status: prompt.status,
+                        is_active: prompt.is_active
                     }
                 });
             });
             
-            // 3. CEK AGENT TYPES YANG HARUSNYA ADA TAPI TIDAK AKTIF
-            const expectedAgentTypes = ['general', 'sales', 'automation', 'support'];
-            const foundAgentTypes = prompts.map(p => p.agent_type);
+            console.log("🎯 Menu yang akan ditampilkan:");
+            agentTypes.forEach(agent => {
+                console.log(`  ${agent.menu_order}. ${agent.name} (${agent.metadata.database_identity})`);
+            });
             
-            const missingAgentTypes = expectedAgentTypes.filter(type => 
-                !foundAgentTypes.includes(type)
-            );
-            
-            if (missingAgentTypes.length > 0) {
-                console.log(`⚠️ Warning: Missing active prompts for: ${missingAgentTypes.join(', ')}`);
-                
-                // OPSIONAL: Tambahkan fallback untuk agent types yang tidak ada
-                missingAgentTypes.forEach((agentType, index) => {
-                    const fallbackNames = {
-                        'general': 'General Questions',
-                        'sales': 'Sales Inquiries',
-                        'automation': 'Automation Support',
-                        'support': 'Technical Support'
-                    };
-                    
-                    agentTypes.push({
-                        id: 100 + index,
-                        code: `fallback_${agentType}`,
-                        name: fallbackNames[agentType],
-                        product: 'ihub',
-                        category: agentType,
-                        menu_order: agentTypes.length + 1,
-                        is_default: false,
-                        display: {
-                            name: fallbackNames[agentType],
-                            icon: '⚠️',
-                            color: '#FF9800'
-                        },
-                        messages: {
-                            on_select: `This service is temporarily unavailable.`,
-                            fallback: `I'm sorry, the ${fallbackNames[agentType]} assistant is not available right now.`
-                        },
-                        metadata: {
-                            agent_type: agentType,
-                            status: 'inactive',
-                            is_active: 0,
-                            from_database: false,
-                            note: 'Fallback because no active prompt found'
-                        }
-                    });
-                });
-            }
-            
-            // 4. BUILD LIVE AGENTS CONFIG (dinamis juga jika mau)
+            // 3. BUILD LIVE AGENTS
             const liveAgents = [
                 {
                     id: 1,
@@ -834,15 +767,7 @@ app.get("/api/chat/config", async (req, res) => {
                 }
             ];
             
-            // 5. RETURN RESPONSE
-            console.log("🎯 Dynamic menu configuration from database:");
-            agentTypes.forEach((agent, i) => {
-                console.log(`  [${agent.menu_order}] ${agent.name} (${agent.agent_type}) - Active: ${agent.metadata.is_active ? '✓' : '✗'}`);
-            });
-            
-            // 6. SORT BY menu_order sebelum return
-            agentTypes.sort((a, b) => a.menu_order - b.menu_order);
-            
+            // 4. RETURN RESPONSE
             res.json({
                 success: true,
                 data: {
@@ -852,72 +777,49 @@ app.get("/api/chat/config", async (req, res) => {
                         {
                             type: "pricing",
                             keywords: ["price", "pricing", "cost", "how much", "quote", "buy"]
-                        },
-                        {
-                            type: "demo",
-                            keywords: ["demo", "trial", "test", "free trial", "try"]
-                        },
-                        {
-                            type: "support",
-                            keywords: ["help", "support", "issue", "problem", "error", "bug"]
                         }
                     ],
                     meta: {
                         serverTime: new Date().toISOString(),
-                        totalActiveAgents: prompts.length,
-                        totalMenuItems: agentTypes.length,
-                        database_source: "chatbot_prompts",
-                        version: "3.0-dynamic",
-                        note: "Fully dynamic from database. Menu shows only active prompts."
+                        totalAgents: agentTypes.length,
+                        source: "database_dynamic",
+                        active_prompts: prompts.map(p => p.agent_type),
+                        note: "Menu dynamically built from active chatbot_prompts"
                     }
                 }
             });
             
+            console.log("✅ Config sent successfully");
+            
         } catch (dbErr) {
-            console.error("❌ Database error:", dbErr);
-            throw dbErr;
+            console.error("❌ Database error:", dbErr.message);
+            
+            // JANGAN KASIH HARCODED FALLBACK
+            res.json({
+                success: false,
+                error: dbErr.message,
+                data: {
+                    agentTypes: [],
+                    liveAgents: [],
+                    triggers: []
+                }
+            });
+            
         } finally {
             conn.release();
             console.log("🔓 Connection released");
         }
         
     } catch (err) {
-        console.error("❌ API error:", err);
+        console.error("❌ API error:", err.message);
         
-        // FALLBACK MINIMAL - hanya untuk error cases
-        const minimalFallback = [
-            {
-                id: 1,
-                code: 'general_fallback',
-                name: 'General Assistance',
-                product: 'ihub',
-                category: 'general',
-                menu_order: 1,
-                is_default: true,
-                display: { name: 'General Assistance', icon: '🌐', color: '#1976d2' },
-                messages: {
-                    on_select: "I can help you with general inquiries.",
-                    fallback: "How can I assist you today?"
-                },
-                metadata: {
-                    from_database: false,
-                    note: 'fallback_due_to_error'
-                }
-            }
-        ];
-        
-        res.json({
-            success: true,
+        res.status(500).json({
+            success: false,
+            error: err.message,
             data: {
-                agentTypes: minimalFallback,
+                agentTypes: [], // Kosongkan jika error
                 liveAgents: [],
-                triggers: [],
-                meta: {
-                    serverTime: new Date().toISOString(),
-                    source: "error_fallback_minimal",
-                    error: err.message,
-                    note: "Using minimal fallback due to database error"
-                }
+                triggers: []
             }
         });
     }
@@ -3922,6 +3824,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
