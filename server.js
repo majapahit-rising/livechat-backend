@@ -574,45 +574,53 @@ const CHAT_CONFIG = {
 
 app.get("/api/chat/config", async (req, res) => {
     try {
-        // Ambil semua agent prompts yang aktif
+        // clone base config (jangan mutate const)
+        const config = JSON.parse(JSON.stringify(CHAT_CONFIG));
+
         const [rows] = await db.promise().query(`
-            SELECT *
+            SELECT
+                agent_type,
+                identity,
+                role_description,
+                primary_goals
             FROM chatbot_prompts
             WHERE status = 'active' AND is_active = 1
         `);
 
-        // Map menjadi format agentTypes untuk frontend
-        const agentTypes = rows.map(row => ({
-            id: row.id,
-            code: row.agent_type,
-            name: row.identity || row.agent_type, // fallback kalau identity null
-            product: row.product || null,         // pastikan field product ada di DB
-            category: row.category || null,       // pastikan category ada
-            system_type_id: row.system_type_id || null,
-            menu_order: row.menu_order || 999,    // default urutan
-            is_default: row.is_default || false,
-            display: {
-                name: row.identity || row.agent_type,
-                icon: row.icon || '🤖',          // fallback icon
-                color: row.color || '#1976d2'   // fallback color
-            },
-            messages: {
-                on_select: row.on_select_message || '',
-                follow_up: row.follow_up_message || '',
-                default: row.default_message || '',
-                fallback: row.fallback_message || ''
-            }
-        }));
+        // merge DB prompts ke agentTypes
+        rows.forEach(row => {
+            const agent = config.agentTypes.find(
+                a => a.code === row.agent_type
+            );
 
-        // Kirim ke frontend
+            if (!agent) return;
+
+            // override hanya CONTENT
+            if (row.identity) {
+                agent.name = row.identity;
+                agent.display.name = row.identity;
+            }
+
+            if (row.role_description) {
+                agent.messages.on_select = row.role_description;
+            }
+
+            if (row.primary_goals) {
+                agent.messages.follow_up = row.primary_goals;
+            }
+        });
+
         res.json({
             success: true,
-            data: { agentTypes }
+            data: config
         });
 
     } catch (err) {
         console.error("❌ /api/chat/config error:", err);
-        res.status(500).json({ success: false, error: "Failed to load chat configuration" });
+        res.status(500).json({
+            success: false,
+            error: "Failed to load chat configuration"
+        });
     }
 });
 
@@ -3616,6 +3624,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
