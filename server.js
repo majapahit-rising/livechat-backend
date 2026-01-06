@@ -344,6 +344,286 @@ transporter.verify(err => {
 
 
 
+// -----------------------------------------------------
+// CHAT CONFIGURATION
+// -----------------------------------------------------
+const CHAT_CONFIG = {
+    "products": [
+        {
+            "id": 1,
+            "name": "WasteVantage",
+            "code": "wastevantage",
+            "is_default": false,
+            "integrations": [
+                {
+                    "id": 1,
+                    "name": "Formspree",
+                    "code": "formspree",
+                    "config": {
+                        "id": "xnnkpnkz"
+                    }
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "name": "iHub",
+            "code": "ihub",
+            "is_default": true,
+            "integrations": []
+        },
+        {
+            "id": 19,
+            "name": "HiThereAI",
+            "code": "hithatereai",
+            "is_default": false,
+            "integrations": [
+                {
+                    "id": 2,
+                    "name": "Formspree",
+                    "code": "formspree",
+                    "config": {
+                        "id": "xnnkpnkz"
+                    }
+                }
+            ]
+        }
+    ],
+    "agentTypes": [
+        {
+            "id": 1,
+            "code": "general",
+            "name": "General Questions",
+            "product": "ihub",
+            "category": "general",
+            "system_type_id": null,
+            "menu_order": 1,
+            "is_default": true,
+            "display": {
+                "name": "General Assistant",
+                "icon": "🌐",
+                "color": "#1976d2"
+            },
+            "messages": {
+                "on_select": "I can help you with general inquiries about our products and services.",
+                "follow_up": "What would you like to know about iHub?",
+                "default": 'Regarding ":message", I can help you with iHub products. What specific information do you need?',
+                "fallback": "I understand you're asking about \":message\". I can help you with general inquiries about iHub products. What specific information do you need?"
+            }
+        },
+        {
+            "id": 2,
+            "code": "sales",
+            "name": "WasteVantage Sales",
+            "product": "wastevantage",
+            "category": "waste_management",
+            "system_type_id": 1,
+            "menu_order": 2,
+            "is_default": false,
+            "display": {
+                "name": "Sales Specialist",
+                "icon": "💰",
+                "color": "#4CAF50"
+            },
+            "messages": {
+                "on_select": "I specialize in waste management solutions. How can I assist you with WasteVantage?",
+                "default": "For :product sales inquiries, I recommend connecting with our sales team for personalized assistance. Would you like me to connect you now?",
+                "fallback": "Regarding \":message\", I specialize in sales inquiries. Would you like me to connect you with our sales team for more detailed information?"
+            }
+        },
+        {
+            "id": 3,
+            "code": "automation",
+            "name": "Automation Sales",
+            "product": "hithatereai",
+            "category": "automation",
+            "system_type_id": 19,
+            "menu_order": 3,
+            "is_default": false,
+            "display": {
+                "name": "Automation Expert",
+                "icon": "⚙️",
+                "color": "#9C27B0"
+            },
+            "messages": {
+                "on_select": "I specialize in HiThereAI automation solutions. What would you like to know about our automation services?",
+                "default": 'For HiThereAI automation about ":message", we specialize in workflow automation solutions. What specific needs do you have?',
+                "fallback": "For automation questions about \":message\", I can help with HiThereAI solutions. What specific automation needs do you have?"
+            }
+        },
+        {
+            "id": 4,
+            "code": "support",
+            "name": "Ihub Product Support",
+            "product": "ihub",
+            "category": "support",
+            "system_type_id": null,
+            "menu_order": 4,
+            "is_default": false,
+            "display": {
+                "name": "Support Technician",
+                "icon": "🔧",
+                "color": "#FF9800"
+            },
+            "messages": {
+                "on_select": "Let me help you with any technical questions or issues.",
+                "follow_up": "Please describe your issue or question about iHub products.",
+                "default": 'For :product support regarding ":message", please provide more details or email support@ihub.com for assistance.',
+                "fallback": "For support regarding \":message\", please provide more details or email support@ihub.com for assistance."
+            }
+        }
+    ],
+    "liveAgents": [
+        {
+            "id": 1,
+            "role": "sales",
+            "name": "Sales Team",
+            "related_agent_type": "sales",
+            "keywords": [
+                "talk to a live sales person",
+                "connect me to sales",
+                "i want to speak with a sales rep",
+                "can i talk to someone about pricing",
+                "sales team",
+                "sales person",
+                "sales rep",
+                "connect me with sales agent",
+                "speak to sales",
+                "contact sales",
+                "sales contact",
+                "sales department",
+                "sales representative",
+                "i need sales",
+                "get sales",
+                "live sales",
+                "connect with sales"
+            ],
+        },
+        {
+            "id": 2,
+            "role": "consultant",
+            "name": "Consultant Team",
+            "related_agent_type": "automation",
+            "keywords": [
+                "i want to talk to a consultant",
+                "connect me with a waste management consultant",
+                "i need expert advice from a person",
+                "consultant team",
+                "expert advice",
+                "speak with consultant",
+                "consulting services",
+                "professional consultant",
+                "connect me with consultant"
+            ]
+        },
+        {
+            "id": 3,
+            "role": "support",
+            "name": "Support Team",
+            "related_agent_type": "support",
+            "keywords": [
+                "i want to talk to a real person",
+                "transfer me to a human",
+                "can i speak with someone on your team",
+                "i don't want the bot - i want a person",
+                "real person",
+                "human agent",
+                "live person",
+                "speak to human",
+                "talk to a person",
+                "contact support person"
+            ]
+        },
+        {
+            "id": 4,
+            "role": "account",
+            "name": "Account Manager Team",
+            "related_agent_type": "sales",
+            "keywords": [
+                "i want to talk to an account manager",
+                "connect me with account manager",
+                "account manager team",
+                "account management",
+                "billing issue",
+                "account problem",
+                "payment issue",
+                "subscription help",
+                "invoice problem",
+                "speak to account manager",
+                "billing department",
+                "finance team"
+            ]
+        }
+    ],
+    "triggers": [
+        {
+            "type": "pricing",
+            "keywords": [
+                "price",
+                "pricing",
+                "cost",
+                "how much",
+                "quote",
+                "buy"
+            ]
+        }
+    ]
+};
+
+
+
+app.get("/api/chat/config", async (req, res) => {
+    try {
+        // CLONE config (JANGAN MUTATE GLOBAL)
+        const config = JSON.parse(JSON.stringify(CHAT_CONFIG));
+
+        const [rows] = await db.promise().query(
+            `
+            SELECT agent_type, version, identity
+            FROM chatbot_prompts
+            WHERE is_active = 1 AND status = 'active'
+            `
+        );
+
+        const activePromptMap = {};
+        rows.forEach(row => {
+            activePromptMap[row.agent_type] = row;
+        });
+
+        // FILTER + MERGE agentTypes
+        config.agentTypes = config.agentTypes
+            .filter(type => activePromptMap[type.code]) // hanya active
+            .map(type => {
+                const prompt = activePromptMap[type.code];
+
+                return {
+                    ...type,
+                    version: prompt.version,
+                    name: prompt.identity,              // label menu
+                    display: {
+                        ...type.display,
+                        name: prompt.identity
+                    }
+                };
+            })
+            .sort((a, b) => a.menu_order - b.menu_order); // JAGA URUTAN
+
+        res.json({
+            success: true,
+            data: config
+        });
+
+    } catch (err) {
+        console.error("❌ /api/chat/config error:", err);
+        res.status(500).json({
+            success: false,
+            error: "Failed to load chat configuration"
+        });
+    }
+});
+
+
+
 // Endpoint untuk kirim email
 app.post("/api/send-contact-email", (req, res) => {
     const {
@@ -3342,6 +3622,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
