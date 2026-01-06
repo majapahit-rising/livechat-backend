@@ -638,7 +638,7 @@ app.get("/api/chat/config", async (req, res) => {
         console.log("✅ Database connection established");
         
         try {
-            // 1. QUERY HANYA YANG AKTIF
+            // 1. QUERY SEMUA PROMPT AKTIF
             const [prompts] = await conn.query(`
                 SELECT 
                     id,
@@ -662,240 +662,335 @@ app.get("/api/chat/config", async (req, res) => {
                     id ASC
             `);
             
-            console.log("========== DATABASE QUERY RESULT ==========");
-            console.log(`📊 Found ${prompts.length} ACTIVE prompts`);
-            prompts.forEach((p, i) => {
-                console.log(`  [${i+1}] ${p.agent_type}: "${p.identity}"`);
-            });
+            console.log("📊 Found active prompts:", prompts.length);
             
-            // 2. BUILD MENU DARI DATA DATABASE
-            const agentTypes = [];
+            // 2. QUERY PRODUCTS DARI DATABASE (jika ada tabel products)
+            let products = [];
+            try {
+                const [productsResult] = await conn.query(`
+                    SELECT id, code, name, is_default 
+                    FROM products 
+                    WHERE is_active = 1
+                    ORDER BY id ASC
+                `);
+                products = productsResult;
+                console.log("📦 Products from database:", products.length);
+            } catch (productErr) {
+                console.log("ℹ️ No products table or error:", productErr.message);
+            }
             
-            prompts.forEach((prompt, index) => {
-                // Tentukan product berdasarkan agent_type
-                const productMap = {
-                    'general': 'ihub',
-                    'sales': 'wastevantage',
-                    'automation': 'hithatereai',
-                    'support': 'ihub'
+            // 3. QUERY SYSTEM TYPES DARI DATABASE (jika ada tabel system_types)
+            let systemTypes = [];
+            try {
+                const [systemTypesResult] = await conn.query(`
+                    SELECT id, code, name 
+                    FROM system_types 
+                    WHERE is_active = 1
+                    ORDER BY id ASC
+                `);
+                systemTypes = systemTypesResult;
+                console.log("⚙️ System types from database:", systemTypes.length);
+            } catch (systemErr) {
+                console.log("ℹ️ No system_types table or error:", systemErr.message);
+            }
+            
+            // 4. BUILD AGENT TYPES DARI DATA
+            const agentTypes = prompts.map((prompt, index) => {
+                const agentType = prompt.agent_type; // 'general', 'sales', 'automation', 'support'
+                
+                // Cari product berdasarkan agent_type dari database
+                let product = 'ihub'; // default
+                let productId = null;
+                let isProductDefault = false;
+                
+                if (products.length > 0) {
+                    // Coba cari product berdasarkan nama atau code
+                    const foundProduct = products.find(p => 
+                        p.code.includes(agentType) || 
+                        p.name.toLowerCase().includes(agentType) ||
+                        (agentType === 'sales' && (p.code.includes('waste') || p.name.includes('Waste'))) ||
+                        (agentType === 'automation' && (p.code.includes('ai') || p.name.includes('AI')))
+                    );
+                    
+                    if (foundProduct) {
+                        product = foundProduct.code;
+                        productId = foundProduct.id;
+                        isProductDefault = foundProduct.is_default || false;
+                    }
+                } else {
+                    // Fallback jika tidak ada tabel products
+                    switch(agentType) {
+                        case 'sales': product = 'wastevantage'; break;
+                        case 'automation': product = 'hithatereai'; break;
+                        default: product = 'ihub';
+                    }
+                }
+                
+                // Cari system_type_id dari database
+                let systemTypeId = null;
+                if (systemTypes.length > 0) {
+                    const foundSystem = systemTypes.find(s => 
+                        s.code.includes(agentType) || 
+                        (agentType === 'sales' && s.code.includes('waste')) ||
+                        (agentType === 'automation' && s.code.includes('automation'))
+                    );
+                    if (foundSystem) {
+                        systemTypeId = foundSystem.id;
+                    }
+                } else {
+                    // Fallback jika tidak ada tabel system_types
+                    switch(agentType) {
+                        case 'sales': systemTypeId = 1; break;
+                        case 'automation': systemTypeId = 19; break;
+                    }
+                }
+                
+                // Tentukan category
+                let category = agentType;
+                switch(agentType) {
+                    case 'sales': category = 'waste_management'; break;
+                    case 'automation': category = 'automation'; break;
+                    case 'support': category = 'support'; break;
+                    case 'general': category = 'general'; break;
+                }
+                
+                // Tentukan display name
+                let displayName = prompt.identity;
+                if (!displayName) {
+                    switch(agentType) {
+                        case 'sales': displayName = 'Sales Specialist'; break;
+                        case 'automation': displayName = 'Automation Expert'; break;
+                        case 'support': displayName = 'Support Technician'; break;
+                        case 'general': displayName = 'General Assistant'; break;
+                        default: displayName = `${agentType.charAt(0).toUpperCase() + agentType.slice(1)} Assistant`;
+                    }
+                }
+                
+                // Tentukan menu name
+                let menuName = prompt.identity;
+                if (!menuName) {
+                    switch(agentType) {
+                        case 'sales': menuName = 'WasteVantage Sales'; break;
+                        case 'automation': menuName = 'Automation Sales'; break;
+                        case 'support': menuName = 'Ihub Product Support'; break;
+                        case 'general': menuName = 'General Questions'; break;
+                    }
+                }
+                
+                // Tentukan messages
+                const messages = {
+                    on_select: prompt.role_description || 
+                              `Hello! I'm your ${displayName}. How can I help you?`,
+                    follow_up: prompt.primary_goals ? 
+                              prompt.primary_goals.split('\n')[0] : 
+                              `What would you like to know about ${product}?`,
+                    default: agentType === 'sales' 
+                            ? "For :product sales inquiries, I recommend connecting with our sales team for personalized assistance. Would you like me to connect you now?"
+                            : `Regarding ":message", I can help you with ${product} products. What specific information do you need?`,
+                    fallback: agentType === 'sales'
+                            ? "Regarding \":message\", I specialize in sales inquiries. Would you like me to connect you with our sales team for more detailed information?"
+                            : `I understand you're asking about ":message". I can help you with inquiries about ${product} products. What specific information do you need?`
                 };
                 
-                const product = productMap[prompt.agent_type] || 'ihub';
-                
-                // Icon dan color mapping
-                const displayConfig = {
-                    'general': { icon: '🌐', color: '#1976d2', menu_name: 'General Questions' },
-                    'sales': { icon: '💰', color: '#4CAF50', menu_name: 'WasteVantage Sales' },
-                    'automation': { icon: '⚙️', color: '#9C27B0', menu_name: 'Automation Sales' },
-                    'support': { icon: '🔧', color: '#FF9800', menu_name: 'Ihub Product Support' }
-                };
-                
-                const config = displayConfig[prompt.agent_type] || { 
-                    icon: '💬', 
-                    color: '#666',
-                    menu_name: prompt.identity 
-                };
-                
-                // Gunakan menu_name dari mapping, bukan identity dari database
-                // Jika ingin menggunakan identity dari DB, ganti config.menu_name dengan prompt.identity
-                const menuName = prompt.identity;
-                
-                agentTypes.push({
+                return {
                     id: prompt.id,
-                    code: `${product}_${prompt.agent_type}`,
-                    name: menuName, // ⭐ Nama menu seperti yang Anda inginkan
+                    code: agentType, // ⭐ PENTING: langsung dari database field agent_type
+                    name: menuName,
                     product: product,
-                    category: prompt.agent_type,
+                    category: category,
+                    system_type_id: systemTypeId,
                     menu_order: index + 1,
-                    is_default: prompt.agent_type === 'general',
+                    is_default: agentType === 'general',
                     display: {
-                        name: menuName,
-                        icon: config.icon,
-                        color: config.color
+                        name: displayName,
+                        icon: getIconByAgentType(agentType),
+                        color: getColorByAgentType(agentType)
                     },
-                    messages: {
-                        on_select: prompt.role_description || 
-                            `Hello! I'm your ${menuName} assistant. How can I help you?`,
-                        follow_up: prompt.primary_goals ? 
-                            prompt.primary_goals.split('\n')[0] : 
-                            `What would you like to know about ${product === 'wastevantage' ? 'WasteVantage' : 'HiThereAI'}?`
-                    },
+                    messages: messages,
                     metadata: {
                         from_database: true,
-                        agent_type: prompt.agent_type,
-                        database_identity: prompt.identity, // Simpan identity asli dari DB
+                        database_id: prompt.id,
+                        database_agent_type: agentType,
+                        product_id: productId,
+                        is_product_default: isProductDefault,
                         status: prompt.status,
                         is_active: prompt.is_active
                     }
-                });
+                };
             });
             
-            console.log("🎯 Menu yang akan ditampilkan:");
+            // 5. DEBUG OUTPUT
+            console.log("🎯 Final Agent Types Structure:");
             agentTypes.forEach(agent => {
-                console.log(`  ${agent.menu_order}. ${agent.name} (${agent.metadata.database_identity})`);
+                console.log(`  [${agent.menu_order}] ${agent.code} (ID: ${agent.id})`);
+                console.log(`      Name: ${agent.name}`);
+                console.log(`      Product: ${agent.product}`);
+                console.log(`      Category: ${agent.category}`);
+                console.log(`      System Type ID: ${agent.system_type_id}`);
+                console.log(`      Code: ${agent.code} (should match agent_type)`);
             });
             
-            // 3. BUILD LIVE AGENTS
-            const liveAgents = [
+            // 6. QUERY LIVE AGENTS DARI DATABASE (jika ada tabel live_agents)
+            let liveAgents = [];
+            try {
+                const [liveAgentsResult] = await conn.query(`
+                    SELECT id, role, name, related_agent_type, keywords
+                    FROM live_agents 
+                    WHERE is_active = 1
+                    ORDER BY id ASC
+                `);
+                
+                liveAgents = liveAgentsResult.map(agent => ({
+                    id: agent.id,
+                    role: agent.role,
+                    name: agent.name,
+                    related_agent_type: agent.related_agent_type,
+                    keywords: agent.keywords ? JSON.parse(agent.keywords) : []
+                }));
+                console.log("👥 Live agents from database:", liveAgents.length);
+            } catch (liveErr) {
+                console.log("ℹ️ No live_agents table, using keywords arrays");
+                // Gunakan keywords arrays yang sudah didefinisikan
+                liveAgents = [
+                    {
+                        id: 1,
+                        role: "sales",
+                        name: "Sales Team",
+                        related_agent_type: "sales",
+                        keywords: salesKeywords
+                    },
+                    {
+                        id: 2,
+                        role: "consultant",
+                        name: "Consultant Team",
+                        related_agent_type: "automation",
+                        keywords: consultantKeywords
+                    },
+                    {
+                        id: 3,
+                        role: "support",
+                        name: "Support Team",
+                        related_agent_type: "support",
+                        keywords: supportKeywords
+                    },
+                    {
+                        id: 4,
+                        role: "account",
+                        name: "Account Manager Team",
+                        related_agent_type: "sales",
+                        keywords: accountKeywords
+                    }
+                ];
+            }
+            
+            // 7. QUERY TRIGGERS DARI DATABASE (jika ada tabel triggers)
+            let triggers = [];
+            try {
+                const [triggersResult] = await conn.query(`
+                    SELECT type, keywords FROM chat_triggers WHERE is_active = 1
+                `);
+                
+                triggers = triggersResult.map(trigger => ({
+                    type: trigger.type,
+                    keywords: trigger.keywords ? JSON.parse(trigger.keywords) : []
+                }));
+                console.log("⚡ Triggers from database:", triggers.length);
+            } catch (triggerErr) {
+                console.log("ℹ️ No triggers table, using default");
+                triggers = [
+                    {
+                        type: "pricing",
+                        keywords: ["price", "pricing", "cost", "how much", "quote", "buy"]
+                    }
+                ];
+            }
+            
+            // 8. BUILD PRODUCTS ARRAY UNTUK RESPONSE
+            const responseProducts = products.length > 0 ? products.map(p => ({
+                id: p.id,
+                name: p.name,
+                code: p.code,
+                is_default: p.is_default || false,
+                integrations: [] // bisa diisi dari database jika ada
+            })) : [
                 {
                     id: 1,
-                    role: "sales",
-                    name: "Sales Team",
-                    related_agent_type: "sales",
-                    keywords: salesKeywords
+                    name: "WasteVantage",
+                    code: "wastevantage",
+                    is_default: false,
+                    integrations: []
                 },
                 {
                     id: 2,
-                    role: "consultant",
-                    name: "Consultant Team",
-                    related_agent_type: "automation",
-                    keywords: consultantKeywords
+                    name: "iHub",
+                    code: "ihub",
+                    is_default: true,
+                    integrations: []
                 },
                 {
-                    id: 3,
-                    role: "support",
-                    name: "Support Team",
-                    related_agent_type: "support",
-                    keywords: supportKeywords
-                },
-                {
-                    id: 4,
-                    role: "account",
-                    name: "Account Manager Team",
-                    related_agent_type: "sales",
-                    keywords: accountKeywords
+                    id: 19,
+                    name: "HiThereAI",
+                    code: "hithatereai",
+                    is_default: false,
+                    integrations: []
                 }
             ];
             
-            // 4. RETURN RESPONSE
-            res.json({
+            // 9. RETURN RESPONSE
+            const response = {
                 success: true,
                 data: {
+                    products: responseProducts,
                     agentTypes: agentTypes,
                     liveAgents: liveAgents,
-                    triggers: [
-                        {
-                            type: "pricing",
-                            keywords: ["price", "pricing", "cost", "how much", "quote", "buy"]
-                        }
-                    ],
+                    triggers: triggers,
                     meta: {
                         serverTime: new Date().toISOString(),
                         totalAgents: agentTypes.length,
-                        source: "database_dynamic",
-                        active_prompts: prompts.map(p => p.agent_type),
-                        note: "Menu dynamically built from active chatbot_prompts"
+                        totalProducts: responseProducts.length,
+                        totalLiveAgents: liveAgents.length,
+                        source: "dynamic_database",
+                        database_tables_used: [
+                            "chatbot_prompts",
+                            products.length > 0 ? "products" : null,
+                            systemTypes.length > 0 ? "system_types" : null
+                        ].filter(Boolean),
+                        note: "Configuration dynamically built from available database tables"
                     }
+                }
+            };
+            
+            // 10. VALIDATE STRUCTURE
+            console.log("🔍 Validating response structure...");
+            agentTypes.forEach(agent => {
+                if (!['general', 'sales', 'automation', 'support'].includes(agent.code)) {
+                    console.warn(`⚠️ Agent code '${agent.code}' may not match expected values`);
                 }
             });
             
+            res.json(response);
             console.log("✅ Config sent successfully");
             
         } catch (dbErr) {
-            console.error("❌ Database error:", dbErr.message);
-            
-            // JANGAN KASIH HARCODED FALLBACK
-            res.json({
+            console.error("❌ Database query error:", dbErr.message);
+            res.status(500).json({
                 success: false,
-                error: dbErr.message,
-                data: {
-                    agentTypes: [],
-                    liveAgents: [],
-                    triggers: []
-                }
+                error: "Database query failed: " + dbErr.message,
+                data: null
             });
-            
         } finally {
             conn.release();
             console.log("🔓 Connection released");
         }
         
     } catch (err) {
-        console.error("❌ API error:", err.message);
-        
+        console.error("❌ API connection error:", err.message);
         res.status(500).json({
             success: false,
-            error: err.message,
-            data: {
-                agentTypes: [], // Kosongkan jika error
-                liveAgents: [],
-                triggers: []
-            }
+            error: "Database connection failed: " + err.message,
+            data: null
         });
     }
-});
-
-
-// Endpoint untuk kirim email
-app.post("/api/send-contact-email", (req, res) => {
-    const {
-        first_name,
-        last_name,
-        email,
-        phone,
-        website_url,
-        postcode,
-        system_type_id,
-        inquire_type_id,
-        message
-    } = req.body;
-
-    if (!first_name || !last_name || !email || !message) {
-        return res.status(400).json({ success:false, error:"Missing required fields" });
-    }
-
-    const sql = `
-        INSERT INTO inquiries
-        (first_name,last_name,email,phone,website_url,postcode,message,inquire_type_id,system_type_id,status,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,'new',NOW())
-    `;
-
-    db.query(sql, [
-        first_name,
-        last_name,
-        email,
-        phone,
-        website_url,
-        postcode,
-        message,
-        inquire_type_id,
-        system_type_id
-    ], (err, result) => {
-
-        if (err) {
-            console.error("❌ DB ERROR:", err.sqlMessage || err);
-            return res.status(500).json({ success:false, error:"Database insert failed" });
-        }
-
-        const mail = {
-            from: `"iHub Chat Widget" <${process.env.GMAIL_USER}>`,
-            to: "shenluy@gmail.com",
-            replyTo: email,
-            subject: `📩 Inquiry IHUB CRM - ${first_name} ${last_name}`,
-            text: `
-                    First Name: ${first_name}
-                    Last Name : ${last_name}
-                    Email     : ${email}
-                    Phone     : ${phone}
-                    Website   : ${website_url}
-                    Postcode  : ${postcode}
-                    System    : IHUB CRM
-                    Inquiry   : Website
-
-                    Message:
-                    ${message}
-                    `
-                    };
-
-        transporter.sendMail(mail, (mailErr) => {
-            if (mailErr) {
-                console.error("❌ EMAIL ERROR:", mailErr);
-                return res.status(500).json({ success:false, error:"Email failed" });
-            }
-
-            res.json({ success:true, inquiry_id: result.insertId });
-        });
-    });
 });
 
 
@@ -3824,6 +3919,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
