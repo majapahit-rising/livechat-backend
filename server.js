@@ -698,7 +698,7 @@ app.get("/api/chat/config", async (req, res) => {
                 
                 // Gunakan menu_name dari mapping, bukan identity dari database
                 // Jika ingin menggunakan identity dari DB, ganti config.menu_name dengan prompt.identity
-                const menuName = config.menu_name;
+                const menuName = prompt.identity;
                 
                 agentTypes.push({
                     id: prompt.id,
@@ -3824,6 +3824,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
