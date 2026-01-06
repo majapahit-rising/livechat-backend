@@ -638,7 +638,7 @@ app.get("/api/chat/config", async (req, res) => {
         console.log("✅ Database connection established");
         
         try {
-            // Query untuk mendapatkan data dari chatbot_prompts dengan join ke system_types
+            // 1. QUERY YANG LEBIH SIMPLE DAN AKURAT
             const [prompts] = await conn.query(`
                 SELECT 
                     cp.id,
@@ -649,17 +649,15 @@ app.get("/api/chat/config", async (req, res) => {
                     cp.status,
                     cp.is_active,
                     cp.version,
-                    st.id as system_type_id,
+                    cp.system_type_id,
                     st.name as system_name,
-                    st.description as system_description
+                    st.description as system_description,
+                    st.code as system_code
                 FROM chatbot_prompts cp
-                LEFT JOIN system_types st ON 
-                    (cp.agent_type = 'support' AND st.name LIKE '%WasteVantage%') OR
-                    (cp.agent_type = 'sales' AND st.name LIKE '%WasteVantage%') OR
-                    (cp.agent_type = 'automation' AND st.name LIKE '%WasteVantage%') OR
-                    (cp.agent_type = 'general' AND st.name IN ('WasteVantage', 'IHUB CRM'))
+                LEFT JOIN system_types st ON cp.system_type_id = st.id
                 WHERE cp.status = 'active' 
                   AND cp.is_active = 1
+                  AND cp.agent_type IN ('general', 'sales', 'automation', 'support')
                 ORDER BY 
                     CASE cp.agent_type
                         WHEN 'general' THEN 1
@@ -669,107 +667,152 @@ app.get("/api/chat/config", async (req, res) => {
                         ELSE 5
                     END,
                     cp.id ASC
-                LIMIT 10
             `);
             
-            console.log(`📊 Database query successful: ${prompts.length} rows`);
+            console.log(`📊 Database query successful: ${prompts.length} rows found`);
             
-            // Jika ada data di database, gunakan dari chatbot_prompts
+            // Debug: Tampilkan data dari database
             if (prompts.length > 0) {
-                // Map ke format agentTypes
-                const agentTypes = prompts.map((prompt, index) => {
-                    // Tentukan product berdasarkan system_name atau agent_type
+                console.log("📋 Raw database data:");
+                prompts.forEach((p, i) => {
+                    console.log(`  [${i}] ID: ${p.id}, agent_type: "${p.agent_type}", system_name: "${p.system_name || 'NULL'}", identity: "${p.identity}"`);
+                });
+            }
+            
+            // Jika ada data di database
+            if (prompts.length > 0) {
+                // 2. LOGIC MAPPING YANG LEBIH BAIK
+                const agentTypes = [];
+                const agentTypeCount = {};
+                
+                prompts.forEach((prompt, index) => {
+                    // Tentukan product berdasarkan system_code atau system_name
                     let product = 'ihub';
-                    let code = '';
                     
-                    if (prompt.system_name) {
+                    if (prompt.system_code) {
+                        // Gunakan system_code jika ada
                         const productMap = {
+                            'wastevantage': 'wastevantage',
+                            'taskit': 'taskit',
+                            'ihub': 'ihub',
+                            'soms': 'soms',
+                            'hithatereai': 'hithatereai',
+                            'drillingcrm': 'drillingcrm'
+                        };
+                        product = productMap[prompt.system_code.toLowerCase()] || 'ihub';
+                    } else if (prompt.system_name) {
+                        // Fallback ke system_name
+                        const nameMap = {
                             'WasteVantage': 'wastevantage',
-                            'TaskIT': 'taskit', 
-                            'Drilling CRM': 'drillingcrm',
+                            'TaskIT': 'taskit',
                             'IHUB CRM': 'ihub',
                             'SOMS': 'soms',
-                            'HiThereAI': 'hithatereai'
+                            'HiThereAI': 'hithatereai',
+                            'Drilling CRM': 'drillingcrm'
                         };
-                        product = productMap[prompt.system_name] || 'ihub';
-                        code = `${product}_${prompt.agent_type}`;
-                    } else {
-                        code = `${prompt.agent_type}_${index}`;
+                        product = nameMap[prompt.system_name] || 'ihub';
                     }
                     
-                    // Gunakan identity sebagai display name, atau buat dari agent_type
-                    const displayName = prompt.identity || 
-                        `${prompt.agent_type.charAt(0).toUpperCase() + prompt.agent_type.slice(1)} Agent`;
+                    // Format code: product_agenttype
+                    const code = `${product}_${prompt.agent_type}`;
                     
-                    return {
+                    // Gunakan agent_type yang sama dengan database
+                    const agentType = prompt.agent_type; // 'sales', 'general', dll
+                    
+                    // Hitung untuk menu_order
+                    if (!agentTypeCount[agentType]) {
+                        agentTypeCount[agentType] = 1;
+                    } else {
+                        agentTypeCount[agentType]++;
+                    }
+                    
+                    // Tentukan menu_order berdasarkan agent_type
+                    let menu_order = 0;
+                    switch(agentType) {
+                        case 'general': menu_order = 1; break;
+                        case 'sales': menu_order = 2; break;
+                        case 'automation': menu_order = 3; break;
+                        case 'support': menu_order = 4; break;
+                        default: menu_order = 5;
+                    }
+                    
+                    // Jika ada multiple dengan agent_type sama, tambahkan offset
+                    menu_order += (agentTypeCount[agentType] - 1) * 0.1;
+                    
+                    // Nama untuk ditampilkan
+                    const displayName = prompt.identity || 
+                        `${agentType.charAt(0).toUpperCase() + agentType.slice(1)} Agent` +
+                        (prompt.system_name ? ` (${prompt.system_name})` : '');
+                    
+                    agentTypes.push({
                         id: prompt.id,
                         code: code,
-                        name: displayName,  // ⭐ INI YANG AKAN DITAMPILKAN DI MENU
+                        name: displayName,
                         product: product,
-                        category: prompt.agent_type,
+                        category: agentType, // ⭐ PASTIKAN INI SAMA DENGAN agent_type
                         system_type_id: prompt.system_type_id,
-                        system_name: prompt.system_name,
-                        menu_order: index + 1,
-                        is_default: index === 0,
+                        system_name: prompt.system_name || null,
+                        menu_order: menu_order,
+                        is_default: index === 0 && agentType === 'general', // Default hanya untuk general pertama
                         display: {
                             name: displayName,
-                            icon: getIconByAgentType(prompt.agent_type),
-                            color: getColorByAgentType(prompt.agent_type)
+                            icon: getIconByAgentType(agentType),
+                            color: getColorByAgentType(agentType)
                         },
                         messages: {
                             on_select: prompt.role_description || 
                                 `I am ${displayName}. How can I assist you today?`,
                             follow_up: prompt.primary_goals?.split('\n')[0] || 
-                                `What would you like to know about ${prompt.system_name || 'our services'}?`,
+                                `What would you like to know about ${prompt.system_name || product}?`,
                             default: `Regarding ":message", as ${displayName}, I can help you with that.`,
                             fallback: `I understand you're asking about ":message". As ${displayName}, how can I assist you further?`
                         },
                         metadata: {
                             description: prompt.role_description,
                             system_description: prompt.system_description,
-                            agent_type: prompt.agent_type,
+                            agent_type: agentType, // ⭐ INI YANG PENTING
                             version: prompt.version,
                             status: prompt.status,
-                            from_database: true
+                            from_database: true,
+                            database_id: prompt.id
                         }
-                    };
+                    });
                 });
                 
-                // Pastikan tidak ada duplikat agent_type
-                const uniqueAgents = agentTypes.reduce((acc, agent) => {
-                    // Cari apakah sudah ada agent dengan agent_type yang sama
-                    const existingIndex = acc.findIndex(a => 
-                        a.metadata.agent_type === agent.metadata.agent_type
-                    );
-                    
-                    if (existingIndex === -1) {
-                        acc.push(agent);
-                    } else {
-                        // Jika duplikat, pilih yang lebih spesifik (ada system_name)
-                        const existing = acc[existingIndex];
-                        if (!existing.system_name && agent.system_name) {
-                            acc[existingIndex] = agent;
-                        }
+                // 3. SORT BY MENU_ORDER DAN REMOVE DUPLICATES
+                agentTypes.sort((a, b) => a.menu_order - b.menu_order);
+                
+                // Hapus duplikat berdasarkan agent_type + system_name
+                const uniqueAgents = [];
+                const seenKeys = new Set();
+                
+                agentTypes.forEach(agent => {
+                    const key = `${agent.metadata.agent_type}_${agent.system_name || 'no-system'}`;
+                    if (!seenKeys.has(key)) {
+                        seenKeys.add(key);
+                        uniqueAgents.push(agent);
                     }
-                    return acc;
-                }, []);
+                });
                 
-                // Urutkan kembali
-                uniqueAgents.sort((a, b) => a.menu_order - b.menu_order);
-                
-                // Update menu_order agar berurutan
+                // Reset menu_order agar berurutan
                 uniqueAgents.forEach((agent, index) => {
                     agent.menu_order = index + 1;
-                    agent.is_default = index === 0;
+                    agent.is_default = index === 0 && agent.metadata.agent_type === 'general';
                 });
                 
-                // Build liveAgents
+                // 4. DEBUG OUTPUT
+                console.log("🎯 Final agentTypes configuration:");
+                uniqueAgents.forEach((agent, i) => {
+                    console.log(`  [${i}] code: "${agent.code}", category: "${agent.category}", agent_type: "${agent.metadata.agent_type}", product: "${agent.product}"`);
+                });
+                
+                // 5. BUILD LIVINGENTS (dari hardcoded)
                 const liveAgents = [
                     {
                         id: 1,
                         role: "sales",
                         name: "Sales Team",
-                        related_agent_type: "sales",
+                        related_agent_type: "sales", // ⭐ MATCH DENGAN agent_type
                         keywords: salesKeywords
                     },
                     {
@@ -795,7 +838,7 @@ app.get("/api/chat/config", async (req, res) => {
                     }
                 ];
                 
-                // Return config dari database
+                // 6. RETURN CONFIG
                 res.json({
                     success: true,
                     data: {
@@ -819,27 +862,25 @@ app.get("/api/chat/config", async (req, res) => {
                             serverTime: new Date().toISOString(),
                             totalAgents: uniqueAgents.length,
                             source: "chatbot_prompts_database",
-                            version: "1.0",
-                            note: "Menu based on chatbot_prompts.identity"
+                            database_records: prompts.length,
+                            version: "2.0",
+                            note: "Fixed agent_type mapping"
                         }
                     }
                 });
                 
             } else {
-                // Fallback ke CHAT_CONFIG yang ada
+                // 7. FALLBACK KE HARCODED CONFIG (jika database kosong)
                 console.log("📝 No active chatbot_prompts, using hardcoded config");
                 
-                // Buat agentTypes dari CHAT_CONFIG tapi dengan identity dari chatbot_prompts
+                // Gunakan hardcoded config tapi dengan format yang konsisten
                 const hardcodedAgents = CHAT_CONFIG.agentTypes.map(agent => {
-                    // Coba match dengan agent_type di chatbot_prompts
-                    let identity = agent.display.name;
-                    
                     return {
                         ...agent,
-                        name: identity,  // Gunakan identity/display.name
-                        display: {
-                            ...agent.display,
-                            name: identity
+                        metadata: {
+                            agent_type: agent.category, // ⭐ PASTIKAN INI ADA
+                            from_database: false,
+                            note: "hardcoded_fallback"
                         }
                     };
                 });
@@ -854,7 +895,8 @@ app.get("/api/chat/config", async (req, res) => {
                             serverTime: new Date().toISOString(),
                             totalAgents: hardcodedAgents.length,
                             source: "hardcoded_fallback",
-                            version: "1.0"
+                            version: "2.0",
+                            note: "Database empty, using fallback config"
                         }
                     }
                 });
@@ -869,19 +911,22 @@ app.get("/api/chat/config", async (req, res) => {
         console.error("❌ /api/chat/config error:", err.message);
         console.error("Stack trace:", err.stack);
         
-        // Fallback dengan pesan error
-        res.json({
-            success: true,
-            data: {
-                agentTypes: [],
-                liveAgents: [],
-                triggers: [],
-                meta: {
-                    serverTime: new Date().toISOString(),
-                    source: "error",
-                    error: err.message,
-                    note: "Could not load chatbot_prompts"
-                }
+        // 8. ERROR FALLBACK
+        res.status(500).json({
+            success: false,
+            error: "Failed to load chat configuration",
+            details: err.message,
+            fallback: {
+                agentTypes: CHAT_CONFIG.agentTypes.map(agent => ({
+                    ...agent,
+                    metadata: { agent_type: agent.category, from_database: false }
+                })),
+                liveAgents: CHAT_CONFIG.liveAgents,
+                triggers: CHAT_CONFIG.triggers
+            },
+            meta: {
+                serverTime: new Date().toISOString(),
+                source: "error_fallback"
             }
         });
     }
@@ -3886,6 +3931,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
