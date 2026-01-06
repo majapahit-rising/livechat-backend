@@ -779,11 +779,8 @@ app.get("/api/chat/config", async (req, res) => {
                 
                 // Tentukan messages
                 const messages = {
-                    on_select: prompt.role_description || 
-                              `Hello! I'm your ${displayName}. How can I help you?`,
-                    follow_up: prompt.primary_goals ? 
-                              prompt.primary_goals.split('\n')[0] : 
-                              `What would you like to know about ${product}?`,
+                    on_select: `Hello! I'm your ${displayName}. How can I help you?`,
+                    follow_up: `What would you like to know about ${product}?`,
                     default: agentType === 'sales' 
                             ? "For :product sales inquiries, I recommend connecting with our sales team for personalized assistance. Would you like me to connect you now?"
                             : `Regarding ":message", I can help you with ${product} products. What specific information do you need?`,
@@ -3919,6 +3916,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
