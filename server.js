@@ -814,9 +814,9 @@ app.get("/api/chat/config", async (req, res) => {
 
 
 app.get("/api/customers-lookup", async (req, res) => {
-    const { email, phone } = req.query;
+    const { fullname, phone, email } = req.query;
 
-    if (!email && !phone) {
+    if (!fullname && !phone && !email) {
         return res.json({ customer: null });
     }
 
@@ -831,27 +831,64 @@ app.get("/api/customers-lookup", async (req, res) => {
                 c.last_name,
                 c.email,
                 c.phone,
-                c.company_name,
+                c.postcode,
                 c.status,
                 ct.name AS customer_type
             FROM customers c
             LEFT JOIN customer_types ct ON ct.id = c.customer_type_id
         `;
 
-        let params = [];
+        const conditions = [];
+        const params = [];
 
+        /* -----------------------------------
+         * PRIORITY MATCH
+         * -----------------------------------*/
+
+        // 1️⃣ EMAIL (HIGHEST PRIORITY)
         if (email) {
-            customerQuery += ` WHERE c.email = ? LIMIT 1`;
+            conditions.push(`LOWER(c.email) = LOWER(?)`);
             params.push(email);
-        } else if (phone) {
-            const normalizedPhone = phone.replace(/\D/g, '');
+        }
 
-            customerQuery += `
-                WHERE REGEXP_REPLACE(c.phone, '[^0-9]', '') LIKE ?
-                LIMIT 1
-            `;
+        // 2️⃣ PHONE
+        if (phone) {
+            const normalizedPhone = phone.replace(/\D/g, '');
+            conditions.push(
+                `REGEXP_REPLACE(c.phone, '[^0-9]', '') LIKE ?`
+            );
             params.push(`%${normalizedPhone}%`);
         }
+
+        // 3️⃣ FULL NAME (SPLIT)
+        if (fullname) {
+            const parts = fullname.trim().split(/\s+/);
+
+            if (parts.length === 1) {
+                conditions.push(`LOWER(c.first_name) LIKE ?`);
+                params.push(`%${parts[0].toLowerCase()}%`);
+            } else {
+                conditions.push(
+                    `(LOWER(c.first_name) LIKE ? AND LOWER(c.last_name) LIKE ?)`
+                );
+                params.push(
+                    `%${parts[0].toLowerCase()}%`,
+                    `%${parts.slice(1).join(" ").toLowerCase()}%`
+                );
+            }
+        }
+
+        customerQuery += `
+            WHERE ${conditions.join(" AND ")}
+            ORDER BY 
+                CASE 
+                    WHEN c.email IS NOT NULL THEN 1
+                    WHEN c.phone IS NOT NULL THEN 2
+                    ELSE 3
+                END,
+                c.created_at DESC
+            LIMIT 1
+        `;
 
         const [customers] = await conn.query(customerQuery, params);
 
@@ -861,13 +898,15 @@ app.get("/api/customers-lookup", async (req, res) => {
 
         const customer = customers[0];
 
-        // total orders
+        /* -----------------------------------
+         * AGGREGATES
+         * -----------------------------------*/
+
         const [[ordersCount]] = await conn.query(
             `SELECT COUNT(*) AS total FROM orders WHERE customer_id = ?`,
             [customer.id]
         );
 
-        // last order
         const [[lastOrder]] = await conn.query(
             `
             SELECT created_at
@@ -888,14 +927,19 @@ app.get("/api/customers-lookup", async (req, res) => {
                 phone: customer.phone,
                 company: customer.company_name || null,
                 customer_type: customer.customer_type || "Standard",
-                status: customer.status === 1 ? "active" : "inactive",
+                status:
+                    customer.status === 1
+                        ? "active"
+                        : customer.status === 2
+                        ? "inactive"
+                        : "pending",
                 total_orders: ordersCount.total,
                 last_order_date: lastOrder?.created_at || null
             }
         });
 
     } catch (err) {
-        console.error("❌ Customer lookup error:", err.message);
+        console.error("❌ Customer lookup error:", err);
         res.status(500).json({
             error: "Customer lookup failed",
             details: err.message
@@ -3828,6 +3872,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
