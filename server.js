@@ -179,22 +179,11 @@ function extractSearchTerms(message) {
 function isConversationEnded(text = "") {
     const msg = text.toLowerCase().trim();
 
-    const exactEndPhrases = [
-        "bye",
-        "goodbye",
-        "thanks",
-        "thank you",
-        "end",
-        "end chat",
-        "ok bye",
-        "okay bye",
-        "ok thanks",
-        "okay thanks",
-        "done",
-        "finished"
-    ];
+    // Abaikan semua kalimat panjang
+    if (msg.length > 20) return false;
 
-    return exactEndPhrases.includes(msg);
+    return /^(bye|goodbye|thanks|thank you|end|end chat|ok bye|okay bye|done|finished)$/i
+        .test(msg);
 }
 
 async function generateConversationSummary(conversationId) {
@@ -916,7 +905,7 @@ app.post("/ai/chat", async (req, res) => {
     // ======================================================
     // END CONVERSATION CHECK
     // ======================================================
-    if (isConversationEnded(message)) {
+    if (message.length <= 20 && isConversationEnded(message)) {
       const [rows] = await db.promise().query(
         `
         SELECT user_message, ai_response, created_at
@@ -3746,6 +3735,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
