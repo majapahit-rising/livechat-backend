@@ -865,10 +865,7 @@ app.post("/ai/chat", async (req, res) => {
       });
     }
 
-    const finalAgentType = ["support", "sales", "automation", "general"]
-      .includes(agent_type)
-        ? agent_type
-        : "general";
+    const finalAgentType = agent_type;
 
     const sessionId = session_id;
     const userIp =
@@ -3736,6 +3733,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
