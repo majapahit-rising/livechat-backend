@@ -707,7 +707,8 @@ app.get("/api/chat/config", async (req, res) => {
                 
                 return {
                     id: prompt.id,
-                    code: agentType, // ⭐ PENTING: langsung dari database field agent_type
+                    agent_type: agentType,
+                    code: agentType,
                     name: menuName,
                     menu_order: index + 1,
                     is_default: agentType === 'general',
@@ -3735,6 +3736,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
