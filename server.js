@@ -663,96 +663,11 @@ app.get("/api/chat/config", async (req, res) => {
             `);
             
             console.log("📊 Found active prompts:", prompts.length);
-            
-            // 2. QUERY PRODUCTS DARI DATABASE (jika ada tabel products)
-            let products = [];
-            try {
-                const [productsResult] = await conn.query(`
-                    SELECT id, code, name, is_default 
-                    FROM products 
-                    WHERE is_active = 1
-                    ORDER BY id ASC
-                `);
-                products = productsResult;
-                console.log("📦 Products from database:", products.length);
-            } catch (productErr) {
-                console.log("ℹ️ No products table or error:", productErr.message);
-            }
-            
-            // 3. QUERY SYSTEM TYPES DARI DATABASE (jika ada tabel system_types)
-            let systemTypes = [];
-            try {
-                const [systemTypesResult] = await conn.query(`
-                    SELECT id, code, name 
-                    FROM system_types 
-                    WHERE is_active = 1
-                    ORDER BY id ASC
-                `);
-                systemTypes = systemTypesResult;
-                console.log("⚙️ System types from database:", systemTypes.length);
-            } catch (systemErr) {
-                console.log("ℹ️ No system_types table or error:", systemErr.message);
-            }
+           
             
             // 4. BUILD AGENT TYPES DARI DATA
             const agentTypes = prompts.map((prompt, index) => {
                 const agentType = prompt.agent_type; // 'general', 'sales', 'automation', 'support'
-                
-                // Cari product berdasarkan agent_type dari database
-                let product = 'ihub'; // default
-                let productId = null;
-                let isProductDefault = false;
-                
-                if (products.length > 0) {
-                    // Coba cari product berdasarkan nama atau code
-                    const foundProduct = products.find(p => 
-                        p.code.includes(agentType) || 
-                        p.name.toLowerCase().includes(agentType) ||
-                        (agentType === 'sales' && (p.code.includes('waste') || p.name.includes('Waste'))) ||
-                        (agentType === 'automation' && (p.code.includes('ai') || p.name.includes('AI')))
-                    );
-                    
-                    if (foundProduct) {
-                        product = foundProduct.code;
-                        productId = foundProduct.id;
-                        isProductDefault = foundProduct.is_default || false;
-                    }
-                } else {
-                    // Fallback jika tidak ada tabel products
-                    switch(agentType) {
-                        case 'sales': product = 'wastevantage'; break;
-                        case 'automation': product = 'hithatereai'; break;
-                        default: product = 'ihub';
-                    }
-                }
-                
-                // Cari system_type_id dari database
-                let systemTypeId = null;
-                if (systemTypes.length > 0) {
-                    const foundSystem = systemTypes.find(s => 
-                        s.code.includes(agentType) || 
-                        (agentType === 'sales' && s.code.includes('waste')) ||
-                        (agentType === 'automation' && s.code.includes('automation'))
-                    );
-                    if (foundSystem) {
-                        systemTypeId = foundSystem.id;
-                    }
-                } else {
-                    // Fallback jika tidak ada tabel system_types
-                    switch(agentType) {
-                        case 'sales': systemTypeId = 1; break;
-                        case 'automation': systemTypeId = 19; break;
-                    }
-                }
-                
-                // Tentukan category
-                let category = agentType;
-                switch(agentType) {
-                    case 'sales': category = 'waste_management'; break;
-                    case 'automation': category = 'automation'; break;
-                    case 'support': category = 'support'; break;
-                    case 'general': category = 'general'; break;
-                }
                 
                 // Tentukan display name
                 let displayName = prompt.identity;
@@ -779,8 +694,7 @@ app.get("/api/chat/config", async (req, res) => {
                 
                 // Tentukan messages
                 const messages = {
-                    on_select: `Hello! I'm your ${displayName}. How can I help you?`,
-                    follow_up: `What would you like to know about ${product}?`,
+                    on_select: `Hello! I'm ${displayName}. How can I help you?`,
                     default: agentType === 'sales' 
                             ? "For :product sales inquiries, I recommend connecting with our sales team for personalized assistance. Would you like me to connect you now?"
                             : `Regarding ":message", I can help you with ${product} products. What specific information do you need?`,
@@ -793,9 +707,6 @@ app.get("/api/chat/config", async (req, res) => {
                     id: prompt.id,
                     code: agentType, // ⭐ PENTING: langsung dari database field agent_type
                     name: menuName,
-                    product: product,
-                    category: category,
-                    system_type_id: systemTypeId,
                     menu_order: index + 1,
                     is_default: agentType === 'general',
                     display: {
@@ -808,8 +719,6 @@ app.get("/api/chat/config", async (req, res) => {
                         from_database: true,
                         database_id: prompt.id,
                         database_agent_type: agentType,
-                        product_id: productId,
-                        is_product_default: isProductDefault,
                         status: prompt.status,
                         is_active: prompt.is_active
                     }
@@ -827,69 +736,17 @@ app.get("/api/chat/config", async (req, res) => {
                 console.log(`      Code: ${agent.code} (should match agent_type)`);
             });
             
-            // 6. QUERY LIVE AGENTS DARI DATABASE (jika ada tabel live_agents)
-            let liveAgents = [];
-            try {
-                const [liveAgentsResult] = await conn.query(`
-                    SELECT id, role, name, related_agent_type, keywords
-                    FROM live_agents 
-                    WHERE is_active = 1
-                    ORDER BY id ASC
-                `);
-                
-                liveAgents = liveAgentsResult.map(agent => ({
-                    id: agent.id,
-                    role: agent.role,
-                    name: agent.name,
-                    related_agent_type: agent.related_agent_type,
-                    keywords: agent.keywords ? JSON.parse(agent.keywords) : []
-                }));
-                console.log("👥 Live agents from database:", liveAgents.length);
-            } catch (liveErr) {
-                console.log("ℹ️ No live_agents table, using keywords arrays");
-                // Gunakan keywords arrays yang sudah didefinisikan
-                liveAgents = [
-                    {
-                        id: 1,
-                        role: "sales",
-                        name: "Sales Team",
-                        related_agent_type: "sales",
-                        keywords: salesKeywords
-                    },
-                    {
-                        id: 2,
-                        role: "consultant",
-                        name: "Consultant Team",
-                        related_agent_type: "automation",
-                        keywords: consultantKeywords
-                    },
-                    {
-                        id: 3,
-                        role: "support",
-                        name: "Support Team",
-                        related_agent_type: "support",
-                        keywords: supportKeywords
-                    },
-                    {
-                        id: 4,
-                        role: "account",
-                        name: "Account Manager Team",
-                        related_agent_type: "sales",
-                        keywords: accountKeywords
-                    }
-                ];
-            }
             
             // 7. QUERY TRIGGERS DARI DATABASE (jika ada tabel triggers)
             let triggers = [];
             try {
                 const [triggersResult] = await conn.query(`
-                    SELECT type, keywords FROM chat_triggers WHERE is_active = 1
+                    SELECT agent_types, description FROM chatbot_triggers WHERE is_active = 1
                 `);
                 
                 triggers = triggersResult.map(trigger => ({
-                    type: trigger.type,
-                    keywords: trigger.keywords ? JSON.parse(trigger.keywords) : []
+                    type: trigger.agent_types,
+                    keywords: trigger.description ? JSON.parse(trigger.description) : []
                 }));
                 console.log("⚡ Triggers from database:", triggers.length);
             } catch (triggerErr) {
@@ -902,55 +759,18 @@ app.get("/api/chat/config", async (req, res) => {
                 ];
             }
             
-            // 8. BUILD PRODUCTS ARRAY UNTUK RESPONSE
-            const responseProducts = products.length > 0 ? products.map(p => ({
-                id: p.id,
-                name: p.name,
-                code: p.code,
-                is_default: p.is_default || false,
-                integrations: [] // bisa diisi dari database jika ada
-            })) : [
-                {
-                    id: 1,
-                    name: "WasteVantage",
-                    code: "wastevantage",
-                    is_default: false,
-                    integrations: []
-                },
-                {
-                    id: 2,
-                    name: "iHub",
-                    code: "ihub",
-                    is_default: true,
-                    integrations: []
-                },
-                {
-                    id: 19,
-                    name: "HiThereAI",
-                    code: "hithatereai",
-                    is_default: false,
-                    integrations: []
-                }
-            ];
-            
             // 9. RETURN RESPONSE
             const response = {
                 success: true,
                 data: {
-                    products: responseProducts,
                     agentTypes: agentTypes,
-                    liveAgents: liveAgents,
                     triggers: triggers,
                     meta: {
                         serverTime: new Date().toISOString(),
                         totalAgents: agentTypes.length,
-                        totalProducts: responseProducts.length,
-                        totalLiveAgents: liveAgents.length,
                         source: "dynamic_database",
                         database_tables_used: [
-                            "chatbot_prompts",
-                            products.length > 0 ? "products" : null,
-                            systemTypes.length > 0 ? "system_types" : null
+                            "chatbot_prompts"
                         ].filter(Boolean),
                         note: "Configuration dynamically built from available database tables"
                     }
@@ -3916,6 +3736,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
