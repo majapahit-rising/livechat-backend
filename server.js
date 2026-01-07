@@ -813,6 +813,99 @@ app.get("/api/chat/config", async (req, res) => {
 });
 
 
+app.get("/api/customers-lookup", async (req, res) => {
+    const { email, phone } = req.query;
+
+    if (!email && !phone) {
+        return res.json({ customer: null });
+    }
+
+    let conn;
+    try {
+        conn = await db.promise().getConnection();
+
+        let customerQuery = `
+            SELECT 
+                c.id,
+                c.first_name,
+                c.last_name,
+                c.email,
+                c.phone,
+                c.company_name,
+                c.status,
+                ct.name AS customer_type
+            FROM customers c
+            LEFT JOIN customer_types ct ON ct.id = c.customer_type_id
+        `;
+
+        let params = [];
+
+        if (email) {
+            customerQuery += ` WHERE c.email = ? LIMIT 1`;
+            params.push(email);
+        } else if (phone) {
+            const normalizedPhone = phone.replace(/\D/g, '');
+
+            customerQuery += `
+                WHERE REGEXP_REPLACE(c.phone, '[^0-9]', '') LIKE ?
+                LIMIT 1
+            `;
+            params.push(`%${normalizedPhone}%`);
+        }
+
+        const [customers] = await conn.query(customerQuery, params);
+
+        if (!customers.length) {
+            return res.json({ customer: null });
+        }
+
+        const customer = customers[0];
+
+        // total orders
+        const [[ordersCount]] = await conn.query(
+            `SELECT COUNT(*) AS total FROM orders WHERE customer_id = ?`,
+            [customer.id]
+        );
+
+        // last order
+        const [[lastOrder]] = await conn.query(
+            `
+            SELECT created_at
+            FROM orders
+            WHERE customer_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            `,
+            [customer.id]
+        );
+
+        return res.json({
+            customer: {
+                id: customer.id,
+                first_name: customer.first_name,
+                last_name: customer.last_name,
+                email: customer.email,
+                phone: customer.phone,
+                company: customer.company_name || null,
+                customer_type: customer.customer_type || "Standard",
+                status: customer.status === 1 ? "active" : "inactive",
+                total_orders: ordersCount.total,
+                last_order_date: lastOrder?.created_at || null
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Customer lookup error:", err.message);
+        res.status(500).json({
+            error: "Customer lookup failed",
+            details: err.message
+        });
+    } finally {
+        if (conn) conn.release();
+    }
+});
+
+
 
 app.post("/push/register", (req, res) => {
     const { token } = req.body;
@@ -3735,6 +3828,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
