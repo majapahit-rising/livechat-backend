@@ -694,14 +694,16 @@ app.get("/api/chat/config", async (req, res) => {
                 
                 // Tentukan messages
                 const messages = {
-                    on_select: `Hello! I'm ${displayName}. How can I help you?`,
-                    default: agentType === 'sales' 
-                            ? "For :product sales inquiries, I recommend connecting with our sales team for personalized assistance. Would you like me to connect you now?"
-                            : `Regarding ":message", I can help you with ${product} products. What specific information do you need?`,
-                    fallback: agentType === 'sales'
-                            ? "Regarding \":message\", I specialize in sales inquiries. Would you like me to connect you with our sales team for more detailed information?"
-                            : `I understand you're asking about ":message". I can help you with inquiries about ${product} products. What specific information do you need?`
-                };
+                      on_select: `Hello! I'm ${displayName}. How can I help you?`,
+                  
+                      default: agentType === 'sales'
+                          ? "I can help with pricing, service options, and bookings. Would you like to speak with our sales team?"
+                          : `I can help answer your questions. What would you like to know?`,
+                  
+                      fallback: agentType === 'sales'
+                          ? "I specialize in sales enquiries. Would you like me to connect you with a sales agent?"
+                          : "I understand your question. Could you please provide a bit more detail?"
+                  };
                 
                 return {
                     id: prompt.id,
@@ -729,11 +731,8 @@ app.get("/api/chat/config", async (req, res) => {
             console.log("🎯 Final Agent Types Structure:");
             agentTypes.forEach(agent => {
                 console.log(`  [${agent.menu_order}] ${agent.code} (ID: ${agent.id})`);
-                console.log(`      Name: ${agent.name}`);
-                console.log(`      Product: ${agent.product}`);
-                console.log(`      Category: ${agent.category}`);
-                console.log(`      System Type ID: ${agent.system_type_id}`);
-                console.log(`      Code: ${agent.code} (should match agent_type)`);
+                console.log(`      Agent Type: ${agent.code}`);
+                console.log(`      DB Agent Type: ${agent.metadata.database_agent_type}`);
             });
             
             
@@ -3736,6 +3735,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
