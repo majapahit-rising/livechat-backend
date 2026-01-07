@@ -178,10 +178,23 @@ function extractSearchTerms(message) {
 
 function isConversationEnded(text = "") {
     const msg = text.toLowerCase().trim();
-    return [
-        "bye","goodbye","thanks","thank you","end","end chat","ok bye","okay bye",
-        "ok thanks","okay thanks","done","finished"
-    ].some(x => msg === x || msg.includes(x));
+
+    const exactEndPhrases = [
+        "bye",
+        "goodbye",
+        "thanks",
+        "thank you",
+        "end",
+        "end chat",
+        "ok bye",
+        "okay bye",
+        "ok thanks",
+        "okay thanks",
+        "done",
+        "finished"
+    ];
+
+    return exactEndPhrases.includes(msg);
 }
 
 async function generateConversationSummary(conversationId) {
@@ -3733,6 +3746,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
