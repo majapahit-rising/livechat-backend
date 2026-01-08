@@ -904,6 +904,7 @@ app.get("/api/customers-lookup", async (req, res) => {
                 last_name: customer.last_name,
                 email: customer.email,
                 phone: customer.phone,
+                postcode: customer.postcode,
                 company: customer.company_name || null,
                 customer_type: customer.customer_type || "Standard",
                 status:
@@ -3851,6 +3852,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
