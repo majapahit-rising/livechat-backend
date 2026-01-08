@@ -1,6 +1,5 @@
 const express = require("express");
 const mysql = require("mysql2");
-const cors = require("cors");
 const { v4: uuid } = require("uuid");
 const nodemailer = require("nodemailer");
 const admin = require("firebase-admin");
@@ -11,40 +10,46 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const app = express();
 
+app.use((req, res, next) => {
+    const allowedOrigins = [
+        "https://demo-crm.ihubtechnologies.com.au",
+        "https://n8n.ihubtechnologies.com.au",
+        "https://ihubs-chat.infinityfreeapp.com",
+        "https://livechat-backend-3sft.onrender.com"
+    ];
+
+    const origin = req.headers.origin;
+
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, X-Debug, X-Source"
+    );
+    res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    );
+
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(204);
+    }
+
+    next();
+});
+
+
 /* ============================
    BODY PARSER – WAJIB PALING ATAS
 ============================= */
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use(cors({
-    origin: function(origin, callback) {
-        if (!origin) return callback(null, true);
 
-        const allowedOrigins = [
-        'https://livechat-backend-3sft.onrender.com',
-        'https://n8n.ihubtechnologies.com.au',
-        'https://demo-crm.ihubtechnologies.com.au',
-        'https://ihubs-chat.infinityfreeapp.com'
-        ];
 
-        if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            console.log("❌ CORS blocked:", origin);
-            callback(null, false);   // ⛔ JANGAN throw Error
-        }
-    },
-    credentials: true,
-    methods: ['GET','POST','OPTIONS','PUT','DELETE','PATCH'],
-    allowedHeaders: ['Content-Type','Authorization','X-Requested-With', 'x-debug']
-}));
-
-// Manual CORS headers for extra safety
-app.use((req,res,next)=>{
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
-    next();
-});
 
 // -----------------------------------------------------
 // MYSQL CONNECTION
@@ -61,32 +66,6 @@ const db = mysql.createPool({
     enableKeepAlive: true,
     keepAliveInitialDelay: 0
 });
-
-// Specific OPTIONS handler for problematic routes
-app.options('/ai/chat', (req, res) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Debug, X-Source');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.status(200).end();
-});
-
-app.options('/n8n/get-prompt', (req, res) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.status(200).end();
-});
-
-app.options("/push/register", (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.sendStatus(200);
-});
-
-
 
 
 // -----------------------------------------------------
@@ -3872,6 +3851,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
