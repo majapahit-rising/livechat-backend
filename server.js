@@ -8,7 +8,11 @@ const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const twilio = require("twilio");
 
-
+console.log("ENV CHECK", {
+  TWILIO_SID: !!process.env.TWILIO_SID,
+  TWILIO_AUTH_TOKEN: !!process.env.TWILIO_AUTH_TOKEN,
+  TWILIO_NUMBER: !!process.env.TWILIO_NUMBER,
+});
 const app = express();
 
 app.use((req, res, next) => {
@@ -3889,6 +3893,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
