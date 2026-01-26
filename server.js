@@ -801,11 +801,14 @@ app.get("/api/chat/config", async (req, res) => {
 
 app.post("/send-sms", async (req, res) => {
   try {
-    const { phone, orderCode, paymentLink } = req.body;
+    const twilio = require("twilio");
 
-    if (!phone || !orderCode || !paymentLink) {
-      return res.status(400).json({ error: "Missing data" });
-    }
+    const client = twilio(
+      process.env.TWILIO_SID,
+      process.env.TWILIO_AUTH_TOKEN
+    );
+
+    const { phone, orderCode, paymentLink } = req.body;
 
     const message = `✅ Order Confirmed!
 Order #${orderCode}
@@ -821,7 +824,7 @@ ${paymentLink}`;
     res.json({ success: true, sid: sms.sid });
   } catch (err) {
     console.error("Twilio error:", err.message);
-    res.status(500).json({ success: false });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -3886,6 +3889,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
