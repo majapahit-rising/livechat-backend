@@ -6,6 +6,7 @@ const admin = require("firebase-admin");
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const twilio = require("twilio");
 
 
 const app = express();
@@ -76,6 +77,12 @@ const adminClients = [];
 const clientConnections = {};
 const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes for inactive sessions
 const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
+
+
+const client = twilio(
+  process.env.TWILIO_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
 // -----------------------------------------------------
 // SSE HELPER FUNCTIONS
@@ -789,6 +796,33 @@ app.get("/api/chat/config", async (req, res) => {
             data: null
         });
     }
+});
+
+
+app.post("/send-sms", async (req, res) => {
+  try {
+    const { phone, orderCode, paymentLink } = req.body;
+
+    if (!phone || !orderCode || !paymentLink) {
+      return res.status(400).json({ error: "Missing data" });
+    }
+
+    const message = `✅ Order Confirmed!
+Order #${orderCode}
+Pay here:
+${paymentLink}`;
+
+    const sms = await client.messages.create({
+      from: process.env.TWILIO_NUMBER,
+      to: phone,
+      body: message
+    });
+
+    res.json({ success: true, sid: sms.sid });
+  } catch (err) {
+    console.error("Twilio error:", err.message);
+    res.status(500).json({ success: false });
+  }
 });
 
 
@@ -3852,6 +3886,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
