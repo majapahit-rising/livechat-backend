@@ -3,7 +3,6 @@ const mysql = require("mysql2");
 const { v4: uuid } = require("uuid");
 const nodemailer = require("nodemailer");
 const admin = require("firebase-admin");
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const twilio = require("twilio");
@@ -69,7 +68,7 @@ const db = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0,
     enableKeepAlive: true,
-    keepAliveInitialDelay: 0
+    keepAliveInitialDelay: 10000
 });
 
 
@@ -83,10 +82,17 @@ const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes for inactive sessions
 const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 
-const client = twilio(
-  process.env.TWILIO_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+let twilioClient = null;
+try {
+  if (process.env.TWILIO_SID && process.env.TWILIO_AUTH_TOKEN) {
+    twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+    console.log("✅ Twilio ready");
+  } else {
+    console.warn("⚠️ Twilio env missing. SMS disabled.");
+  }
+} catch (err) {
+  console.error("❌ Twilio init error:", err.message);
+}
 
 // -----------------------------------------------------
 // SSE HELPER FUNCTIONS
@@ -133,23 +139,48 @@ function notifyAdmins(payload) {
     console.log(`📊 Successfully sent to ${sentCount}/${adminClients.length} admins`);
 }
 
-
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+process.on("unhandledRejection", (reason) => {
+  console.error("🔥 UNHANDLED REJECTION:", reason);
 });
 
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err);
+});
+
+let firebaseReady = false;
+
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    firebaseReady = true;
+    console.log("✅ Firebase ready");
+  } else {
+    console.warn("⚠️ FIREBASE_SERVICE_ACCOUNT missing. Push disabled.");
+  }
+} catch (err) {
+  console.error("❌ Firebase init error:", err.message);
+}
+
 function sendIncomingCall(agent_type, session_id) {
+  if (!firebaseReady) return;
+
   db.query("SELECT fcm_token FROM admin_push_tokens", async (_, rows) => {
     for (const row of rows) {
-      await admin.messaging().send({
-        token: row.fcm_token,
-        notification: {
-          title: "📞 Incoming Call",
-          body: `There's customer want to connect with ${agent_type}`
-        },
-        data: { session_id }
-      });
+      try {
+        await admin.messaging().send({
+  token: row.fcm_token,
+  notification: {
+    title: "📞 Incoming Call",
+    body: `Customer wants to connect with ${agent_type}`
+  },
+  data: { session_id: String(session_id) }
+});
+      } catch (e) {
+        console.log("Push send error:", e.message);
+      }
     }
   });
 }
@@ -311,30 +342,21 @@ console.log('GMAIL_APP_PASSWORD length:', process.env.GMAIL_APP_PASSWORD ? proce
 console.log('='.repeat(50));
 
 // Validasi environment variables
+let transporter = null;
+
 if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
-    console.error('❌ ERROR: Email credentials missing in .env file!');
-    console.error('Make sure .env has:');
-    console.error('GMAIL_USER=your_email@gmail.com');
-    console.error('GMAIL_APP_PASSWORD=your_16_char_app_password');
-    process.exit(1);
-}
-
-
-// Konfigurasi Nodemailer transporter yang TERBUKTI BEKERJA
-const transporter = nodemailer.createTransport({
+  console.warn("⚠️ Gmail credentials missing. Email features disabled.");
+} else {
+  transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD
-    }
-});
+    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD }
+  });
 
-transporter.verify(err => {
+  transporter.verify(err => {
     if (err) console.log("❌ Gmail error:", err.message);
     else console.log("✅ Gmail SMTP ready");
-});
-
-
+  });
+}
 
 // -----------------------------------------------------
 // CHAT CONFIGURATION
@@ -3893,98 +3915,3 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
