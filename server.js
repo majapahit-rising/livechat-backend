@@ -4265,7 +4265,7 @@ app.get('/admin/sessions', (req, res) => {
 // START SERVER
 // -----------------------------------------------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log("=== iHub Combined Server ===");
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -4276,6 +4276,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
