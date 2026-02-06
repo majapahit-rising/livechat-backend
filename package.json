@@ -12,7 +12,8 @@
     "axios": "^1.6.8",    
     "nodemailer": "^7.0.12",
     "firebase-admin": "^11.10.1",
-    "ws": "^8.19.0",    
+    "ws": "^8.19.0", 
+    "@deepgram/sdk": "^4.11.3",
     "twilio": "^4.21.0"
   },
   "scripts": {
@@ -22,6 +23,7 @@
     "node": "18.x"
   }
 }
+
 
 
 
