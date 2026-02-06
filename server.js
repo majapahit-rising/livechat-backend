@@ -1,10 +1,14 @@
-const express = require("express");
-const mysql = require("mysql2");
-const { v4: uuid } = require("uuid");
-const nodemailer = require("nodemailer");
+import express from "express";
+import mysql from "mysql2";
+import WebSocket from "ws";
+import uuidPkg from "uuid";
+const { v4: uuid } = uuidPkg;
+import nodemailer from "nodemailer";
 const admin = require("firebase-admin");
-const { OpenAI } = require("openai");
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import OpenAI from "openai";
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 const twilio = require("twilio");
 
 console.log("ENV CHECK", {
@@ -4275,4 +4279,5 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
