@@ -146,7 +146,7 @@ wss.on("connection", (ws) => {
   const dgSocket = new WebSocket(
     "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=48000&channels=1&language=en-US",
     {
-      headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` }
+      headers: { Authorization: `Token d4715135c6682f6b829c7cd1c102263ba3288395` }
     }
   );
 
@@ -372,7 +372,7 @@ export async function tts(text) {
       {
         method: "POST",
         headers: {
-          "Authorization": `Token ${DEEPGRAM_API_KEY}`,
+          "Authorization": `Token d4715135c6682f6b829c7cd1c102263ba3288395`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ text })
@@ -4303,6 +4303,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
