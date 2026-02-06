@@ -76,6 +76,15 @@ const db = mysql.createPool({
     keepAliveInitialDelay: 10000
 });
 
+function queryAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.query(sql, params, (err, results) => {
+      if (err) return reject(err);
+      resolve(results);
+    });
+  });
+}
+
 
 // -----------------------------------------------------
 // LIVE CHAT IN-MEMORY STORE
@@ -4276,6 +4285,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
