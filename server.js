@@ -3,6 +3,7 @@ import mysql from "mysql2";
 import WebSocket from "ws";
 import { v4 as uuid } from "uuid";
 import nodemailer from "nodemailer";
+import http from "http";
 import admin from "firebase-admin";
 import twilio from "twilio";
 import OpenAI from "openai";
@@ -16,6 +17,7 @@ console.log("ENV CHECK", {
   TWILIO_NUMBER: !!process.env.TWILIO_NUMBER,
 });
 const app = express();
+const server = http.createServer(app);
 
 app.use((req, res, next) => {
     const allowedOrigins = [
@@ -4274,6 +4276,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
