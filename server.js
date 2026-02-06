@@ -199,6 +199,11 @@ wss.on("connection", (ws) => {
   });
   }
 
+  const pcm = await tts(aiText);
+  if (pcm.length) {
+  ws.send(pcm); // ⬅️ AUDIO KE BROWSER
+  }
+
   ws.send(JSON.stringify({
     type: "ai-text",
     text: aiText
@@ -288,18 +293,18 @@ Always stay in this role.
 
       const greeting = `Hello! I'm ${prompt.identity}. How can I help you today?`;
 
-      // 🔊 generate audio dulu
-      const pcm = await tts(greeting);
+// 🔊 generate audio dulu
+const pcm = await tts(greeting);
 
-      if (pcm.length) {
-        ws.send(pcm); // kirim audio ke browser
-      }
+if (pcm.length) {
+  ws.send(pcm); // kirim audio ke browser
+}
 
-      // 📩 kirim teks
-      ws.send(JSON.stringify({
-        type: "ai-text",
-        text: greeting
-      }));
+// 📩 kirim teks
+ws.send(JSON.stringify({
+  type: "ai-text",
+  text: greeting
+}));
 
       console.log("🎯 Active agent locked:", prompt.agent_type);
       return;
@@ -320,6 +325,12 @@ Always stay in this role.
       }
 
       return;
+    }
+
+    if (e.data instanceof ArrayBuffer) {
+    speakerNode.port.postMessage(e.data);
+    console.log("Sending PCM:", pcm.length);
+    return;
     }
   });
 
@@ -357,13 +368,29 @@ async function callN8N({ sessionId, agent, systemPrompt, messages }) {
     }),
   });
 
-  const json = await res.json();
-  return json.reply || "Sorry, seems like error message with N8N";
+  const raw = await res.text();
+
+if (!raw) {
+  console.warn("⚠️ N8N returned empty body");
+  return "Sorry — no response from AI.";
+}
+
+let json;
+
+try {
+  json = JSON.parse(raw);
+} catch (err) {
+  console.error("❌ Invalid JSON from N8N:", raw);
+  return "Sorry — AI returned invalid data.";
+}
+
+return json.reply || "Sorry — malformed AI response.";
 }
 
 // ======================================================
 // DEEPGRAM TTS (PCM LINEAR16)
 // ======================================================
+
 export async function tts(text) {
   try {
 
@@ -4303,6 +4330,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
