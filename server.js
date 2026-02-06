@@ -144,7 +144,7 @@ wss.on("connection", (ws) => {
   // 1️⃣ CONNECT DEEPGRAM LIVE
   // ======================================================
   const dgSocket = new WebSocket(
-    "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=24000&channels=1&language=en-US",
+    "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=48000&channels=1&language=en-US",
     {
       headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` }
     }
@@ -286,9 +286,19 @@ Always stay in this role.
         history: []
       });
 
+      const greeting = `Hello! I'm ${prompt.identity}. How can I help you today?`;
+
+      // 🔊 generate audio dulu
+      const pcm = await tts(greeting);
+
+      if (pcm.length) {
+        ws.send(pcm); // kirim audio ke browser
+      }
+
+      // 📩 kirim teks
       ws.send(JSON.stringify({
         type: "ai-text",
-        text: `Hello! I'm ${prompt.identity}. How can I help you today?`
+        text: greeting
       }));
 
       console.log("🎯 Active agent locked:", prompt.agent_type);
@@ -354,34 +364,38 @@ async function callN8N({ sessionId, agent, systemPrompt, messages }) {
 // ======================================================
 // DEEPGRAM TTS (PCM LINEAR16)
 // ======================================================
-
-
-
-
-// ==============================
-// TTS → RAW PCM 16-bit
-// ==============================
 export async function tts(text) {
   try {
-    const response = await openai.audio.speech.create({
-      model: "gpt-4o-mini-tts",
-      voice: "alloy",
-      format: "pcm16",
-      input: text
-    });
 
-    const pcm = Buffer.from(await response.arrayBuffer());
-    console.log("🔊 TTS PCM bytes:", pcm.length);
+    const res = await fetch(
+      "https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=48000",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Token ${DEEPGRAM_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ text })
+      }
+    );
+
+    if (!res.ok) {
+      console.error("❌ Deepgram TTS HTTP error:", res.status);
+      return Buffer.alloc(0);
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    const pcm = Buffer.from(arrayBuffer);
+
+    console.log("🔊 Deepgram PCM bytes:", pcm.length);
+
     return pcm;
 
   } catch (err) {
-    console.error("❌ TTS error:", err);
+    console.error("❌ Deepgram TTS error:", err);
     return Buffer.alloc(0);
   }
 }
-
-
-
 
 
 
@@ -447,6 +461,10 @@ async function getChatConfigInternal() {
 
     return prompts;
 }
+
+
+
+
 
 
 
@@ -4285,6 +4303,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
