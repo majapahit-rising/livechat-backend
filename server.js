@@ -4,12 +4,12 @@ import WebSocket from "ws";
 import uuidPkg from "uuid";
 const { v4: uuid } = uuidPkg;
 import nodemailer from "nodemailer";
-const admin = require("firebase-admin");
+import admin from "firebase-admin";
 import OpenAI from "openai";
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
-const twilio = require("twilio");
+import twilio from "twilio";
 
 console.log("ENV CHECK", {
   TWILIO_SID: !!process.env.TWILIO_SID,
@@ -4279,5 +4279,6 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
