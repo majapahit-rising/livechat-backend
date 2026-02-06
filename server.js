@@ -1,8 +1,7 @@
 import express from "express";
 import mysql from "mysql2";
 import WebSocket from "ws";
-import uuidPkg from "uuid";
-const { v4: uuid } = uuidPkg;
+import { v4 as uuid } from "uuid";
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 import twilio from "twilio";
@@ -4275,6 +4274,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
