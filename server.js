@@ -6,6 +6,10 @@ const { v4: uuid } = uuidPkg;
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 import twilio from "twilio";
+import OpenAI from "openai";
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 console.log("ENV CHECK", {
   TWILIO_SID: !!process.env.TWILIO_SID,
@@ -342,11 +346,7 @@ async function callN8N({ sessionId, agent, systemPrompt, messages }) {
 // ======================================================
 
 
-import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 // ==============================
 // TTS → RAW PCM 16-bit
@@ -4275,6 +4275,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
