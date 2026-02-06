@@ -5,10 +5,6 @@ import uuidPkg from "uuid";
 const { v4: uuid } = uuidPkg;
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
-import OpenAI from "openai";
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 import twilio from "twilio";
 
 console.log("ENV CHECK", {
@@ -4279,6 +4275,7 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
