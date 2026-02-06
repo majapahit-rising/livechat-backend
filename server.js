@@ -82,6 +82,366 @@ const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes for inactive sessions
 const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 
+
+
+import { WebSocketServer } from "ws";
+import { createClient } from "@deepgram/sdk";
+import crypto from "crypto";
+// ======================================================
+// CONFIG
+// ======================================================
+
+const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+if (!DEEPGRAM_API_KEY) throw new Error("Missing Deepgram API key");
+const N8N_WEBHOOK =
+  "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
+
+// ======================================================
+// WEBSOCKET SERVER (PAKAI HTTP SERVER YANG SUDAH ADA)
+// ======================================================
+
+const deepgram = createClient(DEEPGRAM_API_KEY);
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
+
+const wss = new WebSocketServer({
+  server,
+  path: "/ws/deepcall"
+});
+
+// ======================================================
+// AI CALL SESSIONS
+// ======================================================
+
+const callSessions = new Map();
+
+// ======================================================
+// WEBSOCKET CONNECTION
+// ======================================================
+
+wss.on("connection", (ws) => {
+
+  ws.sessionId = crypto.randomUUID();
+  ws.sessionReady = false;
+
+  console.log("📞 Client connected", ws.sessionId);
+
+  // ======================================================
+  // 1️⃣ CONNECT DEEPGRAM LIVE
+  // ======================================================
+  const dgSocket = new WebSocket(
+    "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=24000&channels=1&language=en-US",
+    {
+      headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` }
+    }
+  );
+
+  dgSocket.on("open", () => {
+    console.log("🟢 Deepgram connected");
+  });
+
+  dgSocket.on("message", async (msg) => {
+  const data = JSON.parse(msg.toString());
+  const userText = data.channel?.alternatives?.[0]?.transcript?.trim();
+
+  if (!userText) return;
+
+  // kirim ke UI
+  ws.send(JSON.stringify({ type: "user-text", text: userText }));
+
+  // ⛔ JANGAN BUANG TRANSCRIPT LAGI
+  if (!ws.sessionReady) {
+    console.warn("⏳ Transcript received but session not ready");
+    return;
+  }
+
+  const session = callSessions.get(ws.sessionId);
+  if (!session) {
+    console.error("❌ SessionReady true but session missing");
+    return;
+  }
+
+  // ✅ MASUK KE HISTORY
+  session.history.push({
+    role: "user",
+    content: userText
+  });
+
+  console.log("📨 Sending to N8N:", userText);
+
+  const aiText = await callN8N({
+    sessionId: ws.sessionId,
+    agent: session.agent,
+    systemPrompt: session.systemPrompt,
+    messages: session.history
+  });
+
+  if (!aiText || aiText.startsWith("Sorry, seems like error")) {
+  console.warn("⚠️ AI error not stored in memory");
+  } else {
+  session.history.push({
+    role: "assistant",
+    content: aiText
+  });
+  }
+
+  ws.send(JSON.stringify({
+    type: "ai-text",
+    text: aiText
+  }));
+});
+
+  dgSocket.on("close", () => {
+    console.log("❌ Deepgram disconnected");
+  });
+
+  dgSocket.on("error", (err) => {
+    console.error("❌ Deepgram error:", err);
+  });
+
+  // ======================================================
+  // 2️⃣ MESSAGE FROM BROWSER
+  // ======================================================
+  ws.on("message", async (msg) => {
+
+    // =========================
+    // 1️⃣ TRY PARSE JSON FIRST
+    // =========================
+    let data = null;
+    try {
+      data = JSON.parse(
+        typeof msg === "string" ? msg : msg.toString()
+      );
+    } catch {
+      data = null;
+    }
+
+    // =========================
+    // 2️⃣ START CALL (CONTROL)
+    // =========================
+    if (data?.type === "start-call") {
+
+      ws.sessionReady = true;
+
+      const requestedAgent = data.agent || "sales";
+
+      const rows = await queryAsync(`
+        SELECT id, agent_type, identity, role_description, primary_goals
+        FROM chatbot_prompts
+        WHERE agent_type = ?
+          AND status = 'active'
+          AND is_active = 1
+        LIMIT 1
+      `, [requestedAgent]);
+
+      let prompt = rows[0];
+
+      if (!prompt) {
+        const fallback = await queryAsync(`
+          SELECT id, agent_type, identity, role_description, primary_goals
+          FROM chatbot_prompts
+          WHERE agent_type = 'sales'
+            AND status = 'active'
+            AND is_active = 1
+          LIMIT 1
+        `);
+
+        if (!fallback.length) {
+          console.error("❌ No active prompt found");
+          return;
+        }
+
+        prompt = fallback[0];
+      }
+
+      callSessions.set(ws.sessionId, {
+        agent: prompt.agent_type,
+        promptId: prompt.id,
+        systemPrompt: `
+You are ${prompt.identity}.
+Role: ${prompt.role_description}.
+Base Knowledge: ${prompt.context_knowledge}.
+Goals: ${prompt.primary_goals}.
+Language: ${prompt.language}.
+Tone: ${prompt.tone}.
+Response format: ${prompt.response_format}.
+Do guidelines: ${prompt.do_guidelines}.
+Don't guidelines: ${prompt.dont_guidelines}.
+Always stay in this role.
+        `.trim(),
+        history: []
+      });
+
+      ws.send(JSON.stringify({
+        type: "ai-text",
+        text: `Hello! I'm ${prompt.identity}. How can I help you today?`
+      }));
+
+      console.log("🎯 Active agent locked:", prompt.agent_type);
+      return;
+    }
+
+    // =========================
+    // 3️⃣ AUDIO PCM → DEEPGRAM
+    // =========================
+    if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
+
+      if (!ws.sessionReady) {
+        console.warn("⛔ Audio dropped: session not ready");
+        return;
+      }
+
+      if (dgSocket.readyState === WebSocket.OPEN) {
+        dgSocket.send(Buffer.from(msg));
+      }
+
+      return;
+    }
+  });
+
+  ws.on("close", () => {
+    console.log("❌ Client disconnected");
+    dgSocket.close();
+    callSessions.delete(ws.sessionId);
+  });
+});
+
+
+
+// ======================================================
+// N8N CALL
+// ======================================================
+
+async function callN8N({ sessionId, agent, systemPrompt, messages }) {
+
+  const lastUserMessage = [...messages]
+    .reverse()
+    .find(m => m.role === "user");
+
+  if (!lastUserMessage) {
+    return "Sorry, I didn't catch that.";
+  }
+
+  const res = await fetch(N8N_WEBHOOK, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      agent_type: agent,
+      system_prompt: systemPrompt,
+      message: lastUserMessage.content   // ✅ PENTING
+    }),
+  });
+
+  const json = await res.json();
+  return json.reply || "Sorry, seems like error message with N8N";
+}
+
+// ======================================================
+// DEEPGRAM TTS (PCM LINEAR16)
+// ======================================================
+
+
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// ==============================
+// TTS → RAW PCM 16-bit
+// ==============================
+export async function tts(text) {
+  try {
+    const response = await openai.audio.speech.create({
+      model: "gpt-4o-mini-tts",
+      voice: "alloy",
+      format: "pcm16",
+      input: text
+    });
+
+    const pcm = Buffer.from(await response.arrayBuffer());
+    console.log("🔊 TTS PCM bytes:", pcm.length);
+    return pcm;
+
+  } catch (err) {
+    console.error("❌ TTS error:", err);
+    return Buffer.alloc(0);
+  }
+}
+
+
+
+
+
+
+async function fetchGreetingFromDB() {
+    try {
+        const rows = await queryAsync(`
+            SELECT message_text
+            FROM chatbot_welcome_messages
+            WHERE is_active = 1
+            ORDER BY id DESC
+            LIMIT 1
+        `);
+
+        if (!rows.length) {
+            return "👋 Welcome! How can I assist you today?";
+        }
+
+        return rows[0].message_text;
+
+    } catch (err) {
+        console.error("Greeting DB error:", err);
+        return "👋 Welcome! How can I assist you today?";
+    }
+}
+
+
+app.get("/api/chat/bootstrap", async (req, res) => {
+
+    try {
+
+        // 1️⃣ Greeting first
+        const greeting = await fetchGreetingFromDB();
+
+        // 2️⃣ Load config (reuse logic kamu)
+        const config = await getChatConfigInternal();
+
+        res.json({
+            success: true,
+            data: {
+                greeting,
+                config
+            }
+        });
+
+    } catch (err) {
+
+        console.error("Bootstrap error:", err);
+
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+
+async function getChatConfigInternal() {
+    const prompts = await queryAsync(`
+        SELECT id, agent_type, identity, role_description,
+               primary_goals, status, is_active
+        FROM chatbot_prompts
+        WHERE status='active' AND is_active=1
+    `);
+
+    return prompts;
+}
+
+
+
+
+
 let twilioClient = null;
 try {
   if (process.env.TWILIO_SID && process.env.TWILIO_AUTH_TOKEN) {
@@ -3915,3 +4275,4 @@ app.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
