@@ -505,20 +505,6 @@ Always stay in this role.
 
 
 
-
-
-
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-
-
-
-
-
 // ==============================
 // TTS → RAW PCM 16-bit
 // ==============================
@@ -4450,6 +4436,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
