@@ -99,24 +99,45 @@ const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 
 import { WebSocketServer } from "ws";
-import { createClient } from "@deepgram/sdk";
+// import { createClient } from "@deepgram/sdk";
 import crypto from "crypto";
 // ======================================================
 // CONFIG
 // ======================================================
 
-const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-if (!DEEPGRAM_API_KEY) throw new Error("Missing Deepgram API key");
+// const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+// console.log("DG KEY:", DEEPGRAM_API_KEY);
+// if (!DEEPGRAM_API_KEY) throw new Error("Missing Deepgram API key");
 const N8N_WEBHOOK =
   "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
+
+  // ======================================================
+// ELEVENLABS CONFIG
+// ======================================================
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
+
+if (!ELEVENLABS_API_KEY) throw new Error("Missing ELEVENLABS_API_KEY");
+if (!ELEVENLABS_AGENT_ID) throw new Error("Missing ELEVENLABS_AGENT_ID");
+
+async function getElevenLabsSignedUrl() {
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${ELEVENLABS_AGENT_ID}`,
+    { headers: { "xi-api-key": ELEVENLABS_API_KEY } }
+  );
+  if (!res.ok) throw new Error(`Signed URL failed: ${res.status}`);
+  const body = await res.json();
+  return body.signed_url;
+}
 
 // ======================================================
 // WEBSOCKET SERVER (PAKAI HTTP SERVER YANG SUDAH ADA)
 // ======================================================
 
-const deepgram = createClient(DEEPGRAM_API_KEY);
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
+// const deepgram = createClient(DEEPGRAM_API_KEY);
+// const fetch = (...args) =>
+//   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 const wss = new WebSocketServer({
   server,
@@ -133,123 +154,52 @@ const callSessions = new Map();
 // WEBSOCKET CONNECTION
 // ======================================================
 
-wss.on("connection", (ws) => {
+// const conversation = await fetch('https://api.elevenlabs.io/v1/convai/conversation', {
+//     method: 'POST',
+//     headers: {
+//       'xi-api-key': 'sk_bcbde92d462b946931754893acae0f6db2a08a4c9233891b',
+//       'Content-Type': 'application/json'
+//     },    
+//     body: JSON.stringify({
+//       agent_id: 'agent_4601kh08xk3rebm9naf9x8zvf5fa'
+//     })
+//   }).then(r => r.json());
 
+
+wss.on("connection", (ws) => {
   ws.sessionId = crypto.randomUUID();
   ws.sessionReady = false;
+  ws.elWs = null;
 
   console.log("📞 Client connected", ws.sessionId);
 
   // ======================================================
-  // 1️⃣ CONNECT DEEPGRAM LIVE
-  // ======================================================
-  const dgSocket = new WebSocket(
-    "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=48000&channels=1&language=en-US",
-    {
-      headers: { Authorization: `Token d4715135c6682f6b829c7cd1c102263ba3288395` }
-    }
-  );
-
-  dgSocket.on("open", () => {
-    console.log("🟢 Deepgram connected");
-  });
-
-  dgSocket.on("message", async (msg) => {
-  const data = JSON.parse(msg.toString());
-  const userText = data.channel?.alternatives?.[0]?.transcript?.trim();
-
-  if (!userText) return;
-
-  // kirim ke UI
-  ws.send(JSON.stringify({ type: "user-text", text: userText }));
-
-  // ⛔ JANGAN BUANG TRANSCRIPT LAGI
-  if (!ws.sessionReady) {
-    console.warn("⏳ Transcript received but session not ready");
-    return;
-  }
-
-  const session = callSessions.get(ws.sessionId);
-  if (!session) {
-    console.error("❌ SessionReady true but session missing");
-    return;
-  }
-
-  // ✅ MASUK KE HISTORY
-  session.history.push({
-    role: "user",
-    content: userText
-  });
-
-  console.log("📨 Sending to N8N:", userText);
-
-  const aiText = await callN8N({
-    sessionId: ws.sessionId,
-    agent: session.agent,
-    systemPrompt: session.systemPrompt,
-    messages: session.history
-  });
-
-  if (!aiText || aiText.startsWith("Sorry, seems like error")) {
-  console.warn("⚠️ AI error not stored in memory");
-  } else {
-  session.history.push({
-    role: "assistant",
-    content: aiText
-  });
-  }
-
-  const pcm = await tts(aiText);
-  if (pcm.length) {
-  ws.send(pcm); // ⬅️ AUDIO KE BROWSER
-  }
-
-  ws.send(JSON.stringify({
-    type: "ai-text",
-    text: aiText
-  }));
-});
-
-  dgSocket.on("close", () => {
-    console.log("❌ Deepgram disconnected");
-  });
-
-  dgSocket.on("error", (err) => {
-    console.error("❌ Deepgram error:", err);
-  });
-
-  // ======================================================
-  // 2️⃣ MESSAGE FROM BROWSER
+  // MESSAGE FROM BROWSER
   // ======================================================
   ws.on("message", async (msg) => {
 
-    // =========================
-    // 1️⃣ TRY PARSE JSON FIRST
-    // =========================
+    // --- Try parse JSON ---
     let data = null;
     try {
-      data = JSON.parse(
-        typeof msg === "string" ? msg : msg.toString()
-      );
+      data = JSON.parse(typeof msg === "string" ? msg : msg.toString());
     } catch {
       data = null;
     }
 
-    // =========================
-    // 2️⃣ START CALL (CONTROL)
-    // =========================
+    // ======================================================
+    // 1️⃣ START CALL
+    // ======================================================
     if (data?.type === "start-call") {
-
       ws.sessionReady = true;
-
       const requestedAgent = data.agent || "sales";
 
+      // Load prompt from database (same as before)
       const rows = await queryAsync(`
-        SELECT id, agent_type, identity, role_description, primary_goals
+        SELECT id, agent_type, identity, role_description, primary_goals,
+               context_knowledge, language, tone, response_format,
+               do_guidelines, dont_guidelines
         FROM chatbot_prompts
-        WHERE agent_type = ?
-          AND status = 'active'
-          AND is_active = 1
+        WHERE agent_type = ? AND status = 'active' AND is_active = 1
         LIMIT 1
       `, [requestedAgent]);
 
@@ -257,89 +207,218 @@ wss.on("connection", (ws) => {
 
       if (!prompt) {
         const fallback = await queryAsync(`
-          SELECT id, agent_type, identity, role_description, primary_goals
+          SELECT id, agent_type, identity, role_description, primary_goals,
+                 context_knowledge, language, tone, response_format,
+                 do_guidelines, dont_guidelines
           FROM chatbot_prompts
-          WHERE agent_type = 'sales'
-            AND status = 'active'
-            AND is_active = 1
+          WHERE agent_type = 'sales' AND status = 'active' AND is_active = 1
           LIMIT 1
         `);
-
         if (!fallback.length) {
           console.error("❌ No active prompt found");
+          ws.send(JSON.stringify({ type: "ai-text", text: "Sorry, no agent available." }));
           return;
         }
-
         prompt = fallback[0];
       }
 
+      // Build system prompt from DB
+      const systemPrompt = `
+You are ${prompt.identity}.
+Role: ${prompt.role_description}.
+Base Knowledge: ${prompt.context_knowledge || ""}.
+Goals: ${prompt.primary_goals}.
+Language: ${prompt.language || "en"}.
+Tone: ${prompt.tone || "professional"}.
+Response format: ${prompt.response_format || "concise"}.
+Do guidelines: ${prompt.do_guidelines || ""}.
+Don't guidelines: ${prompt.dont_guidelines || ""}.
+Always stay in this role.
+      `.trim();
+
+      // Store session
       callSessions.set(ws.sessionId, {
         agent: prompt.agent_type,
         promptId: prompt.id,
-        systemPrompt: `
-You are ${prompt.identity}.
-Role: ${prompt.role_description}.
-Base Knowledge: ${prompt.context_knowledge}.
-Goals: ${prompt.primary_goals}.
-Language: ${prompt.language}.
-Tone: ${prompt.tone}.
-Response format: ${prompt.response_format}.
-Do guidelines: ${prompt.do_guidelines}.
-Don't guidelines: ${prompt.dont_guidelines}.
-Always stay in this role.
-        `.trim(),
+        systemPrompt,
         history: []
       });
 
-      const greeting = `Hello! I'm ${prompt.identity}. How can I help you today?`;
+      // ======================================================
+      // CONNECT TO ELEVENLABS CONVERSATIONAL AI
+      // ======================================================
+      try {
+        const signedUrl = await getElevenLabsSignedUrl();
+        const elWs = new WebSocket(signedUrl);
+        ws.elWs = elWs;
 
-// 🔊 generate audio dulu
-const pcm = await tts(greeting);
+        elWs.on("open", () => {
+          console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
 
-if (pcm.length) {
-  ws.send(pcm); // kirim audio ke browser
-}
-
-// 📩 kirim teks
-ws.send(JSON.stringify({
-  type: "ai-text",
-  text: greeting
+          // Override agent config with your DB prompt
+          elWs.send(JSON.stringify({
+            type: "conversation_initiation_client_data",
+            conversation_config_override: {
+            agent: {
+                prompt: {
+                    prompt: systemPrompt
+      },
+      first_message: `Hello! I'm ${prompt.identity}. How can I help you today?`,
+      language: "en"
+    }
+  }
 }));
+        });
 
-      console.log("🎯 Active agent locked:", prompt.agent_type);
+        // ======================================================
+        // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
+        // ======================================================
+        elWs.on("message", (elMsg) => {
+          try {
+            const event = JSON.parse(elMsg.toString());
+            const session = callSessions.get(ws.sessionId);
+
+            switch (event.type) {
+
+              // --- Metadata (log only) ---
+              case "conversation_initiation_metadata": {
+                ws.elReady = true;
+                const meta = event.conversation_initiation_metadata_event;
+                console.log("📋 ElevenLabs session:", meta.conversation_id);
+                console.log("   Input format:", meta.user_input_audio_format);
+                console.log("   Output format:", meta.agent_output_audio_format);
+                break;
+              }
+
+              // --- User transcript (STT result) ---
+              case "user_transcript": {
+                const text = event.user_transcription_event.user_transcript;
+                console.log("🗣️ User:", text);
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "user-text", text }));
+                }
+                if (session) {
+                  session.history.push({ role: "user", content: text });
+                }
+                fetch(N8N_WEBHOOK, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        session_id: ws.sessionId,
+                        agent_type: session?.agent,
+                        system_prompt: session?.systemPrompt,
+                        message: text
+                    })
+                }).catch(err => {
+                    console.error("❌ N8N webhook error:", err.message);
+                });
+                break;
+              }
+
+              // --- Agent response (LLM text) ---
+              case "agent_response": {
+                const text = event.agent_response_event.agent_response;
+                console.log("🤖 Agent:", text);
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "ai-text", text }));
+                }
+                if (session) {
+                  session.history.push({ role: "assistant", content: text });
+                }
+                break;
+              }
+
+              // --- Audio chunk (TTS) → send as raw PCM to browser ---
+              case "audio": {
+                const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(pcm);
+                }
+                break;
+              }
+
+              // --- Interruption (user spoke while agent was talking) ---
+              case "interruption": {
+                console.log("⚡ Interruption detected");
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "interruption" }));
+                }
+                break;
+              }
+
+              // --- Ping → respond with Pong ---
+              case "ping": {
+                elWs.send(JSON.stringify({
+                  type: "pong",
+                  event_id: event.ping_event.event_id
+                }));
+                break;
+              }
+
+              // --- VAD score (optional, for UI) ---
+              case "vad_score":
+              case "internal_tentative_agent_response":
+                // Ignore or use for "thinking" indicator
+                break;
+
+              default:
+                console.log("📩 ElevenLabs event:", event.type);
+            }
+          } catch (err) {
+            console.error("❌ ElevenLabs parse error:", err);
+          }
+        });
+
+        elWs.on("close", () => {
+          console.log("❌ ElevenLabs disconnected for session", ws.sessionId);
+        });
+
+        elWs.on("error", (err) => {
+          console.error("❌ ElevenLabs error:", err.message);
+        });
+
+      } catch (err) {
+        console.error("❌ ElevenLabs connection failed:", err);
+        ws.send(JSON.stringify({
+          type: "ai-text",
+          text: "Sorry, I'm having trouble connecting. Please try again."
+        }));
+      }
+
+      console.log("🎯 Active agent:", prompt.agent_type);
       return;
     }
 
-    // =========================
-    // 3️⃣ AUDIO PCM → DEEPGRAM
-    // =========================
+    // ======================================================
+    // 2️⃣ AUDIO PCM → ELEVENLABS (base64 encoded)
+    // ======================================================
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
+      if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
 
-      if (!ws.sessionReady) {
-        console.warn("⛔ Audio dropped: session not ready");
-        return;
+      if (ws.elWs.readyState === WebSocket.OPEN) {
+        ws.elWs.send(JSON.stringify({
+        user_audio_chunk: Buffer.from(msg).toString("base64")
+        }));
       }
-
-      if (dgSocket.readyState === WebSocket.OPEN) {
-        dgSocket.send(Buffer.from(msg));
-      }
-
       return;
-    }
-
-    if (e.data instanceof ArrayBuffer) {
-    speakerNode.port.postMessage(e.data);
-    console.log("Sending PCM:", pcm.length);
-    return;
     }
   });
 
+  // ======================================================
+  // DISCONNECT
+  // ======================================================
   ws.on("close", () => {
-    console.log("❌ Client disconnected");
-    dgSocket.close();
+    console.log("❌ Client disconnected", ws.sessionId);
+    if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+      ws.elWs.close();
+    }
     callSessions.delete(ws.sessionId);
   });
+
+
 });
+
+
 
 
 
@@ -347,82 +426,123 @@ ws.send(JSON.stringify({
 // N8N CALL
 // ======================================================
 
-async function callN8N({ sessionId, agent, systemPrompt, messages }) {
+// async function callN8N({ sessionId, agent, systemPrompt, messages }) {
 
-  const lastUserMessage = [...messages]
-    .reverse()
-    .find(m => m.role === "user");
+//   const lastUserMessage = [...messages]
+//     .reverse()
+//     .find(m => m.role === "user");
 
-  if (!lastUserMessage) {
-    return "Sorry, I didn't catch that.";
-  }
+//   if (!lastUserMessage) {
+//     return "Sorry, I didn't catch that.";
+//   }
 
-  const res = await fetch(N8N_WEBHOOK, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      session_id: sessionId,
-      agent_type: agent,
-      system_prompt: systemPrompt,
-      message: lastUserMessage.content   // ✅ PENTING
-    }),
-  });
+//   const res = await fetch(N8N_WEBHOOK, {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({
+//       session_id: sessionId,
+//       agent_type: agent,
+//       system_prompt: systemPrompt,
+//       message: lastUserMessage.content   
+//     }),
+//   });
 
-  const raw = await res.text();
+//   const raw = await res.text();
 
-if (!raw) {
-  console.warn("⚠️ N8N returned empty body");
-  return "Sorry — no response from AI.";
-}
+// if (!raw) {
+//   console.warn("⚠️ N8N returned empty body");
+//   return "Sorry — no response from AI.";
+// }
 
-let json;
+// let json;
 
-try {
-  json = JSON.parse(raw);
-} catch (err) {
-  console.error("❌ Invalid JSON from N8N:", raw);
-  return "Sorry — AI returned invalid data.";
-}
+// try {
+//   json = JSON.parse(raw);
+// } catch (err) {
+//   console.error("❌ Invalid JSON from N8N:", raw);
+//   return "Sorry — AI returned invalid data.";
+// }
 
-return json.reply || "Sorry — malformed AI response.";
-}
+// return json.reply || "Sorry — malformed AI response.";
+// }
 
 // ======================================================
 // DEEPGRAM TTS (PCM LINEAR16)
 // ======================================================
 
-export async function tts(text) {
-  try {
+// export async function tts(text) {
+//   try {
 
-    const res = await fetch(
-      "https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=48000",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Token d4715135c6682f6b829c7cd1c102263ba3288395`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ text })
-      }
-    );
+//     const res = await fetch(
+//       "https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=48000",
+//       {
+//         method: "POST",
+//         headers: {
+//           "Authorization": `Token d4715135c6682f6b829c7cd1c102263ba3288395`,
+//           "Content-Type": "application/json"
+//         },
+//         body: JSON.stringify({ text })
+//       }
+//     );
 
-    if (!res.ok) {
-      console.error("❌ Deepgram TTS HTTP error:", res.status);
-      return Buffer.alloc(0);
-    }
+//     if (!res.ok) {
+//       console.error("❌ Deepgram TTS HTTP error:", res.status);
+//       return Buffer.alloc(0);
+//     }
 
-    const arrayBuffer = await res.arrayBuffer();
-    const pcm = Buffer.from(arrayBuffer);
+//     const arrayBuffer = await res.arrayBuffer();
+//     const pcm = Buffer.from(arrayBuffer);
 
-    console.log("🔊 Deepgram PCM bytes:", pcm.length);
+//     console.log("🔊 Deepgram PCM bytes:", pcm.length);
 
-    return pcm;
+//     return pcm;
 
-  } catch (err) {
-    console.error("❌ Deepgram TTS error:", err);
-    return Buffer.alloc(0);
-  }
-}
+//   } catch (err) {
+//     console.error("❌ Deepgram TTS error:", err);
+//     return Buffer.alloc(0);
+//   }
+// }
+
+
+
+
+
+
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+
+
+
+
+
+// ==============================
+// TTS → RAW PCM 16-bit
+// ==============================
+// export async function tts(text) {
+//   try {
+//     const response = await openai.audio.speech.create({
+//       model: "gpt-4o-mini-tts",
+//       voice: "alloy",
+//       format: "pcm16",
+//       input: text
+//     });
+
+//     const pcm = Buffer.from(await response.arrayBuffer());
+//     console.log("🔊 TTS PCM bytes:", pcm.length);
+//     return pcm;
+
+//   } catch (err) {
+//     console.error("❌ TTS error:", err);
+//     return Buffer.alloc(0);
+//   }
+// }
+
+
+
 
 
 
@@ -4330,6 +4450,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
