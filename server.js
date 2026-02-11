@@ -1548,7 +1548,8 @@ app.post("/ai/chat", async (req, res) => {
       user_name = "Guest",
       user_email = null,
       context = {},
-      conversation_id     // ← Juga periksa jika ada
+      conversation_id,
+      conversationHistory = []
     } = req.body;
 
     // ======================================================
@@ -1710,7 +1711,8 @@ app.post("/ai/chat", async (req, res) => {
           agent_type: finalAgentType,
           user_name,
           user_email,
-          context
+          context,
+          conversationHistory
         })
       }
     );
@@ -4436,6 +4438,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
