@@ -261,11 +261,17 @@ Always stay in this role.
             conversation_config_override: {
             agent: {
                 prompt: {
-                    prompt: systemPrompt
+                    prompt: `You are a voice interface ONLY. 
+                   DO NOT generate any responses.
+                   Your ONLY job is to transcribe user speech and synthesize my responses.
+                   Never answer questions directly.`,
+          llm: "none"
       },
-      first_message: `Hello! I'm ${prompt.identity}. How can I help you today?`,
+      first_message: "",
       language: "en"
-    }
+    },
+      tts: true,  // Tetap aktifkan TTS
+      stt: true   // Tetap aktifkan STT
   }
 }));
         });
@@ -4438,6 +4444,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
