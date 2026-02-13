@@ -1774,19 +1774,50 @@ app.post("/ai/chat", async (req, res) => {
 
 
 
-app.post("/ai/save-rating",(req,res)=>{
-    const { session_id, conversation_id, ai_rating, ai_feedback } = req.body;
-    if(!session_id||!rating) return res.status(400).json({success:false});
+app.post("/ai/save-rating", async (req, res) => {
+  try {
+    const {
+      session_id,
+      conversation_id,
+      rating,
+      feedback
+    } = req.body;
 
-    db.query(`
-        UPDATE chatbot_conversation_sessions
-        SET ai_rating=?, ai_feedback=?, updated_at=NOW()
-        WHERE conversation_id=? OR session_id = ?
-        ORDER BY created_at DESC LIMIT 1`,
-        [ai_rating, ai_feedback, session_id, conversation_id]
+    if (!session_id || !rating) {
+      return res.status(400).json({
+        success: false,
+        error: "session_id and rating are required"
+      });
+    }
+
+    await db.promise().query(
+      `
+      UPDATE chatbot_conversation_sessions
+      SET
+        ai_rating = ?,
+        ai_feedback = ?
+      WHERE
+        (conversation_id = ? OR session_id = ?)
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [
+        rating,
+        feedback || null,
+        conversation_id || null,
+        session_id
+      ]
     );
 
-    res.json({success:true});
+    return res.json({ success: true });
+
+  } catch (err) {
+    console.error("❌ SAVE RATING ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to save rating"
+    });
+  }
 });
 
 
@@ -4448,6 +4479,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
