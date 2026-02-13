@@ -1649,66 +1649,45 @@ app.post("/ai/chat", async (req, res) => {
       // ======================================================
       try {
   await db.promise().query(
-    `
-    INSERT INTO chatbot_conversation_sessions
-    (
-      session_id,
-      conversation_id,
-      system_type_id,
-      user_email,
-      user_name,
-      user_ip,
-      agent_type,
-      total_messages,
-      ai_messages,
-      escalated_to_human,
-      escalation_reason,
-      conversation_summary,
-      ai_rating,
-      ai_feedback,
-      session_duration,
-      started_at,
-      ended_at,
-      created_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-    ON DUPLICATE KEY UPDATE
-      conversation_id = VALUES(conversation_id),
-      system_type_id = VALUES(system_type_id),
-      user_email = VALUES(user_email),
-      user_name = VALUES(user_name),
-      user_ip = VALUES(user_ip),
-      agent_type = VALUES(agent_type),
-      total_messages = VALUES(total_messages),
-      ai_messages = VALUES(ai_messages),
-      escalated_to_human = VALUES(escalated_to_human),
-      escalation_reason = VALUES(escalation_reason),
-      conversation_summary = VALUES(conversation_summary),
-      ai_rating = VALUES(ai_rating),
-      ai_feedback = VALUES(ai_feedback),
-      session_duration = VALUES(session_duration),
-      ended_at = VALUES(ended_at)
-    `,
-    [
-      session_id,
-      session.conversation_id ?? session_id,
-      session.system_type_id ?? null,
-      session.user_email ?? null,
-      session.user_name ?? 'Guest',
-      session.user_ip ?? req.ip,
-      session.agent_type ?? 'general',
-      messages.length,
-      aiMessages,
-      escalated_to_human ? 1 : 0,
-      escalation_reason ?? null,
-      conversation_summary,
-      ai_rating ?? null,
-      ai_feedback ?? null,
-      Math.floor(duration / 1000),
-      session.start_time,
-      session.end_time
-    ]
-  );
+  `
+  INSERT INTO chatbot_conversation_sessions
+  (
+    session_id,
+    conversation_id,
+    user_email,
+    user_name,
+    user_ip,
+    agent_type,
+    total_messages,
+    ai_messages,
+    conversation_summary,
+    session_duration,
+    started_at,
+    ended_at,
+    created_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+  ON DUPLICATE KEY UPDATE
+    conversation_summary = VALUES(conversation_summary),
+    session_duration = VALUES(session_duration),
+    ended_at = VALUES(ended_at)
+  `,
+  [
+    sessionId,
+    conversation_id || sessionId,
+    user_email,
+    user_name,
+    userIp,
+    finalAgentType,
+    totalMessages,
+    aiMessages,
+    summary,
+    durationSeconds,
+    startedAt,
+    endedAt
+  ]
+);
+
 } catch (err) {
   console.error('❌ INSERT chatbot_conversation_sessions FAILED', {
     message: err.message,
@@ -4469,6 +4448,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
