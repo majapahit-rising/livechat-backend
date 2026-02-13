@@ -1737,15 +1737,6 @@ app.post("/push/register", (req, res) => {
 
     const n8nData = await n8nResp.json();
 
-    const finalUserName =
-    n8nData.user_name || user_name;
-
-    const finalUserEmail =
-    n8nData.user_email || user_email;
-
-    const finalUserPhone =
-    n8nData.user_phone || user_phone;
-
     const aiReply =
       n8nData.reply ||
       n8nData.message ||
@@ -1757,7 +1748,7 @@ app.post("/push/register", (req, res) => {
     await db.promise().query(
       `
       UPDATE chatbot_conversations
-      SET ai_response = ?, user_name = ?, user_email = ?, user_phone = ?, response_time_ms = ?
+      SET ai_response = ?, response_time_ms = ?
       WHERE session_id = ?
       ORDER BY id DESC
       LIMIT 1
@@ -4611,6 +4602,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
