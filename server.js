@@ -1542,7 +1542,7 @@ app.post("/ai/chat", async (req, res) => {
 
   try {
     const {
-      session_id,          // ✅ dari chat.js
+      session_id,
       message,
       agent_type = "general",
       user_name = "Guest",
@@ -1552,9 +1552,6 @@ app.post("/ai/chat", async (req, res) => {
       conversationHistory = []
     } = req.body;
 
-    // ======================================================
-    // VALIDATION (FRONTEND IS SOURCE OF TRUTH)
-    // ======================================================
     if (!session_id) {
       return res.status(400).json({
         success: false,
@@ -1569,16 +1566,16 @@ app.post("/ai/chat", async (req, res) => {
       });
     }
 
+    const sessionId = session_id;
     const finalAgentType = agent_type;
 
-    const sessionId = session_id;
     const userIp =
       req.headers["x-forwarded-for"] ||
       req.socket.remoteAddress ||
       null;
 
     // ======================================================
-    // SAVE USER MESSAGE
+    // 1️⃣ SAVE USER MESSAGE (LEGACY TABLE)
     // ======================================================
     await db.promise().query(
       `
@@ -1605,110 +1602,152 @@ app.post("/ai/chat", async (req, res) => {
     );
 
     // ======================================================
-    // END CONVERSATION CHECK
+    // 2️⃣ GET NEXT SEQUENCE NUMBER
     // ======================================================
-    if (message.length <= 20 && isConversationEnded(message)) {
-      const [rows] = await db.promise().query(
+    const [seqRow] = await db.promise().query(
+      `
+      SELECT IFNULL(MAX(sequence_number), 0) + 1 AS nextSeq
+      FROM chatbot_conversation_messages
+      WHERE session_id = ?
+      `,
+      [sessionId]
+    );
+
+    const nextSeq = seqRow[0].nextSeq;
+
+    // ======================================================
+    // 3️⃣ INSERT USER MESSAGE (NEW TABLE)
+    // ======================================================
+    await db.promise().query(
+      `
+      INSERT INTO chatbot_conversation_messages
+      (
+        session_id,
+        conversation_id,
+        message_type,
+        message_content,
+        sequence_number
+      )
+      VALUES (?, ?, 'user', ?, ?)
+      `,
+      [
+        sessionId,
+        conversation_id || sessionId,
+        message,
+        nextSeq
+      ]
+    );
+
+    // ======================================================
+    // 4️⃣ FAQ SEARCH LAYER
+    // ======================================================
+    let faqMatch = null;
+    let confidence = 20;
+
+    // ---------- EXACT MATCH (100) ----------
+    const [exactRows] = await db.promise().query(
+      `
+      SELECT *
+      FROM chatbot_faq
+      WHERE status = 'active'
+        AND deleted_at IS NULL
+        AND LOWER(question) = LOWER(?)
+      LIMIT 1
+      `,
+      [message.trim()]
+    );
+
+    if (exactRows.length > 0) {
+      faqMatch = exactRows[0];
+      confidence = 100;
+    }
+
+    // ---------- SIMILAR MATCH (80) ----------
+    if (!faqMatch) {
+      const [similarRows] = await db.promise().query(
         `
-        SELECT user_message, ai_response, created_at
-        FROM chatbot_conversations
-        WHERE session_id = ?
-        ORDER BY created_at ASC
+        SELECT *,
+        MATCH(question, answer, keywords)
+        AGAINST (? IN NATURAL LANGUAGE MODE) AS score
+        FROM chatbot_faq
+        WHERE status = 'active'
+          AND deleted_at IS NULL
+        HAVING score > 1
+        ORDER BY score DESC, priority DESC
+        LIMIT 1
         `,
-        [sessionId]
+        [message]
       );
 
-      let summary = "Conversation ended.";
-
-      try {
-        const conversationText = rows
-          .map(r =>
-            `User: ${r.user_message || ""}\nAI: ${r.ai_response || ""}`
-          )
-          .join("\n");
-
-        const aiResp = await openai.responses.create({
-          model: "gpt-4.1-mini",
-          input: `Summarize this conversation in 3 sentences:\n${conversationText}`
-        });
-
-        summary = aiResp.output?.[0]?.content?.[0]?.text || summary;
-      } catch (err) {
-        console.error("❌ SUMMARY ERROR:", err.message);
+      if (similarRows.length > 0) {
+        faqMatch = similarRows[0];
+        confidence = 80;
       }
+    }
 
-      const totalMessages = rows.length;
-      const aiMessages = rows.filter(r => r.ai_response).length;
-      const startedAt = rows[0]?.created_at || new Date();
-      const endedAt = new Date();
-      const durationSeconds =
-        Math.floor((endedAt - new Date(startedAt)) / 1000);
+    // ======================================================
+    // 5️⃣ IF FAQ MATCH → RETURN DIRECTLY
+    // ======================================================
+    if (faqMatch) {
+      const aiSeq = nextSeq + 1;
 
-      // ======================================================
-      // SAVE SESSION SUMMARY (1 SESSION = 1 ROW)
-      // ======================================================
-      try {
-  await db.promise().query(
-  `
-  INSERT INTO chatbot_conversation_sessions
-  (
-    session_id,
-    conversation_id,
-    user_email,
-    user_name,
-    user_ip,
-    agent_type,
-    total_messages,
-    ai_messages,
-    conversation_summary,
-    session_duration,
-    started_at,
-    ended_at,
-    created_at
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-  ON DUPLICATE KEY UPDATE
-    conversation_summary = VALUES(conversation_summary),
-    session_duration = VALUES(session_duration),
-    ended_at = VALUES(ended_at)
-  `,
-  [
-    sessionId,
-    conversation_id || sessionId,
-    user_email,
-    user_name,
-    userIp,
-    finalAgentType,
-    totalMessages,
-    aiMessages,
-    summary,
-    durationSeconds,
-    startedAt,
-    endedAt
-  ]
-);
+      await db.promise().query(
+        `
+        INSERT INTO chatbot_conversation_messages
+        (
+          session_id,
+          conversation_id,
+          message_type,
+          message_content,
+          faq_ids_used,
+          confidence,
+          sequence_number,
+          response_time_ms
+        )
+        VALUES (?, ?, 'ai', ?, ?, ?, ?, ?)
+        `,
+        [
+          sessionId,
+          conversation_id || sessionId,
+          faqMatch.answer,
+          JSON.stringify([faqMatch.id]),
+          confidence,
+          aiSeq,
+          Date.now() - startTime
+        ]
+      );
 
-} catch (err) {
-  console.error('❌ INSERT chatbot_conversation_sessions FAILED', {
-    message: err.message,
-    sqlState: err.sqlState,
-    code: err.code
-  });
-  throw err; // ← penting supaya frontend tahu gagal
-}
+      // update legacy table
+      await db.promise().query(
+        `
+        UPDATE chatbot_conversations
+        SET ai_response = ?, response_time_ms = ?
+        WHERE session_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+        [
+          faqMatch.answer,
+          Date.now() - startTime,
+          sessionId
+        ]
+      );
 
       return res.json({
         success: true,
-        ended: true,
-        reply: "Thank you, the conversation has ended.",
+        reply: faqMatch.answer,
         session_id: sessionId,
-        agent_type: finalAgentType,  // ← TAMBAHKAN DI SINI JUGA
-        conversation_id: conversation_id || sessionId
+        conversation_id: conversation_id || sessionId,
+        agent_type: finalAgentType,
+        source: "faq",
+        confidence,
+        timestamp: new Date().toISOString(),
+        response_time_ms: Date.now() - startTime
       });
     }
 
     // ======================================================
-    // SEND TO N8N (SAME session_id)
+    // 6️⃣ SEND TO N8N (NO FAQ MATCH)
     // ======================================================
     const n8nResp = await fetch(
       "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
@@ -1728,9 +1767,37 @@ app.post("/ai/chat", async (req, res) => {
     );
 
     const n8nData = await n8nResp.json();
+    const aiReply = n8nData.reply || n8nData.message || "No response";
 
     // ======================================================
-    // UPDATE AI RESPONSE (LAST MESSAGE ONLY)
+    // 7️⃣ INSERT AI MESSAGE (CONFIDENCE 20)
+    // ======================================================
+    await db.promise().query(
+      `
+      INSERT INTO chatbot_conversation_messages
+      (
+        session_id,
+        conversation_id,
+        message_type,
+        message_content,
+        confidence,
+        sequence_number,
+        response_time_ms
+      )
+      VALUES (?, ?, 'ai', ?, ?, ?, ?)
+      `,
+      [
+        sessionId,
+        conversation_id || sessionId,
+        aiReply,
+        20,
+        nextSeq + 1,
+        Date.now() - startTime
+      ]
+    );
+
+    // ======================================================
+    // 8️⃣ UPDATE LEGACY TABLE
     // ======================================================
     await db.promise().query(
       `
@@ -1741,22 +1808,23 @@ app.post("/ai/chat", async (req, res) => {
       LIMIT 1
       `,
       [
-        n8nData.reply || n8nData.message || "No response",
+        aiReply,
         Date.now() - startTime,
         sessionId
       ]
     );
 
     // ======================================================
-    // RESPONSE TO CLIENT (WITH agent_type)
+    // FINAL RESPONSE
     // ======================================================
     return res.json({
       success: true,
-      reply: n8nData.reply || n8nData.message,
+      reply: aiReply,
       session_id: sessionId,
-      agent_type: finalAgentType,  // ← INI YANG DITAMBAHKAN
       conversation_id: conversation_id || sessionId,
-      source: 'n8n',
+      agent_type: finalAgentType,
+      source: "n8n",
+      confidence: 20,
       timestamp: new Date().toISOString(),
       response_time_ms: Date.now() - startTime
     });
@@ -1766,10 +1834,11 @@ app.post("/ai/chat", async (req, res) => {
     return res.status(500).json({
       success: false,
       reply: "AI temporarily unavailable",
-      agent_type: req.body.agent_type || "general"  // ← Tetap sertakan agent_type meski error
+      agent_type: req.body.agent_type || "general"
     });
   }
 });
+
 
 
 
@@ -4479,6 +4548,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
