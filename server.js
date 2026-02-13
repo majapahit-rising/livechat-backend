@@ -1594,7 +1594,7 @@ app.post("/push/register", (req, res) => {
         user_message,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, NOW())
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
       `,
       [
         sessionId,
@@ -4602,6 +4602,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
