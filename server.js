@@ -1757,6 +1757,32 @@ app.post("/push/register", (req, res) => {
     );
 
     // ======================================================
+    // UPDATE AI WITH FAQ
+    // ======================================================
+
+    await db.promise().query(`
+      INSERT INTO chatbot_conversation_messages
+      (
+        session_id,
+        conversation_id,
+        message_type,
+        message_content,
+        faq_ids_used,
+        confidence,
+        sequence_number
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+        sessionId,
+        conversation_id || sessionId,
+        'ai',
+        replyText,
+        JSON.stringify(faqIdsArray || []),
+        confidenceValue,
+        sequenceNumber
+    ]);
+
+    // ======================================================
     // RESPONSE TO CLIENT
     // ======================================================
     return res.json({
@@ -1828,6 +1854,111 @@ app.post("/ai/save-rating", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to save rating"
+    });
+  }
+});
+
+
+
+app.post("/ai/faq-match", async (req, res) => {
+  try {
+    const { session_id, message } = req.body;
+
+    if (!session_id || !message) {
+      return res.status(400).json({
+        success: false,
+        error: "session_id and message are required"
+      });
+    }
+
+    // =====================================================
+    // 1. AMBIL FAQ AKTIF
+    // =====================================================
+    const [faqs] = await db.promise().query(`
+      SELECT id, question, answer, answer_short, keywords, priority
+      FROM chatbot_faq
+      WHERE status = 'active'
+      AND deleted_at IS NULL
+      ORDER BY priority DESC
+    `);
+
+    if (!faqs.length) {
+      return res.json({
+        success: true,
+        matched: false,
+        confidence: 20
+      });
+    }
+
+    const normalize = (text) =>
+      text.toLowerCase().replace(/[^\w\s]/gi, "");
+
+    const userText = normalize(message);
+
+    let bestMatch = null;
+    let bestScore = 0;
+
+    // =====================================================
+    // 2. SIMPLE SIMILARITY SCORING
+    // =====================================================
+    for (const faq of faqs) {
+      const faqText = normalize(faq.question);
+
+      // exact match
+      if (userText === faqText) {
+        bestMatch = faq;
+        bestScore = 100;
+        break;
+      }
+
+      // keyword similarity
+      const userWords = userText.split(" ");
+      const faqWords = faqText.split(" ");
+
+      const intersection = userWords.filter(w =>
+        faqWords.includes(w)
+      );
+
+      const score =
+        (intersection.length / faqWords.length) * 100;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = faq;
+      }
+    }
+
+    // =====================================================
+    // 3. CLASSIFY CONFIDENCE
+    // =====================================================
+    let confidence = 20;
+
+    if (bestScore >= 90) {
+      confidence = 100;
+    } else if (bestScore >= 50) {
+      confidence = 80;
+    } else {
+      confidence = 20;
+    }
+
+    return res.json({
+      success: true,
+      matched: confidence >= 80,
+      confidence,
+      faq: bestMatch
+        ? {
+            id: bestMatch.id,
+            answer: bestMatch.answer,
+            answer_short: bestMatch.answer_short
+          }
+        : null
+    });
+
+  } catch (err) {
+    console.error("FAQ MATCH ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      error: "FAQ match failed"
     });
   }
 });
@@ -4491,6 +4622,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
