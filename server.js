@@ -1541,6 +1541,7 @@ app.post("/push/register", (req, res) => {
   const startTime = Date.now();
 
   try {
+    console.log("BODY DEBUG:", req.body);
     const {
       session_id, // ✅ dari chat.js
       message,
@@ -4602,6 +4603,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
