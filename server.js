@@ -1761,26 +1761,26 @@ app.post("/push/register", (req, res) => {
     // ======================================================
 
     await db.promise().query(`
-      INSERT INTO chatbot_conversation_messages
-      (
-        session_id,
-        conversation_id,
-        message_type,
-        message_content,
-        faq_ids_used,
-        confidence,
-        sequence_number
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [
-        sessionId,
-        conversation_id || sessionId,
-        'ai',
-        replyText,
-        JSON.stringify(faqIdsArray || []),
-        confidenceValue,
-        sequenceNumber
-    ]);
+  INSERT INTO chatbot_conversation_messages
+  (
+    session_id,
+    conversation_id,
+    message_type,
+    message_content,
+    faq_ids_used,
+    confidence,
+    sequence_number
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`, [
+    sessionId,
+    conversation_id || sessionId,
+    'ai',
+    replyText,
+    JSON.stringify(faqIdsArray),
+    Number(confidenceValue).toFixed(2),
+    sequenceNumber || 1
+]);
 
     // ======================================================
     // RESPONSE TO CLIENT
@@ -4622,6 +4622,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
