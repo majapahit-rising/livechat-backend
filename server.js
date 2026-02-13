@@ -1648,44 +1648,66 @@ app.post("/ai/chat", async (req, res) => {
       // SAVE SESSION SUMMARY (1 SESSION = 1 ROW)
       // ======================================================
       await db.promise().query(
-        `
-        INSERT INTO chatbot_conversation_sessions
-        (
-          session_id,
-          user_email,
-          user_name,
-          user_ip,
-          agent_type,
-          total_messages,
-          ai_messages,
-          conversation_summary,
-          session_duration,
-          started_at,
-          ended_at,
-          created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-        ON DUPLICATE KEY UPDATE
-          total_messages = VALUES(total_messages),
-          ai_messages = VALUES(ai_messages),
-          conversation_summary = VALUES(conversation_summary),
-          session_duration = VALUES(session_duration),
-          ended_at = VALUES(ended_at)
-        `,
-        [
-          sessionId,
-          user_email,
-          user_name,
-          userIp,
-          finalAgentType,
-          totalMessages,
-          aiMessages,
-          summary,
-          durationSeconds,
-          startedAt,
-          endedAt
-        ]
-      );
+  `
+  INSERT INTO chatbot_conversation_sessions
+  (
+    session_id,
+    conversation_id,
+    system_type_id,
+    user_email,
+    user_name,
+    user_ip,
+    agent_type,
+    total_messages,
+    ai_messages,
+    escalated_to_human,
+    escalation_reason,
+    conversation_summary,
+    ai_rating,
+    ai_feedback,
+    session_duration,
+    started_at,
+    ended_at,
+    created_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+  ON DUPLICATE KEY UPDATE
+    conversation_id = VALUES(conversation_id),
+    system_type_id = VALUES(system_type_id),
+    user_email = VALUES(user_email),
+    user_name = VALUES(user_name),
+    user_ip = VALUES(user_ip),
+    agent_type = VALUES(agent_type),
+    total_messages = VALUES(total_messages),
+    ai_messages = VALUES(ai_messages),
+    escalated_to_human = VALUES(escalated_to_human),
+    escalation_reason = VALUES(escalation_reason),
+    conversation_summary = VALUES(conversation_summary),
+    ai_rating = VALUES(ai_rating),
+    ai_feedback = VALUES(ai_feedback),
+    session_duration = VALUES(session_duration),
+    ended_at = VALUES(ended_at)
+  `,
+  [
+    sessionId,                            // 1 session_id
+    session.conversation_id || null,      // 2 conversation_id
+    session.system_type_id || null,       // 3 system_type_id
+    session.user_email || null,           // 4 user_email
+    session.user_name || 'Guest',         // 5 user_name
+    session.user_ip || userIp,            // 6 user_ip
+    session.agent_type || finalAgentType, // 7 agent_type
+    totalMessages,                        // 8 total_messages
+    aiMessages,                           // 9 ai_messages
+    escalated_to_human ? 1 : 0,            // 10 escalated_to_human
+    escalation_reason || null,             // 11 escalation_reason
+    summary,                               // 12 conversation_summary
+    ai_rating || null,                     // 13 ai_rating
+    ai_feedback || null,                   // 14 ai_feedback
+    durationSeconds,                       // 15 session_duration
+    startedAt,                             // 16 started_at
+    endedAt                                // 17 ended_at
+  ]
+);
 
       return res.json({
         success: true,
@@ -1765,15 +1787,15 @@ app.post("/ai/chat", async (req, res) => {
 
 
 app.post("/ai/save-rating",(req,res)=>{
-    const { session_id, rating, feedback } = req.body;
+    const { session_id, conversation_id, ai_rating, ai_feedback } = req.body;
     if(!session_id||!rating) return res.status(400).json({success:false});
 
     db.query(`
         UPDATE chatbot_conversation_sessions
         SET ai_rating=?, ai_feedback=?, updated_at=NOW()
-        WHERE conversation_id=?
+        WHERE conversation_id=? OR session_id = ?
         ORDER BY created_at DESC LIMIT 1`,
-        [rating,feedback,session_id]
+        [ai_rating, ai_feedback, session_id, conversation_id]
     );
 
     res.json({success:true});
@@ -4438,6 +4460,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
