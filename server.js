@@ -1760,7 +1760,26 @@ app.post("/push/register", (req, res) => {
     // UPDATE AI WITH FAQ
     // ======================================================
 
-    await db.promise().query(`
+    const safeFaqIds = Array.isArray(faqIdsArray)
+  ? faqIdsArray
+  : [];
+
+const safeConfidence =
+  parseFloat(confidenceValue) > 9.99
+    ? 9.99
+    : parseFloat(confidenceValue) || 0;
+
+// Auto sequence
+const [rows] = await db.promise().query(
+  `SELECT COALESCE(MAX(sequence_number), 0) as maxSeq
+   FROM chatbot_conversation_messages
+   WHERE session_id = ?`,
+  [sessionId]
+);
+
+const nextSequence = rows[0].maxSeq + 1;
+
+await db.promise().query(`
   INSERT INTO chatbot_conversation_messages
   (
     session_id,
@@ -1776,10 +1795,10 @@ app.post("/push/register", (req, res) => {
     sessionId,
     conversation_id || sessionId,
     'ai',
-    replyText,
-    JSON.stringify(faqIdsArray),
-    Number(confidenceValue).toFixed(2),
-    sequenceNumber || 1
+    replyText || '',
+    JSON.stringify(safeFaqIds),
+    safeConfidence,
+    nextSequence
 ]);
 
     // ======================================================
@@ -4622,6 +4641,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
