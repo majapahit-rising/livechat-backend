@@ -1537,13 +1537,41 @@ app.post("/push/register", (req, res) => {
 // -----------------------------------------------------
 // ENHANCED AI CHAT ENDPOINT (WITH FALLBACK HANDLING)
 // -----------------------------------------------------
-  app.post("/ai/chat", async (req, res) => {
+ app.post("/ai/chat", async (req, res) => {
   const startTime = Date.now();
+
+  // ======================================================
+  // IDENTITY EXTRACTOR (BACKEND SOURCE OF TRUTH)
+  // ======================================================
+  function extractIdentity(text = "") {
+    let name = null;
+    let email = null;
+    let phone = null;
+
+    // NAME
+    const nameMatch = text.match(
+      /\b(?:my\s*(?:full\s*)?name\s*(?:is)?|i am|i'm)\s+([a-z][a-z\s'-]{1,40})/i
+    );
+    if (nameMatch) name = nameMatch[1].trim();
+
+    // EMAIL
+    const emailMatch = text.match(
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i
+    );
+    if (emailMatch) email = emailMatch[0];
+
+    // PHONE
+    const phoneMatch = text.match(/\b\d{8,15}\b/);
+    if (phoneMatch) phone = phoneMatch[0];
+
+    return { name, email, phone };
+  }
 
   try {
     console.log("BODY DEBUG:", req.body);
+
     const {
-      session_id, // ✅ dari chat.js
+      session_id,
       message,
       agent_type = null,
       user_name = null,
@@ -1555,7 +1583,7 @@ app.post("/push/register", (req, res) => {
     } = req.body;
 
     // ======================================================
-    // VALIDATION (FRONTEND IS SOURCE OF TRUTH)
+    // VALIDATION
     // ======================================================
     if (!session_id) {
       return res.status(400).json({
@@ -1580,6 +1608,26 @@ app.post("/push/register", (req, res) => {
       null;
 
     // ======================================================
+    // BACKEND IDENTITY EXTRACTION
+    // ======================================================
+    const parsed = extractIdentity(message);
+
+    const finalUserName =
+      parsed.name ||
+      user_name ||
+      "Guest";
+
+    const finalUserEmail =
+      parsed.email ||
+      user_email ||
+      null;
+
+    const finalUserPhone =
+      parsed.phone ||
+      user_phone ||
+      null;
+
+    // ======================================================
     // SAVE USER MESSAGE
     // ======================================================
     await db.promise().query(
@@ -1599,9 +1647,9 @@ app.post("/push/register", (req, res) => {
       `,
       [
         sessionId,
-        user_email,
-        user_name,
-        user_phone,
+        finalUserEmail,
+        finalUserName,
+        finalUserPhone,
         userIp,
         finalAgentType,
         message
@@ -1653,7 +1701,7 @@ app.post("/push/register", (req, res) => {
       );
 
       // ======================================================
-      // SAVE SESSION SUMMARY (1 SESSION = 1 ROW)
+      // SAVE SESSION SUMMARY
       // ======================================================
       try {
         await db.promise().query(
@@ -1683,8 +1731,8 @@ app.post("/push/register", (req, res) => {
           [
             sessionId,
             conversation_id || sessionId,
-            user_email,
-            user_name,
+            finalUserEmail,
+            finalUserName,
             userIp,
             finalAgentType,
             totalMessages,
@@ -1696,13 +1744,8 @@ app.post("/push/register", (req, res) => {
           ]
         );
       } catch (err) {
-        console.error("❌ INSERT chatbot_conversation_sessions FAILED", {
-          message: err.message,
-          sqlState: err.sqlState,
-          code: err.code
-        });
-
-        throw err; // penting supaya frontend tahu gagal
+        console.error("❌ INSERT chatbot_conversation_sessions FAILED", err);
+        throw err;
       }
 
       return res.json({
@@ -1716,7 +1759,7 @@ app.post("/push/register", (req, res) => {
     }
 
     // ======================================================
-    // SEND TO N8N (SAME session_id)
+    // SEND TO N8N
     // ======================================================
     const n8nResp = await fetch(
       "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
@@ -1727,9 +1770,9 @@ app.post("/push/register", (req, res) => {
           session_id: sessionId,
           message,
           agent_type: finalAgentType,
-          user_name,
-          user_email,
-          user_phone,
+          user_name: finalUserName,
+          user_email: finalUserEmail,
+          user_phone: finalUserPhone,
           context,
           conversationHistory
         })
@@ -1744,7 +1787,7 @@ app.post("/push/register", (req, res) => {
       "No response";
 
     // ======================================================
-    // UPDATE AI RESPONSE (LAST MESSAGE ONLY)
+    // UPDATE AI RESPONSE
     // ======================================================
     await db.promise().query(
       `
@@ -1761,10 +1804,8 @@ app.post("/push/register", (req, res) => {
       ]
     );
 
-    
-
     // ======================================================
-    // RESPONSE TO CLIENT
+    // RESPONSE
     // ======================================================
     return res.json({
       success: true,
@@ -4603,6 +4644,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
