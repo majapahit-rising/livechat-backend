@@ -1647,67 +1647,76 @@ app.post("/ai/chat", async (req, res) => {
       // ======================================================
       // SAVE SESSION SUMMARY (1 SESSION = 1 ROW)
       // ======================================================
-      await db.promise().query(
-  `
-  INSERT INTO chatbot_conversation_sessions
-  (
-    session_id,
-    conversation_id,
-    system_type_id,
-    user_email,
-    user_name,
-    user_ip,
-    agent_type,
-    total_messages,
-    ai_messages,
-    escalated_to_human,
-    escalation_reason,
-    conversation_summary,
-    ai_rating,
-    ai_feedback,
-    session_duration,
-    started_at,
-    ended_at,
-    created_at
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-  ON DUPLICATE KEY UPDATE
-    conversation_id = VALUES(conversation_id),
-    system_type_id = VALUES(system_type_id),
-    user_email = VALUES(user_email),
-    user_name = VALUES(user_name),
-    user_ip = VALUES(user_ip),
-    agent_type = VALUES(agent_type),
-    total_messages = VALUES(total_messages),
-    ai_messages = VALUES(ai_messages),
-    escalated_to_human = VALUES(escalated_to_human),
-    escalation_reason = VALUES(escalation_reason),
-    conversation_summary = VALUES(conversation_summary),
-    ai_rating = VALUES(ai_rating),
-    ai_feedback = VALUES(ai_feedback),
-    session_duration = VALUES(session_duration),
-    ended_at = VALUES(ended_at)
-  `,
-  [
-    sessionId,                            // 1 session_id
-    session.conversation_id || null,      // 2 conversation_id
-    session.system_type_id || null,       // 3 system_type_id
-    session.user_email || null,           // 4 user_email
-    session.user_name || 'Guest',         // 5 user_name
-    session.user_ip || userIp,            // 6 user_ip
-    session.agent_type || finalAgentType, // 7 agent_type
-    totalMessages,                        // 8 total_messages
-    aiMessages,                           // 9 ai_messages
-    escalated_to_human ? 1 : 0,            // 10 escalated_to_human
-    escalation_reason || null,             // 11 escalation_reason
-    summary,                               // 12 conversation_summary
-    ai_rating || null,                     // 13 ai_rating
-    ai_feedback || null,                   // 14 ai_feedback
-    durationSeconds,                       // 15 session_duration
-    startedAt,                             // 16 started_at
-    endedAt                                // 17 ended_at
-  ]
-);
+      try {
+  await db.promise().query(
+    `
+    INSERT INTO chatbot_conversation_sessions
+    (
+      session_id,
+      conversation_id,
+      system_type_id,
+      user_email,
+      user_name,
+      user_ip,
+      agent_type,
+      total_messages,
+      ai_messages,
+      escalated_to_human,
+      escalation_reason,
+      conversation_summary,
+      ai_rating,
+      ai_feedback,
+      session_duration,
+      started_at,
+      ended_at,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    ON DUPLICATE KEY UPDATE
+      conversation_id = VALUES(conversation_id),
+      system_type_id = VALUES(system_type_id),
+      user_email = VALUES(user_email),
+      user_name = VALUES(user_name),
+      user_ip = VALUES(user_ip),
+      agent_type = VALUES(agent_type),
+      total_messages = VALUES(total_messages),
+      ai_messages = VALUES(ai_messages),
+      escalated_to_human = VALUES(escalated_to_human),
+      escalation_reason = VALUES(escalation_reason),
+      conversation_summary = VALUES(conversation_summary),
+      ai_rating = VALUES(ai_rating),
+      ai_feedback = VALUES(ai_feedback),
+      session_duration = VALUES(session_duration),
+      ended_at = VALUES(ended_at)
+    `,
+    [
+      session_id,
+      session.conversation_id ?? session_id,
+      session.system_type_id ?? null,
+      session.user_email ?? null,
+      session.user_name ?? 'Guest',
+      session.user_ip ?? req.ip,
+      session.agent_type ?? 'general',
+      messages.length,
+      aiMessages,
+      escalated_to_human ? 1 : 0,
+      escalation_reason ?? null,
+      conversation_summary,
+      ai_rating ?? null,
+      ai_feedback ?? null,
+      Math.floor(duration / 1000),
+      session.start_time,
+      session.end_time
+    ]
+  );
+} catch (err) {
+  console.error('❌ INSERT chatbot_conversation_sessions FAILED', {
+    message: err.message,
+    sqlState: err.sqlState,
+    code: err.code
+  });
+  throw err; // ← penting supaya frontend tahu gagal
+}
 
       return res.json({
         success: true,
@@ -4460,6 +4469,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
