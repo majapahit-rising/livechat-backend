@@ -354,7 +354,7 @@ Always stay in this role.
                     console.log("📦 Context before webhook:", session.context);
                   }
               
-                  await fetch(N8N_WEBHOOK, {
+                  fetch(N8N_WEBHOOK, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -4708,6 +4708,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
