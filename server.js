@@ -370,63 +370,106 @@ Always stay in this role.
                   const text = event.user_transcription_event.user_transcript;
                   console.log("🗣️ User:", text);
               
+                  // Send transcript to browser UI
                   if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: "user-text", text }));
                   }
               
-                  if (session) {
-                    session.history.push({ role: "user", content: text });
-              
-                    // Ensure context exists
-                    session.context = session.context || {};
-              
-                    // Extract postcode
-                    const extractedPostcode = extractPostcode(text);
-                    if (extractedPostcode) {
-                      session.context.postcode = extractedPostcode;
-                      console.log("✅ Postcode extracted:", extractedPostcode);
-                    }
-              
-                    // Extract delivery date
-                    const deliveryDate = extractDeliveryDate(text);
-                    if (deliveryDate) {
-                      session.context.delivery_date = deliveryDate;
-                      console.log("📦 Delivery date extracted:", deliveryDate);
-                    }
-              
-                    // Extract pickup date
-                    const pickupDate = extractPickupDate(text);
-                    if (pickupDate) {
-                      session.context.pickup_date = pickupDate;
-                      console.log("🚛 Pickup date extracted:", pickupDate);
-                    }
-              
-                    console.log("📦 Final Context:", session.context);
+                  if (!session) {
+                    console.warn("⚠ No session found");
+                    break;
                   }
+              
+                  // =========================
+                  // UPDATE HISTORY
+                  // =========================
+                  session.history.push({ role: "user", content: text });
+              
+                  // Ensure context exists
+                  session.context = session.context || {};
+              
+                  // =========================
+                  // CONTEXT EXTRACTION
+                  // =========================
+              
+                  const extractedPostcode = extractPostcode(text);
+                  if (extractedPostcode) {
+                    session.context.postcode = extractedPostcode;
+                    console.log("✅ Postcode extracted:", extractedPostcode);
+                  }
+              
+                  const deliveryDate = extractDeliveryDate(text);
+                  if (deliveryDate) {
+                    session.context.delivery_date = deliveryDate;
+                    console.log("📦 Delivery date extracted:", deliveryDate);
+                  }
+              
+                  const pickupDate = extractPickupDate(text);
+                  if (pickupDate) {
+                    session.context.pickup_date = pickupDate;
+                    console.log("🚛 Pickup date extracted:", pickupDate);
+                  }
+              
+                  console.log("📦 Final Context:", session.context);
+              
+                  // =========================
+                  // SEND TO N8N
+                  // =========================
               
                   const response = await fetch(N8N_WEBHOOK, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       session_id: ws.sessionId,
-                      agent_type: session?.agent,
+                      agent_type: session.agent,
                       message: text,
-                      conversation_id: session?.conversationId ?? null,
-                      user_name: session?.context?.name ?? "Guest",
-                      user_email: session?.context?.email ?? null,
-                      user_phone: session?.context?.phoneNumber ?? null,
-                      conversationHistory: session?.history ?? [],
-                      context: session?.context ?? {}
+                      conversation_id: session.conversationId ?? null,
+                      user_name: session.context?.name ?? "Guest",
+                      user_email: session.context?.email ?? null,
+                      user_phone: session.context?.phoneNumber ?? null,
+                      conversationHistory: session.history,
+                      context: session.context
                     })
                   });
-                  
-                  // 🔎 CHECK RESPONSE STATUS
+              
                   if (!response.ok) {
-                    const errorText = await response.text().catch(() => "No response body");
+                    const errorText = await response.text().catch(() => "");
                     console.error("❌ N8N webhook failed:", response.status, errorText);
-                  } else {
-                    console.log("📡 Webhook sent to N8N");
+                    break;
                   }
+              
+                  const data = await response.json().catch(() => null);
+              
+                  console.log("📩 N8N Response:", data);
+              
+                  if (!data || !data.reply) {
+                    console.warn("⚠ N8N returned no reply");
+                    break;
+                  }
+              
+                  // =========================
+                  // SEND REPLY BACK TO ELEVENLABS
+                  // =========================
+              
+                  if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+                    ws.elWs.send(JSON.stringify({
+                      type: "agent_response",
+                      agent_response_event: {
+                        agent_response: data.reply
+                      }
+                    }));
+              
+                    console.log("🧠 Reply sent to ElevenLabs");
+                  }
+              
+                  // =========================
+                  // SAVE ASSISTANT MESSAGE
+                  // =========================
+              
+                  session.history.push({
+                    role: "assistant",
+                    content: data.reply
+                  });
               
                 } catch (err) {
                   console.error("❌ user_transcript error:", err);
@@ -4764,6 +4807,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
