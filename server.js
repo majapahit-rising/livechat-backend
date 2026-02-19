@@ -172,6 +172,29 @@ const extractPostcode = (text) => {
 };
 
 
+const extractDeliveryDate = (text) => {
+  if (!text) return null;
+
+  const match = text.match(
+    /\b(\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i
+  );
+
+  return match ? match[1] : null;
+};
+
+const extractPickupDate = (text) => {
+  if (!text) return null;
+
+  const match = text.match(
+    /\b(pickup|pick up|collection)\s+(on\s+)?(\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i
+  );
+
+  return match ? match[3] : null;
+};
+
+
+
+
 const wss = new WebSocketServer({
   server,
   path: "/ws/deepcall"
@@ -332,6 +355,9 @@ Always stay in this role.
               case "conversation_initiation_metadata": {
                 ws.elReady = true;
                 const meta = event.conversation_initiation_metadata_event;
+                if (session) {
+                  session.conversationId = meta.conversation_id;
+                }
                 console.log("📋 ElevenLabs session:", meta.conversation_id);
                 console.log("   Input format:", meta.user_input_audio_format);
                 console.log("   Output format:", meta.agent_output_audio_format);
@@ -351,18 +377,34 @@ Always stay in this role.
                   if (session) {
                     session.history.push({ role: "user", content: text });
               
-                    const extractedPostcode = extractPostcode(text);
+                    // Ensure context exists
+                    session.context = session.context || {};
               
+                    // Extract postcode
+                    const extractedPostcode = extractPostcode(text);
                     if (extractedPostcode) {
-                      session.context = session.context || {};
                       session.context.postcode = extractedPostcode;
-                      console.log("✅ Postcode extracted (server):", extractedPostcode);
+                      console.log("✅ Postcode extracted:", extractedPostcode);
                     }
               
-                    console.log("📦 Context before webhook:", session.context);
+                    // Extract delivery date
+                    const deliveryDate = extractDeliveryDate(text);
+                    if (deliveryDate) {
+                      session.context.delivery_date = deliveryDate;
+                      console.log("📦 Delivery date extracted:", deliveryDate);
+                    }
+              
+                    // Extract pickup date
+                    const pickupDate = extractPickupDate(text);
+                    if (pickupDate) {
+                      session.context.pickup_date = pickupDate;
+                      console.log("🚛 Pickup date extracted:", pickupDate);
+                    }
+              
+                    console.log("📦 Final Context:", session.context);
                   }
               
-                  fetch(N8N_WEBHOOK, {
+                  const response = await fetch(N8N_WEBHOOK, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -377,8 +419,14 @@ Always stay in this role.
                       context: session?.context ?? {}
                     })
                   });
-              
-                  console.log("📡 Webhook sent to N8N");
+                  
+                  // 🔎 CHECK RESPONSE STATUS
+                  if (!response.ok) {
+                    const errorText = await response.text().catch(() => "No response body");
+                    console.error("❌ N8N webhook failed:", response.status, errorText);
+                  } else {
+                    console.log("📡 Webhook sent to N8N");
+                  }
               
                 } catch (err) {
                   console.error("❌ user_transcript error:", err);
@@ -4716,6 +4764,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
