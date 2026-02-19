@@ -241,7 +241,8 @@ Always stay in this role.
         agent: prompt.agent_type,
         promptId: prompt.id,
         systemPrompt,
-        history: []
+        history: [],
+        context: data.context || {} 
       });
 
       // ======================================================
@@ -4661,6 +4662,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
