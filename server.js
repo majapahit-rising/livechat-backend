@@ -309,29 +309,44 @@ Always stay in this role.
               case "user_transcript": {
                 const text = event.user_transcription_event.user_transcript;
                 console.log("🗣️ User:", text);
+            
                 if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: "user-text", text }));
+                    ws.send(JSON.stringify({ type: "user-text", text }));
                 }
+            
                 if (session) {
-                  session.history.push({ role: "user", content: text });
+                    session.history.push({ role: "user", content: text });
+            
+                    // ✅ EXTRACT POSTCODE DI SINI
+                    const extractedPostcode = extractPostcode(text);
+            
+                    if (extractedPostcode) {
+                        session.context = session.context || {};
+                        session.context.postcode = extractedPostcode;
+                        console.log("✅ Postcode extracted (server):", extractedPostcode);
+                    }
+            
+                    console.log("📦 Context before webhook:", session.context);
                 }
-               fetch(N8N_WEBHOOK, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                      session_id: ws.sessionId,
-                      agent_type: session?.agent,
-                      message: text,
-                      conversation_id: session?.conversationId || null,
-                      user_name: session?.context?.name || "Guest",
-                      user_email: session?.context?.email || null,
-                      user_phone: session?.context?.phoneNumber || null,
-                      conversationHistory: session?.history || [],
-                      context: session?.context || {}
-                  })
-              });
-              break;
-              }
+            
+                fetch(N8N_WEBHOOK, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        session_id: ws.sessionId,
+                        agent_type: session?.agent,
+                        message: text,
+                        conversation_id: session?.conversationId || null,
+                        user_name: session?.context?.name ?? "Guest",
+                        user_email: session?.context?.email ?? null,
+                        user_phone: session?.context?.phoneNumber ?? null,
+                        conversationHistory: session?.history ?? [],
+                        context: session?.context ?? {}
+                    })
+                });
+            
+                break;
+            }
 
               // --- Agent response (LLM text) ---
               case "agent_response": {
@@ -4662,6 +4677,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
