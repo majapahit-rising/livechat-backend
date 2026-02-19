@@ -134,9 +134,14 @@ async function getElevenLabsSignedUrl() {
 const extractPostcode = (text) => {
   if (!text) return null;
 
-  // 1️⃣ Direct 4 digit
-  const match = text.match(/\b\d{4}\b/);
-  if (match) return match[0];
+  // Normalize text
+  const clean = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " "); // remove punctuation
+
+  // 1️⃣ Direct numeric (2350)
+  const numericMatch = clean.match(/\b\d{4}\b/);
+  if (numericMatch) return numericMatch[0];
 
   // 2️⃣ Word to digit
   const wordMap = {
@@ -152,17 +157,20 @@ const extractPostcode = (text) => {
     nine: "9"
   };
 
-  const words = text.toLowerCase().split(/[\s,]+/);
+  const words = clean.split(/\s+/);
 
-  const digits = words
-    .map(w => wordMap[w])
-    .filter(Boolean)
-    .join("");
+  let digits = "";
+  for (let w of words) {
+    if (wordMap[w]) {
+      digits += wordMap[w];
+    }
+  }
 
   if (digits.length === 4) return digits;
 
   return null;
 };
+
 
 const wss = new WebSocketServer({
   server,
@@ -4708,6 +4716,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
