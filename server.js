@@ -254,6 +254,19 @@ Always stay in this role.
 
         elWs.on("open", () => {
           console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
+          const welcomeRows = await queryAsync(`
+            SELECT message_text
+            FROM chatbot_welcome_messages
+            WHERE is_active = 1
+            ORDER BY activated_at DESC
+            LIMIT 1
+          `);
+          
+          let firstMessage = `Hello! I'm ${prompt.identity}. How can I help you today?`;
+          
+          if (welcomeRows.length) {
+            firstMessage = welcomeRows[0].message_text;
+          }
 
           // Override agent config with your DB prompt
           elWs.send(JSON.stringify({
@@ -263,7 +276,7 @@ Always stay in this role.
                 prompt: {
                     prompt: systemPrompt
       },
-      first_message: `Hello! I'm ${prompt.identity}. How can I help you today?`,
+      first_message: firstMessage,
       language: "en"
     }
   }
@@ -4644,6 +4657,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
