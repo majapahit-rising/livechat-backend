@@ -131,13 +131,38 @@ async function getElevenLabsSignedUrl() {
   return body.signed_url;
 }
 
-// ======================================================
-// WEBSOCKET SERVER (PAKAI HTTP SERVER YANG SUDAH ADA)
-// ======================================================
+const extractPostcode = (text) => {
+  if (!text) return null;
 
-// const deepgram = createClient(DEEPGRAM_API_KEY);
-// const fetch = (...args) =>
-//   import("node-fetch").then(({ default: fetch }) => fetch(...args));
+  // 1️⃣ Direct 4 digit
+  const match = text.match(/\b\d{4}\b/);
+  if (match) return match[0];
+
+  // 2️⃣ Word to digit
+  const wordMap = {
+    zero: "0",
+    one: "1",
+    two: "2",
+    three: "3",
+    four: "4",
+    five: "5",
+    six: "6",
+    seven: "7",
+    eight: "8",
+    nine: "9"
+  };
+
+  const words = text.toLowerCase().split(/[\s,]+/);
+
+  const digits = words
+    .map(w => wordMap[w])
+    .filter(Boolean)
+    .join("");
+
+  if (digits.length === 4) return digits;
+
+  return null;
+};
 
 const wss = new WebSocketServer({
   server,
@@ -307,46 +332,52 @@ Always stay in this role.
 
               // --- User transcript (STT result) ---
               case "user_transcript": {
-                const text = event.user_transcription_event.user_transcript;
-                console.log("🗣️ User:", text);
-            
-                if (ws.readyState === WebSocket.OPEN) {
+                try {
+                  const text = event.user_transcription_event.user_transcript;
+                  console.log("🗣️ User:", text);
+              
+                  if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: "user-text", text }));
-                }
-            
-                if (session) {
+                  }
+              
+                  if (session) {
                     session.history.push({ role: "user", content: text });
-            
-                    // ✅ EXTRACT POSTCODE DI SINI
+              
                     const extractedPostcode = extractPostcode(text);
-            
+              
                     if (extractedPostcode) {
-                        session.context = session.context || {};
-                        session.context.postcode = extractedPostcode;
-                        console.log("✅ Postcode extracted (server):", extractedPostcode);
+                      session.context = session.context || {};
+                      session.context.postcode = extractedPostcode;
+                      console.log("✅ Postcode extracted (server):", extractedPostcode);
                     }
-            
+              
                     console.log("📦 Context before webhook:", session.context);
-                }
-            
-                fetch(N8N_WEBHOOK, {
+                  }
+              
+                  await fetch(N8N_WEBHOOK, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        session_id: ws.sessionId,
-                        agent_type: session?.agent,
-                        message: text,
-                        conversation_id: session?.conversationId || null,
-                        user_name: session?.context?.name ?? "Guest",
-                        user_email: session?.context?.email ?? null,
-                        user_phone: session?.context?.phoneNumber ?? null,
-                        conversationHistory: session?.history ?? [],
-                        context: session?.context ?? {}
+                      session_id: ws.sessionId,
+                      agent_type: session?.agent,
+                      message: text,
+                      conversation_id: session?.conversationId ?? null,
+                      user_name: session?.context?.name ?? "Guest",
+                      user_email: session?.context?.email ?? null,
+                      user_phone: session?.context?.phoneNumber ?? null,
+                      conversationHistory: session?.history ?? [],
+                      context: session?.context ?? {}
                     })
-                });
-            
+                  });
+              
+                  console.log("📡 Webhook sent to N8N");
+              
+                } catch (err) {
+                  console.error("❌ user_transcript error:", err);
+                }
+              
                 break;
-            }
+              }
 
               // --- Agent response (LLM text) ---
               case "agent_response": {
@@ -4677,6 +4708,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
