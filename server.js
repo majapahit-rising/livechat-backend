@@ -252,8 +252,10 @@ Always stay in this role.
         const elWs = new WebSocket(signedUrl);
         ws.elWs = elWs;
 
-        elWs.on("open", () => {
+        elWs.on("open", async () => {
           console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
+        
+          // Fetch welcome message
           const welcomeRows = await queryAsync(`
             SELECT message_text
             FROM chatbot_welcome_messages
@@ -261,26 +263,25 @@ Always stay in this role.
             ORDER BY activated_at DESC
             LIMIT 1
           `);
-          
+        
           let firstMessage = `Hello! I'm ${prompt.identity}. How can I help you today?`;
-          
+        
           if (welcomeRows.length) {
             firstMessage = welcomeRows[0].message_text;
           }
-
-          // Override agent config with your DB prompt
+        
           elWs.send(JSON.stringify({
             type: "conversation_initiation_client_data",
             conversation_config_override: {
-            agent: {
+              agent: {
                 prompt: {
-                    prompt: systemPrompt
-      },
-      first_message: firstMessage,
-      language: "en"
-    }
-  }
-}));
+                  prompt: systemPrompt
+                },
+                first_message: firstMessage,
+                language: "en"
+              }
+            }
+          }));
         });
 
         // ======================================================
@@ -4657,6 +4658,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
