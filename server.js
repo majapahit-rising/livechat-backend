@@ -344,7 +344,7 @@ Always stay in this role.
         // ======================================================
         // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
         // ======================================================
-        elWs.on("message", (elMsg) => {
+        elWs.on("message", async (elMsg) => {
           try {
             const event = JSON.parse(elMsg.toString());
             const session = callSessions.get(ws.sessionId);
@@ -4764,6 +4764,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
