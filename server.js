@@ -297,8 +297,7 @@ Always stay in this role.
         agent: prompt.agent_type,
         promptId: prompt.id,
         systemPrompt,
-        history: [],
-        context: data.context || {} 
+        history: []
       });
 
       // ======================================================
@@ -331,7 +330,9 @@ Always stay in this role.
             type: "conversation_initiation_client_data",
             conversation_config_override: {
               agent: {
-                prompt: { prompt: systemPrompt },
+                prompt: {
+                  prompt: systemPrompt
+                },
                 first_message: firstMessage,
                 language: "en"
               }
@@ -342,7 +343,7 @@ Always stay in this role.
         // ======================================================
         // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
         // ======================================================
-        elWs.on("message", async (elMsg) => {
+        elWs.on("message", (elMsg) => {
           try {
             const event = JSON.parse(elMsg.toString());
             const session = callSessions.get(ws.sessionId);
@@ -353,8 +354,9 @@ Always stay in this role.
               case "conversation_initiation_metadata": {
                 ws.elReady = true;
                 const meta = event.conversation_initiation_metadata_event;
-                if (session) session.conversationId = meta.conversation_id;
                 console.log("📋 ElevenLabs session:", meta.conversation_id);
+                console.log("   Input format:", meta.user_input_audio_format);
+                console.log("   Output format:", meta.agent_output_audio_format);
                 break;
               }
 
@@ -362,95 +364,95 @@ Always stay in this role.
               case "user_transcript": {
                 const text = event.user_transcription_event.user_transcript;
                 console.log("🗣️ User:", text);
-
-                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "user-text", text }));
-
-                if (!session) break;
-
-                session.history.push({ role: "user", content: text });
-                session.context = session.context || {};
-
-                const extractedPostcode = extractPostcode(text);
-                if (extractedPostcode) { session.context.postcode = extractedPostcode; console.log("✅ Postcode extracted:", extractedPostcode); }
-
-                const deliveryDate = extractDeliveryDate(text);
-                if (deliveryDate) { session.context.delivery_date = deliveryDate; console.log("📦 Delivery date extracted:", deliveryDate); }
-
-                const pickupDate = extractPickupDate(text);
-                if (pickupDate) { session.context.pickup_date = pickupDate; console.log("🚛 Pickup date extracted:", pickupDate); }
-
-                console.log("📦 Final Context:", session.context);
-
-                // --- SEND TO N8N ---
-                const response = await fetch(N8N_WEBHOOK, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    session_id: ws.sessionId,
-                    agent_type: session.agent,
-                    message: text,
-                    conversation_id: session.conversationId ?? null,
-                    user_name: session.context?.name ?? "Guest",
-                    user_email: session.context?.email ?? null,
-                    user_phone: session.context?.phoneNumber ?? null,
-                    conversationHistory: session.history,
-                    context: session.context
-                  })
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "user-text", text }));
+                }
+                if (session) {
+                  session.history.push({ role: "user", content: text });
+                }
+                fetch(N8N_WEBHOOK, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        session_id: ws.sessionId,
+                        agent_type: session?.agent,
+                        system_prompt: session?.systemPrompt,
+                        message: text
+                    })
+                }).catch(err => {
+                    console.error("❌ N8N webhook error:", err.message);
                 });
+                break;
+              }
 
-                if (!response.ok) { 
-                  const errText = await response.text().catch(()=> ""); 
-                  console.error("❌ N8N webhook failed:", response.status, errText); 
-                  break; 
+              // --- Agent response (LLM text) ---
+              case "agent_response": {
+                const text = event.agent_response_event.agent_response;
+                console.log("🤖 Agent:", text);
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "ai-text", text }));
                 }
-
-                const data = await response.json().catch(()=> null);
-                console.log("📩 N8N Response:", data);
-                if (!data || !data.reply) break;
-
-                if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-                  ws.elWs.send(JSON.stringify({ type: "text_to_speech", text: data.reply, voice_id: ELEVENLABS_VOICE_ID }));
-                  console.log("🔊 Audio request sent to ElevenLabs (TTS only)");
+                if (session) {
+                  session.history.push({ role: "assistant", content: text });
                 }
-
-                session.history.push({ role: "assistant", content: data.reply });
                 break;
               }
 
               // --- Audio chunk (TTS) → send as raw PCM to browser ---
               case "audio": {
                 const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
-                if (ws.readyState === WebSocket.OPEN) ws.send(pcm);
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(pcm);
+                }
                 break;
               }
 
-              // --- Interruption ---
+              // --- Interruption (user spoke while agent was talking) ---
               case "interruption": {
                 console.log("⚡ Interruption detected");
-                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "interruption" }));
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "interruption" }));
+                }
                 break;
               }
 
+              // --- Ping → respond with Pong ---
               case "ping": {
-                elWs.send(JSON.stringify({ type: "pong", event_id: event.ping_event.event_id }));
+                elWs.send(JSON.stringify({
+                  type: "pong",
+                  event_id: event.ping_event.event_id
+                }));
                 break;
               }
+
+              // --- VAD score (optional, for UI) ---
+              case "vad_score":
+              case "internal_tentative_agent_response":
+                // Ignore or use for "thinking" indicator
+                break;
 
               default:
                 console.log("📩 ElevenLabs event:", event.type);
             }
-
           } catch (err) {
             console.error("❌ ElevenLabs parse error:", err);
           }
         });
 
-        elWs.on("close", () => console.log("❌ ElevenLabs disconnected for session", ws.sessionId));
-        elWs.on("error", (err) => console.error("❌ ElevenLabs error:", err.message));
+        elWs.on("close", () => {
+          console.log("❌ ElevenLabs disconnected for session", ws.sessionId);
+        });
+
+        elWs.on("error", (err) => {
+          console.error("❌ ElevenLabs error:", err.message);
+        });
 
       } catch (err) {
         console.error("❌ ElevenLabs connection failed:", err);
-        ws.send(JSON.stringify({ type: "ai-text", text: "Sorry, I'm having trouble connecting. Please try again." }));
+        ws.send(JSON.stringify({
+          type: "ai-text",
+          text: "Sorry, I'm having trouble connecting. Please try again."
+        }));
       }
 
       console.log("🎯 Active agent:", prompt.agent_type);
@@ -458,12 +460,15 @@ Always stay in this role.
     }
 
     // ======================================================
-    // 2️⃣ AUDIO PCM → ELEVENLABS
+    // 2️⃣ AUDIO PCM → ELEVENLABS (base64 encoded)
     // ======================================================
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
       if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
+
       if (ws.elWs.readyState === WebSocket.OPEN) {
-        ws.elWs.send(JSON.stringify({ user_audio_chunk: Buffer.from(msg).toString("base64") }));
+        ws.elWs.send(JSON.stringify({
+        user_audio_chunk: Buffer.from(msg).toString("base64")
+        }));
       }
       return;
     }
@@ -474,11 +479,14 @@ Always stay in this role.
   // ======================================================
   ws.on("close", () => {
     console.log("❌ Client disconnected", ws.sessionId);
-    if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) ws.elWs.close();
+    if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+      ws.elWs.close();
+    }
     callSessions.delete(ws.sessionId);
   });
-});
 
+
+});
 
 
 
@@ -4705,6 +4713,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
