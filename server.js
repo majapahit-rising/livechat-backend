@@ -320,6 +320,9 @@ wss.on("connection", (ws) => {
             ORDER BY activated_at DESC
             LIMIT 1
           `);
+
+          console.log("📦 welcomeRows RAW:", welcomeRows);
+          console.log("📦 DB name:", process.env.DB_DATABASE);
         
           let firstMessage = `Hello! I'm ${prompt.identity}. How can I help you today?`;
         
@@ -4801,6 +4804,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
