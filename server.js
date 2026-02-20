@@ -226,6 +226,8 @@ wss.on("connection", (ws) => {
   ws.sessionId = crypto.randomUUID();
   ws.sessionReady = false;
   ws.elWs = null;
+  ws.allowAgentAudio = false;   // ⬅️ DEFAULT: BLOCK
+  ws.lastReplySource = null;    // 'n8n' | 'elevenlabs'
 
   console.log("📞 Client connected", ws.sessionId);
 
@@ -448,8 +450,10 @@ wss.on("connection", (ws) => {
                   // =========================
                   // SEND REPLY BACK TO ELEVENLABS
                   // =========================
-              
+                  
                   if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+                    ws.allowAgentAudio = true;
+                    ws.lastReplySource = "n8n";
                     ws.elWs.send(JSON.stringify({
                       type: "text_to_speech",
                       text: data.reply,
@@ -475,24 +479,42 @@ wss.on("connection", (ws) => {
               }
 
               // --- Agent response (LLM text) ---
+              // case "agent_response": {
+              //   const text = event.agent_response_event.agent_response;
+              //   console.log("🤖 Agent:", text);
+              //   if (ws.readyState === WebSocket.OPEN) {
+              //     ws.send(JSON.stringify({ type: "ai-text", text }));
+              //   }
+              //   if (session) {
+              //     session.history.push({ role: "assistant", content: text });
+              //   }
+              //   break;
+              // }
               case "agent_response": {
-                const text = event.agent_response_event.agent_response;
-                console.log("🤖 Agent:", text);
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: "ai-text", text }));
-                }
-                if (session) {
-                  session.history.push({ role: "assistant", content: text });
-                }
-                break;
+                // 🚫 BLOCK ELEVENLABS LLM COMPLETELY
+                console.log("⛔ Ignored ElevenLabs agent_response");
+                return;
               }
 
               // --- Audio chunk (TTS) → send as raw PCM to browser ---
               case "audio": {
+
+                // 🚫 BLOCK AUDIO NOT FROM N8N
+                if (!ws.allowAgentAudio || ws.lastReplySource !== "n8n") {
+                  console.log("⛔ Ignored ElevenLabs autonomous audio");
+                  break;
+                }
+              
                 const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
+              
                 if (ws.readyState === WebSocket.OPEN) {
                   ws.send(pcm);
                 }
+              
+                // 🔒 RESET AFTER AUDIO SENT
+                ws.allowAgentAudio = false;
+                ws.lastReplySource = null;
+              
                 break;
               }
 
@@ -4802,6 +4824,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
