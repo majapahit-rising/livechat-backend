@@ -479,17 +479,21 @@ Always stay in this role.
               }
 
               // --- Agent response (LLM text) ---
-              case "agent_response": {
-                const text = event.agent_response_event.agent_response;
-                console.log("🤖 Agent:", text);
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: "ai-text", text }));
+              // case "agent_response": {
+              //   const text = event.agent_response_event.agent_response;
+              //   console.log("🤖 Agent:", text);
+              //   if (ws.readyState === WebSocket.OPEN) {
+              //     ws.send(JSON.stringify({ type: "ai-text", text }));
+              //   }
+              //   if (session) {
+              //     session.history.push({ role: "assistant", content: text });
+              //   }
+              //   break;
+              // }
+                case "agent_response": {
+                  console.log("⚠ Ignored internal ElevenLabs agent_response");
+                  break;
                 }
-                if (session) {
-                  session.history.push({ role: "assistant", content: text });
-                }
-                break;
-              }
 
               // --- Audio chunk (TTS) → send as raw PCM to browser ---
               case "audio": {
@@ -4807,6 +4811,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
