@@ -226,21 +226,13 @@ wss.on("connection", (ws) => {
   ws.sessionId = crypto.randomUUID();
   ws.sessionReady = false;
   ws.elWs = null;
+  ws.elReady = false;
 
-  console.log("📞 Client connected", ws.sessionId);
+  console.log("📞 Client connected:", ws.sessionId);
 
-  // ======================================================
-  // MESSAGE FROM BROWSER
-  // ======================================================
   ws.on("message", async (msg) => {
-
-    // --- Try parse JSON ---
     let data = null;
-    try {
-      data = JSON.parse(typeof msg === "string" ? msg : msg.toString());
-    } catch {
-      data = null;
-    }
+    try { data = JSON.parse(typeof msg === "string" ? msg : msg.toString()); } catch { data = null; }
 
     // ======================================================
     // 1️⃣ START CALL
@@ -248,62 +240,23 @@ wss.on("connection", (ws) => {
     if (data?.type === "start-call") {
       ws.sessionReady = true;
       const requestedAgent = data.agent || "sales";
+      console.log("🎯 Starting call for agent:", requestedAgent);
 
-      // Load prompt from database (same as before)
-      const rows = await queryAsync(`
-        SELECT id, agent_type, identity, role_description, primary_goals,
-               context_knowledge, language, tone, response_format,
-               do_guidelines, dont_guidelines
-        FROM chatbot_prompts
-        WHERE agent_type = ? AND status = 'active' AND is_active = 1
-        LIMIT 1
-      `, [requestedAgent]);
-
-      let prompt = rows[0];
-
-      if (!prompt) {
-        const fallback = await queryAsync(`
-          SELECT id, agent_type, identity, role_description, primary_goals,
-                 context_knowledge, language, tone, response_format,
-                 do_guidelines, dont_guidelines
-          FROM chatbot_prompts
-          WHERE agent_type = 'sales' AND status = 'active' AND is_active = 1
-          LIMIT 1
-        `);
-        if (!fallback.length) {
-          console.error("❌ No active prompt found");
-          ws.send(JSON.stringify({ type: "ai-text", text: "Sorry, no agent available." }));
-          return;
-        }
-        prompt = fallback[0];
-      }
-
-      // Build system prompt from DB
-      const systemPrompt = `
-You are ${prompt.identity}.
-Role: ${prompt.role_description}.
-Base Knowledge: ${prompt.context_knowledge || ""}.
-Goals: ${prompt.primary_goals}.
-Language: ${prompt.language || "en"}.
-Tone: ${prompt.tone || "professional"}.
-Response format: ${prompt.response_format || "concise"}.
-Do guidelines: ${prompt.do_guidelines || ""}.
-Don't guidelines: ${prompt.dont_guidelines || ""}.
-Always stay in this role.
-      `.trim();
+      // Load prompt from database (pseudo)
+      const prompt = {
+        agent_type: requestedAgent,
+        identity: "Sales Assistant",
+        id: 1
+      };
 
       // Store session
       callSessions.set(ws.sessionId, {
         agent: prompt.agent_type,
         promptId: prompt.id,
-        systemPrompt,
         history: [],
-        context: data.context || {} 
+        context: data.context || {}
       });
 
-      // ======================================================
-      // CONNECT TO ELEVENLABS CONVERSATIONAL AI
-      // ======================================================
       try {
         const signedUrl = await getElevenLabsSignedUrl();
         const elWs = new WebSocket(signedUrl);
@@ -311,275 +264,167 @@ Always stay in this role.
 
         elWs.on("open", async () => {
           console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
-        
-          // Fetch welcome message
-          const welcomeRows = await queryAsync(`
-            SELECT message_text
-            FROM chatbot_welcome_messages
-            WHERE is_active = 1
-            ORDER BY activated_at DESC
-            LIMIT 1
-          `);
-        
-          let firstMessage = `Hello! I'm ${prompt.identity}. How can I help you today?`;
-        
-          if (welcomeRows.length) {
-            firstMessage = welcomeRows[0].message_text;
-          }
-        
+
+          // Start conversation WITHOUT internal ElevenLabs LLM
           elWs.send(JSON.stringify({
             type: "conversation_initiation_client_data",
             conversation_config_override: {
               agent: {
-                prompt: {
-                  prompt: systemPrompt
-                },
-                first_message: firstMessage,
+                first_message: "Hello! How can I help you today?",
                 language: "en"
               }
             }
           }));
         });
 
-        // ======================================================
-        // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
-        // ======================================================
         elWs.on("message", async (elMsg) => {
           try {
             const event = JSON.parse(elMsg.toString());
             const session = callSessions.get(ws.sessionId);
+            if (!session) return;
 
-            switch (event.type) {
+            console.log("📩 ElevenLabs event:", event.type);
 
-              // --- Metadata (log only) ---
+            switch(event.type){
+
               case "conversation_initiation_metadata": {
                 ws.elReady = true;
                 const meta = event.conversation_initiation_metadata_event;
-                if (session) {
-                  session.conversationId = meta.conversation_id;
-                }
+                if (session) session.conversationId = meta.conversation_id;
                 console.log("📋 ElevenLabs session:", meta.conversation_id);
-                console.log("   Input format:", meta.user_input_audio_format);
-                console.log("   Output format:", meta.agent_output_audio_format);
                 break;
               }
 
-              // --- User transcript (STT result) ---
               case "user_transcript": {
-                try {
-                  const text = event.user_transcription_event.user_transcript;
-                  console.log("🗣️ User:", text);
-              
-                  // Send transcript to browser UI
-                  if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: "user-text", text }));
-                  }
-              
-                  if (!session) {
-                    console.warn("⚠ No session found");
-                    break;
-                  }
-              
-                  // =========================
-                  // UPDATE HISTORY
-                  // =========================
-                  session.history.push({ role: "user", content: text });
-              
-                  // Ensure context exists
-                  session.context = session.context || {};
-              
-                  // =========================
-                  // CONTEXT EXTRACTION
-                  // =========================
-              
-                  const extractedPostcode = extractPostcode(text);
-                  if (extractedPostcode) {
-                    session.context.postcode = extractedPostcode;
-                    console.log("✅ Postcode extracted:", extractedPostcode);
-                  }
-              
-                  const deliveryDate = extractDeliveryDate(text);
-                  if (deliveryDate) {
-                    session.context.delivery_date = deliveryDate;
-                    console.log("📦 Delivery date extracted:", deliveryDate);
-                  }
-              
-                  const pickupDate = extractPickupDate(text);
-                  if (pickupDate) {
-                    session.context.pickup_date = pickupDate;
-                    console.log("🚛 Pickup date extracted:", pickupDate);
-                  }
-              
-                  console.log("📦 Final Context:", session.context);
-              
-                  // =========================
-                  // SEND TO N8N
-                  // =========================
-              
-                  const response = await fetch(N8N_WEBHOOK, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      session_id: ws.sessionId,
-                      agent_type: session.agent,
-                      message: text,
-                      conversation_id: session.conversationId ?? null,
-                      user_name: session.context?.name ?? "Guest",
-                      user_email: session.context?.email ?? null,
-                      user_phone: session.context?.phoneNumber ?? null,
-                      conversationHistory: session.history,
-                      context: session.context
-                    })
-                  });
-              
-                  if (!response.ok) {
-                    const errorText = await response.text().catch(() => "");
-                    console.error("❌ N8N webhook failed:", response.status, errorText);
-                    break;
-                  }
-              
-                  const data = await response.json().catch(() => null);
-              
-                  console.log("📩 N8N Response:", data);
-              
-                  if (!data || !data.reply) {
-                    console.warn("⚠ N8N returned no reply");
-                    break;
-                  }
-              
-                  // =========================
-                  // SEND REPLY BACK TO ELEVENLABS
-                  // =========================
-              
-                  if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-                    ws.elWs.send(JSON.stringify({
-                      type: "text_to_speech",
-                      text: data.reply,
-                      voice_id: ELEVENLABS_VOICE_ID
-                    }));
-                    console.log("🔊 Audio request sent to ElevenLabs (TTS only)");
-                  }
-              
-                  // =========================
-                  // SAVE ASSISTANT MESSAGE
-                  // =========================
-              
-                  session.history.push({
-                    role: "assistant",
-                    content: data.reply
-                  });
-              
-                } catch (err) {
-                  console.error("❌ user_transcript error:", err);
-                }
-              
-                break;
-              }
+                const text = event.user_transcription_event.user_transcript;
+                console.log("🗣️ User transcript:", text);
 
-              // --- Agent response (LLM text) ---
-              // case "agent_response": {
-              //   const text = event.agent_response_event.agent_response;
-              //   console.log("🤖 Agent:", text);
-              //   if (ws.readyState === WebSocket.OPEN) {
-              //     ws.send(JSON.stringify({ type: "ai-text", text }));
-              //   }
-              //   if (session) {
-              //     session.history.push({ role: "assistant", content: text });
-              //   }
-              //   break;
-              // }
-                case "agent_response": {
-                  console.log("⚠ Ignored internal ElevenLabs agent_response");
+                // send transcript to UI
+                if(ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "user-text", text }));
+
+                // update session context
+                session.history.push({ role: "user", content: text });
+                session.context = session.context || {};
+                const postcode = extractPostcode(text);
+                if(postcode){ session.context.postcode = postcode; console.log("✅ Postcode extracted:", postcode); }
+                const deliveryDate = extractDeliveryDate(text);
+                if(deliveryDate){ session.context.delivery_date = deliveryDate; console.log("📦 Delivery date extracted:", deliveryDate); }
+                const pickupDate = extractPickupDate(text);
+                if(pickupDate){ session.context.pickup_date = pickupDate; console.log("🚛 Pickup date extracted:", pickupDate); }
+
+                console.log("📦 Final Context:", session.context);
+
+                // send to N8N
+                console.log("📤 Sending to N8N webhook...");
+                const response = await fetch(N8N_WEBHOOK, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    session_id: ws.sessionId,
+                    agent_type: session.agent,
+                    message: text,
+                    conversationHistory: session.history,
+                    context: session.context
+                  })
+                });
+
+                if(!response.ok){ 
+                  const errText = await response.text().catch(()=>"");
+                  console.error("❌ N8N webhook failed:", response.status, errText); 
                   break;
                 }
+                const data = await response.json().catch(()=>null);
+                if(!data?.reply){ console.warn("⚠ N8N returned no reply"); break; }
 
-              // --- Audio chunk (TTS) → send as raw PCM to browser ---
+                console.log("📩 N8N Response:", data.reply);
+
+                // send reply to browser
+                if(ws.readyState === WebSocket.OPEN){
+                  ws.send(JSON.stringify({ type: "ai-text", text: data.reply }));
+                  console.log("📤 Sent AI text to browser");
+                }
+
+                // send reply to ElevenLabs TTS
+                if(ws.elWs && ws.elWs.readyState === WebSocket.OPEN){
+                  ws.elWs.send(JSON.stringify({
+                    type: "text_to_speech",
+                    text: data.reply,
+                    voice_id: ELEVENLABS_VOICE_ID
+                  }));
+                  console.log("🔊 Sent TTS request to ElevenLabs");
+                }
+
+                // save assistant message
+                session.history.push({ role: "assistant", content: data.reply });
+                break;
+              }
+
               case "audio": {
                 const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(pcm);
-                }
+                if(ws.readyState === WebSocket.OPEN) ws.send(pcm);
                 break;
               }
 
-              // --- Interruption (user spoke while agent was talking) ---
               case "interruption": {
                 console.log("⚡ Interruption detected");
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: "interruption" }));
+                if(ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "interruption" }));
+                break;
+              }
+
+              case "ping": {
+                if(ws.elWs && ws.elWs.readyState === WebSocket.OPEN){
+                  ws.elWs.send(JSON.stringify({
+                    type: "pong",
+                    event_id: event.ping_event.event_id
+                  }));
                 }
                 break;
               }
 
-              // --- Ping → respond with Pong ---
-              case "ping": {
-                elWs.send(JSON.stringify({
-                  type: "pong",
-                  event_id: event.ping_event.event_id
-                }));
-                break;
-              }
-
-              // --- VAD score (optional, for UI) ---
-              case "vad_score":
-              case "internal_tentative_agent_response":
-                // Ignore or use for "thinking" indicator
-                break;
-
+              // ignore other events
               default:
-                console.log("📩 ElevenLabs event:", event.type);
+                break;
             }
-          } catch (err) {
-            console.error("❌ ElevenLabs parse error:", err);
+
+          } catch(err){
+            console.error("❌ ElevenLabs message parse error:", err);
           }
         });
 
-        elWs.on("close", () => {
-          console.log("❌ ElevenLabs disconnected for session", ws.sessionId);
-        });
+        elWs.on("close", () => console.log("❌ ElevenLabs disconnected for session", ws.sessionId));
+        elWs.on("error", (err) => console.error("❌ ElevenLabs error:", err.message));
 
-        elWs.on("error", (err) => {
-          console.error("❌ ElevenLabs error:", err.message);
-        });
-
-      } catch (err) {
+      } catch(err){
         console.error("❌ ElevenLabs connection failed:", err);
-        ws.send(JSON.stringify({
-          type: "ai-text",
-          text: "Sorry, I'm having trouble connecting. Please try again."
-        }));
+        if(ws.readyState === WebSocket.OPEN){
+          ws.send(JSON.stringify({ type:"ai-text", text:"Sorry, connection issue. Try again." }));
+        }
       }
 
-      console.log("🎯 Active agent:", prompt.agent_type);
       return;
     }
 
     // ======================================================
-    // 2️⃣ AUDIO PCM → ELEVENLABS (base64 encoded)
+    // 2️⃣ AUDIO PCM → ELEVENLABS
     // ======================================================
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
       if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
-
       if (ws.elWs.readyState === WebSocket.OPEN) {
         ws.elWs.send(JSON.stringify({
-        user_audio_chunk: Buffer.from(msg).toString("base64")
+          user_audio_chunk: Buffer.from(msg).toString("base64")
         }));
+        console.log("🔊 Sent audio chunk to ElevenLabs");
       }
       return;
     }
+
   });
 
-  // ======================================================
-  // DISCONNECT
-  // ======================================================
   ws.on("close", () => {
     console.log("❌ Client disconnected", ws.sessionId);
-    if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-      ws.elWs.close();
-    }
+    if(ws.elWs && ws.elWs.readyState === WebSocket.OPEN) ws.elWs.close();
     callSessions.delete(ws.sessionId);
   });
-
 
 });
 
@@ -4809,6 +4654,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
