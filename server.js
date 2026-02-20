@@ -490,34 +490,34 @@ wss.on("connection", (ws) => {
                   break;
                 }
               
-                  // =========================
-                  // SEND REPLY BACK TO ELEVENLABS
-                  // =========================
+              //     // =========================
+              //     // SEND REPLY BACK TO ELEVENLABS
+              //     // =========================
               
-                  if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-                    ws.elWs.send(JSON.stringify({
-                      type: "text_to_speech",
-                      text: data.reply,
-                      voice_id: ELEVENLABS_VOICE_ID
-                    }));
-                    console.log("🔊 Audio request sent to ElevenLabs (TTS only)");
-                  }
+              //     if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+              //       ws.elWs.send(JSON.stringify({
+              //         type: "text_to_speech",
+              //         text: data.reply,
+              //         voice_id: ELEVENLABS_VOICE_ID
+              //       }));
+              //       console.log("🔊 Audio request sent to ElevenLabs (TTS only)");
+              //     }
               
-                  // =========================
-                  // SAVE ASSISTANT MESSAGE
-                  // =========================
+              //     // =========================
+              //     // SAVE ASSISTANT MESSAGE
+              //     // =========================
               
-                  session.history.push({
-                    role: "assistant",
-                    content: data.reply
-                  });
+              //     session.history.push({
+              //       role: "assistant",
+              //       content: data.reply
+              //     });
               
-                } catch (err) {
-                  console.error("❌ user_transcript error:", err);
-                }
+              //   } catch (err) {
+              //     console.error("❌ user_transcript error:", err);
+              //   }
               
-                break;
-              }
+              //   break;
+              // }
 
               // --- Agent response (LLM text) ---
               case "agent_response": {
@@ -4847,6 +4847,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
