@@ -453,13 +453,11 @@ Always stay in this role.
               
                   if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
                     ws.elWs.send(JSON.stringify({
-                      type: "agent_response",
-                      agent_response_event: {
-                        agent_response: data.reply
-                      }
+                      type: "text_to_speech",
+                      text: data.reply,
+                      voice_id: ELEVENLABS_VOICE_ID
                     }));
-              
-                    console.log("🧠 Reply sent to ElevenLabs");
+                    console.log("🔊 Audio request sent to ElevenLabs (TTS only)");
                   }
               
                   // =========================
@@ -4811,6 +4809,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
