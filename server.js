@@ -362,26 +362,113 @@ Always stay in this role.
 
               // --- User transcript (STT result) ---
               case "user_transcript": {
-                const text = event.user_transcription_event.user_transcript;
-                console.log("🗣️ User:", text);
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: "user-text", text }));
-                }
-                if (session) {
+                try {
+                  const text = event.user_transcription_event.user_transcript;
+                  console.log("🗣️ User:", text);
+              
+                  // Send transcript to browser UI
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "user-text", text }));
+                  }
+              
+                  if (!session) {
+                    console.warn("⚠ No session found");
+                    break;
+                  }
+              
+                  // =========================
+                  // UPDATE HISTORY
+                  // =========================
                   session.history.push({ role: "user", content: text });
-                }
-                fetch(N8N_WEBHOOK, {
+              
+                  // Ensure context exists
+                  session.context = session.context || {};
+              
+                  // =========================
+                  // CONTEXT EXTRACTION
+                  // =========================
+              
+                  const extractedPostcode = extractPostcode(text);
+                  if (extractedPostcode) {
+                    session.context.postcode = extractedPostcode;
+                    console.log("✅ Postcode extracted:", extractedPostcode);
+                  }
+              
+                  const deliveryDate = extractDeliveryDate(text);
+                  if (deliveryDate) {
+                    session.context.delivery_date = deliveryDate;
+                    console.log("📦 Delivery date extracted:", deliveryDate);
+                  }
+              
+                  const pickupDate = extractPickupDate(text);
+                  if (pickupDate) {
+                    session.context.pickup_date = pickupDate;
+                    console.log("🚛 Pickup date extracted:", pickupDate);
+                  }
+              
+                  console.log("📦 Final Context:", session.context);
+              
+                  // =========================
+                  // SEND TO N8N
+                  // =========================
+              
+                  const response = await fetch(N8N_WEBHOOK, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        session_id: ws.sessionId,
-                        agent_type: session?.agent,
-                        system_prompt: session?.systemPrompt,
-                        message: text
+                      session_id: ws.sessionId,
+                      agent_type: session.agent,
+                      message: text,
+                      conversation_id: session.conversationId ?? null,
+                      user_name: session.context?.name ?? "Guest",
+                      user_email: session.context?.email ?? null,
+                      user_phone: session.context?.phoneNumber ?? null,
+                      conversationHistory: session.history,
+                      context: session.context
                     })
-                }).catch(err => {
-                    console.error("❌ N8N webhook error:", err.message);
-                });
+                  });
+              
+                  if (!response.ok) {
+                    const errorText = await response.text().catch(() => "");
+                    console.error("❌ N8N webhook failed:", response.status, errorText);
+                    break;
+                  }
+              
+                  const data = await response.json().catch(() => null);
+              
+                  console.log("📩 N8N Response:", data);
+              
+                  if (!data || !data.reply) {
+                    console.warn("⚠ N8N returned no reply");
+                    break;
+                  }
+              
+                  // =========================
+                  // SEND REPLY BACK TO ELEVENLABS
+                  // =========================
+              
+                  if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+                    ws.elWs.send(JSON.stringify({
+                      type: "text_to_speech",
+                      text: data.reply,
+                      voice_id: ELEVENLABS_VOICE_ID
+                    }));
+                    console.log("🔊 Audio request sent to ElevenLabs (TTS only)");
+                  }
+              
+                  // =========================
+                  // SAVE ASSISTANT MESSAGE
+                  // =========================
+              
+                  session.history.push({
+                    role: "assistant",
+                    content: data.reply
+                  });
+              
+                } catch (err) {
+                  console.error("❌ user_transcript error:", err);
+                }
+              
                 break;
               }
 
@@ -4713,6 +4800,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
