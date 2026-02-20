@@ -312,23 +312,21 @@ wss.on("connection", (ws) => {
         elWs.on("open", async () => {
           console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
         
-          // Fetch welcome message
           const welcomeRows = await queryAsync(`
             SELECT message_text
             FROM chatbot_welcome_messages
             WHERE is_active = 1
-            ORDER BY activated_at DESC
+            ORDER BY activated_at DESC, id DESC
             LIMIT 1
           `);
-
+        
           console.log("📦 welcomeRows RAW:", welcomeRows);
-          console.log("📦 DB name:", process.env.DB_DATABASE);
         
-          let firstMessage = `Hello! I'm ${prompt.identity}. How can I help you today?`;
-        
-          if (welcomeRows.length) {
-            firstMessage = welcomeRows[0].message_text;
+          if (!welcomeRows?.length || !welcomeRows[0]?.message_text?.trim()) {
+            throw new Error("❌ No active welcome message found in DB");
           }
+        
+          const firstMessage = welcomeRows[0].message_text.trim();
         
           elWs.send(JSON.stringify({
             type: "conversation_initiation_client_data",
@@ -4804,6 +4802,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
