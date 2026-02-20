@@ -280,24 +280,25 @@ wss.on("connection", (ws) => {
 
       // Build system prompt from DB
       const systemPrompt = `
-You are ${prompt.identity}.
-Role: ${prompt.role_description}.
-Base Knowledge: ${prompt.context_knowledge || ""}.
-Goals: ${prompt.primary_goals}.
-Language: ${prompt.language || "en"}.
-Tone: ${prompt.tone || "professional"}.
-Response format: ${prompt.response_format || "concise"}.
-Do guidelines: ${prompt.do_guidelines || ""}.
-Don't guidelines: ${prompt.dont_guidelines || ""}.
-Always stay in this role.
-      `.trim();
+      You are ${prompt.identity}.
+      Role: ${prompt.role_description}.
+      Base Knowledge: ${prompt.context_knowledge || ""}.
+      Goals: ${prompt.primary_goals}.
+      Language: ${prompt.language || "en"}.
+      Tone: ${prompt.tone || "professional"}.
+      Response format: ${prompt.response_format || "concise"}.
+      Do guidelines: ${prompt.do_guidelines || ""}.
+      Don't guidelines: ${prompt.dont_guidelines || ""}.
+      Always stay in this role.
+            `.trim();
 
       // Store session
       callSessions.set(ws.sessionId, {
         agent: prompt.agent_type,
         promptId: prompt.id,
         systemPrompt,
-        history: []
+        history: [],
+        context: data.context || {} 
       });
 
       // ======================================================
@@ -4800,6 +4801,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
