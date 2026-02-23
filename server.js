@@ -1843,10 +1843,11 @@ app.post("/push/register", (req, res) => {
         user_phone,
         user_ip,
         agent_type,
+        prompt_id,
         user_message,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `,
       [
         sessionId,
@@ -1855,6 +1856,7 @@ app.post("/push/register", (req, res) => {
         finalUserPhone,
         userIp,
         finalAgentType,
+        resolvedPromptId,
         message
       ]
     );
@@ -1902,6 +1904,28 @@ app.post("/push/register", (req, res) => {
       const durationSeconds = Math.floor(
         (endedAt - new Date(startedAt)) / 1000
       );
+
+
+      // ======================================================
+      // RESOLVE ACTIVE PROMPT (SOURCE OF TRUTH)
+      // ======================================================
+      const [promptRows] = await db.promise().query(
+        `
+        SELECT id
+        FROM chatbot_prompts
+        WHERE agent_type = ?
+          AND is_active = 1
+          AND status = 'active'
+        ORDER BY activated_at DESC, id DESC
+        LIMIT 1
+        `,
+        [finalAgentType]
+      );
+      
+      const resolvedPromptId = promptRows.length
+        ? promptRows[0].id
+        : null;
+      
 
       // ======================================================
       // SAVE SESSION SUMMARY
@@ -4847,6 +4871,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
