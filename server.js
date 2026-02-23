@@ -2018,13 +2018,20 @@ app.post("/push/register", (req, res) => {
     await db.promise().query(
       `
       UPDATE chatbot_conversations
-      SET ai_response = ?, response_time_ms = ?
+      SET ai_response = ?,
+      faq_ids_used = ?,
+      confidence = ?,
+      tokens_used = ?,
+      response_time_ms = ?
       WHERE session_id = ?
       ORDER BY id DESC
       LIMIT 1
       `,
       [
         aiReply,
+        JSON.stringify(n8nData.faq_ids_used || []),
+        n8nData.confidence ?? null,
+        n8nData.tokens_used ?? null,
         Date.now() - startTime,
         sessionId
       ]
@@ -4870,6 +4877,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
