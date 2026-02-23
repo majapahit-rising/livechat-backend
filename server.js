@@ -2021,7 +2021,7 @@ app.post("/push/register", (req, res) => {
         ai_response = ?
       WHERE session_id = ?
     `, [
-      aiReply
+      aiReply,
       sessionId
     ]);
 
@@ -4819,6 +4819,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
