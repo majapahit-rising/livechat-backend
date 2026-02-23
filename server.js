@@ -1853,7 +1853,7 @@ app.post("/push/register", (req, res) => {
     // ======================================================
     // SAVE USER MESSAGE
     // ======================================================
-    await db.promise().query(
+    const [insertResult] = await db.promise().query(
       `
       INSERT INTO chatbot_conversations
       (
@@ -1880,7 +1880,7 @@ app.post("/push/register", (req, res) => {
         message
       ]
     );
-
+    const conversationRowId = insertResult.insertId;
     // ======================================================
     // END CONVERSATION CHECK
     // ======================================================
@@ -2033,7 +2033,7 @@ app.post("/push/register", (req, res) => {
         n8nData.confidence ?? null,
         n8nData.tokens_used ?? null,
         Date.now() - startTime,
-        sessionId
+        conversationRowId
       ]
     );
 
@@ -4877,6 +4877,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
