@@ -2023,7 +2023,7 @@ app.post("/push/register", (req, res) => {
     
     try {
       const faqRes = await fetch(
-        `https://demo-crm.ihubtechnologies.com.au/api/chatbot/faq/search?query=${encodeURIComponent(userMessage)}`,
+        `https://demo-crm.ihubtechnologies.com.au/api/chatbot/faq/search?query=${encodeURIComponent(message)}`,
         {
           method: "GET",
           headers: {
@@ -4864,6 +4864,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
