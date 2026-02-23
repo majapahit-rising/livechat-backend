@@ -3280,53 +3280,7 @@ function analyzeResponse(aiResponse, userMessage, agent_type) {
     return analysis;
 }
 
-// Simpan ke conversations dengan enhanced data
-// async function saveEnhancedConversation(data) {
-//     const query = `
-//         INSERT INTO chatbot_conversations (
-//             session_id, system_type_id, customer_id, lead_id, 
-//             user_email, user_name, user_phone, user_company, user_ip,
-//             agent_type, category_id, user_message, ai_response,
-//             faq_ids_used, confidence, resolved, user_satisfaction,
-//             escalated_to_human, escalation_reason, created_ticket_id,
-//             created_lead_id, response_time_ms, tokens_used
-//         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-//     `;
-    
-//     const values = [
-//         data.session_id,
-//         data.system_type_id,
-//         data.customer_id,
-//         data.lead_id,
-//         data.user_email,
-//         data.user_name,
-//         data.user_phone,
-//         data.user_company,
-//         data.user_ip,
-//         data.agent_type,
-//         data.category_id,
-//         data.user_message,
-//         data.ai_response,
-//         JSON.stringify(data.faq_ids_used),
-//         data.confidence,
-//         data.resolved ? 1 : 0,
-//         data.user_satisfaction,
-//         data.escalated_to_human ? 1 : 0,
-//         data.escalation_reason,
-//         data.created_ticket_id,
-//         data.created_lead_id,
-//         data.response_time_ms,
-//         data.tokens_used
-//     ];
-    
-//     db.query(query, values, (error, result) => {
-//         if (error) {
-//             console.error("Save conversation error:", error);
-//         } else {
-//             console.log(`💾 Saved conversation #${result.insertId} for ${data.agent_type}`);
-//         }
-//     });
-// }
+
 
 // Endpoint untuk feedback dari user
 app.post("/ai/feedback", (req, res) => {
@@ -4875,6 +4829,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
