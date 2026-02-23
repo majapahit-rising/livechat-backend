@@ -2015,19 +2015,15 @@ app.post("/push/register", (req, res) => {
     // ======================================================
     // UPDATE AI RESPONSE
     // ======================================================
-    await db.promise().query(
-      `
+    await db.promise().query(`
       UPDATE chatbot_conversations
-      SET faq_ids_used = ?,
-          response_time_ms = ?
-      WHERE id = ?
-      `,
-      [
-        JSON.stringify(n8nData.faq_ids_used || []),
-        Date.now() - startTime,
-        conversationRowId // ✅ BENAR
-      ]
-    );
+      SET
+        ai_response = ?
+      WHERE session_id = ?
+    `, [
+      aiReply
+      sessionId
+    ]);
 
     // ======================================================
     // RESPONSE
@@ -4823,6 +4819,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
