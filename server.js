@@ -1853,6 +1853,13 @@ app.post("/push/register", (req, res) => {
     // ======================================================
     // SAVE USER MESSAGE
     // ======================================================
+    console.log("🔥 DB INSERT", {
+      session_id: sessionId,
+      user_message: message,
+      source: req.body.source || 'unknown',
+      time: new Date().toISOString(),
+      ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
+    });
     await db.promise().query(
       `
       INSERT INTO chatbot_conversations
@@ -4819,6 +4826,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
