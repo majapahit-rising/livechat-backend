@@ -1831,6 +1831,26 @@ app.post("/push/register", (req, res) => {
       null;
 
     // ======================================================
+      // RESOLVE ACTIVE PROMPT (SOURCE OF TRUTH)
+      // ======================================================
+      const [promptRows] = await db.promise().query(
+        `
+        SELECT id
+        FROM chatbot_prompts
+        WHERE agent_type = ?
+          AND is_active = 1
+          AND status = 'active'
+        ORDER BY activated_at DESC, id DESC
+        LIMIT 1
+        `,
+        [finalAgentType]
+      );
+      
+      const resolvedPromptId = promptRows.length
+        ? promptRows[0].id
+        : null;
+
+    // ======================================================
     // SAVE USER MESSAGE
     // ======================================================
     await db.promise().query(
@@ -1904,27 +1924,6 @@ app.post("/push/register", (req, res) => {
       const durationSeconds = Math.floor(
         (endedAt - new Date(startedAt)) / 1000
       );
-
-
-      // ======================================================
-      // RESOLVE ACTIVE PROMPT (SOURCE OF TRUTH)
-      // ======================================================
-      const [promptRows] = await db.promise().query(
-        `
-        SELECT id
-        FROM chatbot_prompts
-        WHERE agent_type = ?
-          AND is_active = 1
-          AND status = 'active'
-        ORDER BY activated_at DESC, id DESC
-        LIMIT 1
-        `,
-        [finalAgentType]
-      );
-      
-      const resolvedPromptId = promptRows.length
-        ? promptRows[0].id
-        : null;
       
 
       // ======================================================
@@ -4871,6 +4870,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
