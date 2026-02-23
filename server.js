@@ -2016,10 +2016,11 @@ app.post("/push/register", (req, res) => {
     // ======================================================
     // UPDATE AI RESPONSE
     // ======================================================
+    const faqData = n8nData?.data || {};
     console.log("🔥 FAQ UPDATE PAYLOAD", {
       conversationId,
-      faq_ids_used: n8nData.faq_ids_used,
-      confidence: n8nData.confidence
+      faq_ids_used: n8nData.data.faq_ids_used,
+      confidence: n8nData.data.confidence
     });
     await db.promise().query(`
       UPDATE chatbot_conversations
@@ -2032,8 +2033,8 @@ app.post("/push/register", (req, res) => {
       WHERE id = ?
     `, [
       aiReply,
-      JSON.stringify(n8nData.faq_ids_used || []),
-      n8nData.confidence ?? null,
+      JSON.stringify(faqData.faq_ids_used || []),
+      faqData.confidence ?? null,
       n8nData.tokens_used ?? null,
       Date.now() - startTime,
       conversationId
@@ -4833,6 +4834,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
