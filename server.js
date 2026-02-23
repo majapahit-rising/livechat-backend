@@ -1853,14 +1853,7 @@ app.post("/push/register", (req, res) => {
     // ======================================================
     // SAVE USER MESSAGE
     // ======================================================
-    console.log("🔥 DB INSERT", {
-      session_id: sessionId,
-      user_message: message,
-      source: req.body.source || 'unknown',
-      time: new Date().toISOString(),
-      ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
-    });
-    await db.promise().query(
+    const [result] = await db.promise().query(
       `
       INSERT INTO chatbot_conversations
       (
@@ -1887,6 +1880,7 @@ app.post("/push/register", (req, res) => {
         message
       ]
     );
+    const conversationId = result.insertId;
     
     // ======================================================
     // END CONVERSATION CHECK
@@ -2022,6 +2016,11 @@ app.post("/push/register", (req, res) => {
     // ======================================================
     // UPDATE AI RESPONSE
     // ======================================================
+    console.log("🔥 FAQ UPDATE PAYLOAD", {
+      conversationId,
+      faq_ids_used: n8nData.faq_ids_used,
+      confidence: n8nData.confidence
+    });
     await db.promise().query(`
       UPDATE chatbot_conversations
       SET
@@ -2031,15 +2030,13 @@ app.post("/push/register", (req, res) => {
         tokens_used = ?,
         response_time_ms = ?
       WHERE session_id = ?
-      ORDER BY id DESC
-      LIMIT 1
     `, [
       aiReply,
       JSON.stringify(n8nData.faq_ids_used || []),
       n8nData.confidence ?? null,
       n8nData.tokens_used ?? null,
       Date.now() - startTime,
-      sessionId
+      conversationId
     ]);
 
     // ======================================================
@@ -4836,6 +4833,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
