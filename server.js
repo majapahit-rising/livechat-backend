@@ -2055,12 +2055,14 @@ app.post("/push/register", (req, res) => {
     await db.promise().query(`
       UPDATE chatbot_conversations
       SET
+        ai_response = ?,
         faq_ids_used = ?,
         confidence = ?,
         tokens_used = ?,
         response_time_ms = ?
       WHERE id = ?
     `, [
+      aiReply,
       JSON.stringify(faqData.faq_ids_used), // dari FAQ API
       faqData.confidence,                   // dari FAQ API
       n8nData?.tokens_used ?? null,
@@ -4862,6 +4864,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
