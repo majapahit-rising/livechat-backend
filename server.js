@@ -2016,28 +2016,53 @@ app.post("/push/register", (req, res) => {
     // ======================================================
     // UPDATE AI RESPONSE
     // ======================================================
-    const faqData = n8nData?.data || {};
+    let faqData = {
+      faq_ids_used: [],
+      confidence: null
+    };
+    
+    try {
+      const faqRes = await fetch(
+        `https://demo-crm.ihubtechnologies.com.au/api/chatbot/faq/search?query=${encodeURIComponent(userMessage)}`,
+        {
+          method: "GET",
+          headers: {
+            "Accept": "application/json"
+          }
+        }
+      );
+    
+      if (faqRes.ok) {
+        const faqJson = await faqRes.json();
+    
+        faqData.faq_ids_used = faqJson.faq_ids_used || [];
+        faqData.confidence   = faqJson.confidence ?? null;
+      } else {
+        console.warn("⚠ FAQ API failed:", faqRes.status);
+      }
+    
+    } catch (err) {
+      console.error("❌ FAQ API error:", err.message);
+    }
 
     console.log("🔥 FAQ UPDATE PAYLOAD", {
       conversationId,
-      faq_ids_used: faqData.faq_ids_used ?? [],
-      confidence: faqData.confidence ?? null,
-      hasData: !!n8nData?.data
+      faq_ids_used: faqData.faq_ids_used,
+      confidence: faqData.confidence,
+      hasFaq: faqData.faq_ids_used.length > 0
     });
     
     await db.promise().query(`
       UPDATE chatbot_conversations
       SET
-        ai_response = ?,
         faq_ids_used = ?,
         confidence = ?,
         tokens_used = ?,
         response_time_ms = ?
       WHERE id = ?
     `, [
-      aiReply,
-      JSON.stringify(faqData.faq_ids_used || []),
-      faqData.confidence ?? null,
+      JSON.stringify(faqData.faq_ids_used), // dari FAQ API
+      faqData.confidence,                   // dari FAQ API
       n8nData?.tokens_used ?? null,
       Date.now() - startTime,
       conversationId
@@ -4837,6 +4862,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
