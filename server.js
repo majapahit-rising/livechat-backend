@@ -2029,7 +2029,7 @@ app.post("/push/register", (req, res) => {
         confidence = ?,
         tokens_used = ?,
         response_time_ms = ?
-      WHERE session_id = ?
+      WHERE id = ?
     `, [
       aiReply,
       JSON.stringify(n8nData.faq_ids_used || []),
@@ -4833,6 +4833,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
