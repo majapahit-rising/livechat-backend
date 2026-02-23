@@ -2019,13 +2019,11 @@ app.post("/push/register", (req, res) => {
       `
       UPDATE chatbot_conversations
       SET ai_response = ?,
-      faq_ids_used = ?,
-      confidence = ?,
-      tokens_used = ?,
-      response_time_ms = ?
-      WHERE session_id = ?
-      ORDER BY id DESC
-      LIMIT 1
+          faq_ids_used = ?,
+          confidence = ?,
+          tokens_used = ?,
+          response_time_ms = ?
+      WHERE id = ?
       `,
       [
         aiReply,
@@ -2033,7 +2031,7 @@ app.post("/push/register", (req, res) => {
         n8nData.confidence ?? null,
         n8nData.tokens_used ?? null,
         Date.now() - startTime,
-        conversationRowId
+        conversationRowId // ✅ BENAR
       ]
     );
 
@@ -4877,6 +4875,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
