@@ -1771,7 +1771,6 @@ app.post("/push/register", (req, res) => {
   }
 
   try {
-    console.log("BODY DEBUG:", req.body);
 
     const {
       session_id,
@@ -2044,13 +2043,6 @@ app.post("/push/register", (req, res) => {
     } catch (err) {
       console.error("❌ FAQ API error:", err.message);
     }
-
-    console.log("🔥 FAQ UPDATE PAYLOAD", {
-      conversationId,
-      faq_ids_used: faqData.faq_ids_used,
-      confidence: faqData.confidence,
-      hasFaq: faqData.faq_ids_used.length > 0
-    });
     
     await db.promise().query(`
       UPDATE chatbot_conversations
@@ -4864,6 +4856,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
