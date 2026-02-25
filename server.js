@@ -221,6 +221,26 @@ const callSessions = new Map();
 //     })
 //   }).then(r => r.json());
 
+async function insertLearningQueue({ sessionId, question, answer }) {
+  try {
+    await queryAsync(`
+      INSERT INTO chatbot_learning_queue
+      (source_type, source_id, proposed_question, proposed_answer, confidence_score, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'pending_review', NOW(), NOW())
+    `, [
+      'conversation',
+      sessionId,
+      question,
+      answer,
+      0.80 // default confidence
+    ]);
+
+    console.log("🧠 Learning queue inserted");
+  } catch (err) {
+    console.error("❌ Learning queue insert failed:", err);
+  }
+}
+
 
 wss.on("connection", (ws) => {
   ws.sessionId = crypto.randomUUID();
@@ -460,6 +480,7 @@ wss.on("connection", (ws) => {
                     }
                 
                     session.history.push({ role: "user", content: text });
+                    session.lastUserMessage = text;
                     session.context = session.context || {};
                 
                     const extractedPostcode = extractPostcode(text);
@@ -528,6 +549,16 @@ wss.on("connection", (ws) => {
                 }
                 if (session) {
                   session.history.push({ role: "assistant", content: text });
+                  // ✅ INSERT INTO LEARNING QUEUE
+                  if (session.lastUserMessage) {
+                    await insertLearningQueue({
+                      sessionId: ws.sessionId,
+                      question: session.lastUserMessage,
+                      answer: text
+                    });
+              
+                    session.lastUserMessage = null; // reset supaya tidak double
+                  }
                 }
                 break;
               }
@@ -4856,6 +4887,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
