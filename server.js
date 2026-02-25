@@ -522,41 +522,68 @@ wss.on("connection", (ws) => {
             switch (event.type) {
 
               // --- Metadata (log only) ---
-              case "conversation_initiation_metadata": {
-                // ⛔ Guard agar tidak double-trigger
-                if (ws.welcomeSent) break;
-                ws.welcomeSent = true;
-              
+                case "conversation_initiation_metadata": {
                 ws.elReady = true;
-              
-                const meta = event.conversation_initiation_metadata_event;
-                console.log("📋 ElevenLabs session:", meta.conversation_id);
-              
-                // 1️⃣ WAJIB: kirim config override (prompt agent)
+              console.log("EL READY:", ws.elReady);
                 elWs.send(JSON.stringify({
                   type: "conversation_initiation_client_data",
                   conversation_config_override: {
                     agent: {
-                      prompt: {
-                        prompt: systemPrompt
-                      },
+                      prompt: { prompt: systemPrompt },
                       language: "en"
                     }
                   }
                 }));
               
-                // 2️⃣ KIRIM WELCOME MESSAGE SEBAGAI TTS
-                if (ws.welcomeMessage) {
-                  console.log("🎤 Sending welcome TTS:", ws.welcomeMessage);
+                // ✅ DELAY AMAN
+                setTimeout(() => {
+                  if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
+                    console.log("🎤 Sending welcome TTS (delayed)");
               
-                  elWs.send(JSON.stringify({
-                    type: "text_to_speech",
-                    text: ws.welcomeMessage
-                  }));
-                }
+                    elWs.send(JSON.stringify({
+                      type: "text_to_speech",
+                      text: ws.welcomeMessage
+                    }));
+                  }
+                }, 400);
               
                 break;
               }
+              // case "conversation_initiation_metadata": {
+              //   // ⛔ Guard agar tidak double-trigger
+              //   if (ws.welcomeSent) break;
+              //   ws.welcomeSent = true;
+              
+              //   ws.elReady = true;
+              
+              //   const meta = event.conversation_initiation_metadata_event;
+              //   console.log("📋 ElevenLabs session:", meta.conversation_id);
+              
+              //   // 1️⃣ WAJIB: kirim config override (prompt agent)
+              //   elWs.send(JSON.stringify({
+              //     type: "conversation_initiation_client_data",
+              //     conversation_config_override: {
+              //       agent: {
+              //         prompt: {
+              //           prompt: systemPrompt
+              //         },
+              //         language: "en"
+              //       }
+              //     }
+              //   }));
+              
+              //   // 2️⃣ KIRIM WELCOME MESSAGE SEBAGAI TTS
+              //   if (ws.welcomeMessage) {
+              //     console.log("🎤 Sending welcome TTS:", ws.welcomeMessage);
+              
+              //     elWs.send(JSON.stringify({
+              //       type: "text_to_speech",
+              //       text: ws.welcomeMessage
+              //     }));
+              //   }
+              
+              //   break;
+              // }
 
 
                 
@@ -5118,6 +5145,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
