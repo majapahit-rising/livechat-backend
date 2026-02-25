@@ -224,31 +224,48 @@ const callSessions = new Map();
 async function summarizeConversation(sessionId) {
   try {
     const rows = await queryAsync(`
-      SELECT user_message, ai_response, created_at
+      SELECT user_message, ai_response
       FROM chatbot_conversations
       WHERE session_id = ?
       ORDER BY created_at ASC
     `, [sessionId]);
 
-    if (!rows.length) return null;
+    if (!rows.length) {
+      return "Session ended with no recorded conversation.";
+    }
 
     const conversationText = rows
-      .map(r => `User: ${r.user_message || ""}\nAI: ${r.ai_response || ""}`)
+      .map(r => {
+        let text = "";
+        if (r.user_message) text += `User: ${r.user_message}\n`;
+        if (r.ai_response) text += `AI: ${r.ai_response}\n`;
+        return text;
+      })
       .join("\n");
+
+    if (!conversationText.trim()) {
+      return "Session had empty messages.";
+    }
 
     const aiResp = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: `Summarize this conversation in 3 concise sentences:\n${conversationText}`
+      input: `
+Summarize this support call in 3 concise sentences.
+Focus on:
+- Main intent
+- Key data mentioned
+- Outcome
+
+Conversation:
+${conversationText}
+      `
     });
 
-    const summary =
-      aiResp.output?.[0]?.content?.[0]?.text || null;
-
-    return summary;
+    return aiResp.output?.[0]?.content?.[0]?.text || null;
 
   } catch (err) {
     console.error("❌ SUMMARY ERROR:", err.message);
-    return null;
+    return "Summary generation failed.";
   }
 }
 
@@ -598,40 +615,41 @@ wss.on("connection", (ws) => {
               
                 session.history.push({ role: "assistant", content: text });
               
-                const userMessage = session.lastUserMessage;
-              
+               const userMessage = session.lastUserMessage || null;
+
+                // 1️⃣ ALWAYS insert conversation turn
+                await queryAsync(`
+                  INSERT INTO chatbot_conversations
+                  (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+                `, [
+                  ws.sessionId,
+                  session.agent,
+                  session.promptId,
+                  userMessage,
+                  text,
+                  0.90
+                ]);
+                
+                // 2️⃣ Update counters correctly
+                await queryAsync(`
+                  UPDATE chatbot_conversation_sessions
+                  SET total_messages = total_messages + 1,
+                      ai_messages = ai_messages + 1
+                  WHERE session_id = ?
+                `, [ws.sessionId]);
+                
+                // 3️⃣ Insert learning queue ONLY if real Q&A
                 if (userMessage) {
-              
-                  // 1️⃣ INSERT conversation turn
-                  await queryAsync(`
-                    INSERT INTO chatbot_conversations
-                    (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-                  `, [
-                    ws.sessionId,
-                    session.agent,
-                    session.promptId,
-                    userMessage,
-                    text,
-                    0.90
-                  ]);
-              
-                  // 2️⃣ UPDATE session counters
-                  await queryAsync(`
-                    UPDATE chatbot_conversation_sessions
-                    SET total_messages = total_messages + 2,
-                        ai_messages = ai_messages + 1
-                    WHERE session_id = ?
-                  `, [ws.sessionId]);
-              
-                  // 3️⃣ INSERT learning queue
                   await insertLearningQueue({
                     sessionId: ws.sessionId,
                     question: userMessage,
                     answer: text
                   });
-              
-                  session.lastUserMessage = null;
+                }
+                
+                // 4️⃣ Reset buffer
+                session.lastUserMessage = null;
                 }
               
                 break;
@@ -4980,6 +4998,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
