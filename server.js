@@ -543,9 +543,7 @@ wss.on("connection", (ws) => {
                   
                     elWs.send(JSON.stringify({
                       type: "user_input",
-                      user_input_event: {
-                        text: "hello"
-                      }
+                      text: "hello"
                     }));
                   }, 400);
                   // setTimeout(() => {
@@ -5161,6 +5159,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
