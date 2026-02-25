@@ -411,10 +411,10 @@ wss.on("connection", (ws) => {
           const firstMessage = welcomeRows[0].message_text.trim();
           // 1️⃣ Send text to browser
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: "ai-text",
-              text: firstMessage
-            }));
+            // ws.send(JSON.stringify({
+            //   type: "ai-text",
+            //   text: firstMessage
+            // }));
           }
           
           // 2️⃣ Save to DB as first AI message
@@ -463,14 +463,40 @@ wss.on("connection", (ws) => {
             switch (event.type) {
 
               // --- Metadata (log only) ---
-              case "conversation_initiation_metadata": {
+                case "conversation_initiation_metadata": {
                 ws.elReady = true;
-                const meta = event.conversation_initiation_metadata_event;
-                console.log("📋 ElevenLabs session:", meta.conversation_id);
-                console.log("   Input format:", meta.user_input_audio_format);
-                console.log("   Output format:", meta.agent_output_audio_format);
+              
+                // 🔊 Trigger welcome TTS from ElevenLabs
+                const session = callSessions.get(ws.sessionId);
+                if (session?.systemPrompt) {
+              
+                  const welcomeRows = await queryAsync(`
+                    SELECT message_text
+                    FROM chatbot_welcome_messages
+                    WHERE is_active = 1
+                    ORDER BY activated_at DESC, id DESC
+                    LIMIT 1
+                  `);
+              
+                  const firstMessage = welcomeRows?.[0]?.message_text?.trim();
+                  if (firstMessage) {
+                    elWs.send(JSON.stringify({
+                      type: "assistant_message",
+                      assistant_message: firstMessage
+                    }));
+                  }
+                }
+              
                 break;
               }
+              // case "conversation_initiation_metadata": {
+              //   ws.elReady = true;
+              //   const meta = event.conversation_initiation_metadata_event;
+              //   console.log("📋 ElevenLabs session:", meta.conversation_id);
+              //   console.log("   Input format:", meta.user_input_audio_format);
+              //   console.log("   Output format:", meta.agent_output_audio_format);
+              //   break;
+              // }
 
               // --- User transcript (STT result) ---
               // case "user_transcript": {
@@ -5021,6 +5047,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
