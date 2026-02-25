@@ -498,17 +498,17 @@ wss.on("connection", (ws) => {
             WHERE session_id = ?
           `, [ws.sessionId]);
         
-          elWs.send(JSON.stringify({
-            type: "conversation_initiation_client_data",
-            conversation_config_override: {
-              agent: {
-                prompt: {
-                  prompt: systemPrompt
-                },
-                language: "en"
-              }
-            }
-          }));
+          // elWs.send(JSON.stringify({
+          //   type: "conversation_initiation_client_data",
+          //   conversation_config_override: {
+          //     agent: {
+          //       prompt: {
+          //         prompt: systemPrompt
+          //       },
+          //       language: "en"
+          //     }
+          //   }
+          // }));
         });
 
         // ======================================================
@@ -5118,6 +5118,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
