@@ -292,28 +292,34 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 
 
 async function generateTTS(text) {
-  const voiceId = "21m00Tcm4TlvDq8ikWAM";
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
 
-  const response = await axios({
-    method: "POST",
-    url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-    headers: {
-      "xi-api-key": process.env.ELEVENLABS_API_KEY,
-      "Content-Type": "application/json",
-      "Accept": "audio/mpeg"
-    },
-    responseType: "arraybuffer",
-    data: {
-      text: text,
-      model_id: "eleven_monolingual_v1",
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.8
-      }
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=pcm_16000`,
+    {
+      method: "POST",
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text,
+        model_id: "eleven_monolingual_v1",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.8
+        }
+      })
     }
-  });
+  );
 
-  return Buffer.from(response.data);
+  if (!response.ok) {
+    throw new Error("TTS request failed: " + response.status);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+
+  return Buffer.from(arrayBuffer);
 }
 
 
@@ -5126,6 +5132,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
