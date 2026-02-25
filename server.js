@@ -464,12 +464,8 @@ wss.on("connection", (ws) => {
 
               // --- Metadata (log only) ---
                 case "conversation_initiation_metadata": {
-                ws.elReady = true;
-              
-                // 🔊 Trigger welcome TTS from ElevenLabs
-                const session = callSessions.get(ws.sessionId);
-                if (session?.systemPrompt) {
-              
+                  ws.elReady = true;
+                
                   const welcomeRows = await queryAsync(`
                     SELECT message_text
                     FROM chatbot_welcome_messages
@@ -477,18 +473,22 @@ wss.on("connection", (ws) => {
                     ORDER BY activated_at DESC, id DESC
                     LIMIT 1
                   `);
-              
+                
                   const firstMessage = welcomeRows?.[0]?.message_text?.trim();
+                
                   if (firstMessage) {
+                    console.log("📤 Sending welcome to ElevenLabs:", firstMessage);
+                
                     elWs.send(JSON.stringify({
                       type: "assistant_message",
-                      assistant_message: firstMessage
+                      assistant_message: {
+                        text: firstMessage
+                      }
                     }));
                   }
+                
+                  break;
                 }
-              
-                break;
-              }
               // case "conversation_initiation_metadata": {
               //   ws.elReady = true;
               //   const meta = event.conversation_initiation_metadata_event;
@@ -5047,6 +5047,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
