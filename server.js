@@ -615,9 +615,8 @@ wss.on("connection", (ws) => {
               
                 session.history.push({ role: "assistant", content: text });
               
-               const userMessage = session.lastUserMessage || null;
-
-                // 1️⃣ ALWAYS insert conversation turn
+                const userMessage = session.lastUserMessage || null;
+              
                 await queryAsync(`
                   INSERT INTO chatbot_conversations
                   (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
@@ -630,16 +629,14 @@ wss.on("connection", (ws) => {
                   text,
                   0.90
                 ]);
-                
-                // 2️⃣ Update counters correctly
+              
                 await queryAsync(`
                   UPDATE chatbot_conversation_sessions
                   SET total_messages = total_messages + 1,
                       ai_messages = ai_messages + 1
                   WHERE session_id = ?
                 `, [ws.sessionId]);
-                
-                // 3️⃣ Insert learning queue ONLY if real Q&A
+              
                 if (userMessage) {
                   await insertLearningQueue({
                     sessionId: ws.sessionId,
@@ -647,10 +644,8 @@ wss.on("connection", (ws) => {
                     answer: text
                   });
                 }
-                
-                // 4️⃣ Reset buffer
+              
                 session.lastUserMessage = null;
-                }
               
                 break;
               }
@@ -4998,6 +4993,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
