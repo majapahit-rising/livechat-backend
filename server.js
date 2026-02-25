@@ -523,36 +523,38 @@ wss.on("connection", (ws) => {
 
               // --- Metadata (log only) ---
                 case "conversation_initiation_metadata": {
-                ws.elReady = true;
-                console.log("EL READY:", ws.elReady);
-              
-                // 1️⃣ Override prompt agent (WAJIB)
-                elWs.send(JSON.stringify({
-                  type: "conversation_initiation_client_data",
-                  conversation_config_override: {
-                    agent: {
-                      prompt: { prompt: systemPrompt },
-                      language: "en"
-                    }
-                  }
-                }));
-              
-                // 2️⃣ BIARKAN AGENT MENGUCAPKAN WELCOME
-                setTimeout(() => {
-                  if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
-                    console.log("🤖 Agent speaking welcome");
-              
-                    elWs.send(JSON.stringify({
-                      type: "agent_input",
-                      agent_input_event: {
-                        input: ws.welcomeMessage
+                  ws.elReady = true;
+                  console.log("EL READY:", ws.elReady);
+                
+                  // 1️⃣ Override agent prompt
+                  elWs.send(JSON.stringify({
+                    type: "conversation_initiation_client_data",
+                    conversation_config_override: {
+                      agent: {
+                        prompt: { prompt: systemPrompt },
+                        language: "en"
                       }
-                    }));
-                  }
-                }, 300);
-              
-                break;
-              }
+                    }
+                  }));
+                
+                  // 2️⃣ SYSTEM FIRST TURN (WELCOME)
+                  setTimeout(() => {
+                    if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
+                      console.log("🤖 Agent speaking welcome (first turn)");
+                
+                      elWs.send(JSON.stringify({
+                        type: "agent_input",
+                        agent_input_event: {
+                          role: "system",
+                          input: ws.welcomeMessage,
+                          is_first_turn: true
+                        }
+                      }));
+                    }
+                  }, 400);
+                
+                  break;
+                }
               // case "conversation_initiation_metadata": {
               //   // ⛔ Guard agar tidak double-trigger
               //   if (ws.welcomeSent) break;
@@ -5149,6 +5151,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
