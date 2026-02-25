@@ -539,19 +539,29 @@ wss.on("connection", (ws) => {
                 
                   // 2️⃣ SYSTEM FIRST TURN (WELCOME)
                   setTimeout(() => {
-                    if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
-                      console.log("🤖 Agent speaking welcome (first turn)");
-                
-                      elWs.send(JSON.stringify({
-                        type: "agent_input",
-                        agent_input_event: {
-                          role: "system",
-                          input: ws.welcomeMessage,
-                          is_first_turn: true
-                        }
-                      }));
-                    }
+                    console.log("👤 Triggering user turn for welcome");
+                  
+                    elWs.send(JSON.stringify({
+                      type: "user_input",
+                      user_input_event: {
+                        text: "hello"
+                      }
+                    }));
                   }, 400);
+                  // setTimeout(() => {
+                  //   if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
+                  //     console.log("🤖 Agent speaking welcome (first turn)");
+                
+                  //     elWs.send(JSON.stringify({
+                  //       type: "agent_input",
+                  //       agent_input_event: {
+                  //         role: "system",
+                  //         input: ws.welcomeMessage,
+                  //         is_first_turn: true
+                  //       }
+                  //     }));
+                  //   }
+                  // }, 400);
                 
                   break;
                 }
@@ -5151,6 +5161,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
