@@ -221,6 +221,37 @@ const callSessions = new Map();
 //     })
 //   }).then(r => r.json());
 
+async function summarizeConversation(sessionId) {
+  try {
+    const rows = await queryAsync(`
+      SELECT user_message, ai_response, created_at
+      FROM chatbot_conversations
+      WHERE session_id = ?
+      ORDER BY created_at ASC
+    `, [sessionId]);
+
+    if (!rows.length) return null;
+
+    const conversationText = rows
+      .map(r => `User: ${r.user_message || ""}\nAI: ${r.ai_response || ""}`)
+      .join("\n");
+
+    const aiResp = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: `Summarize this conversation in 3 concise sentences:\n${conversationText}`
+    });
+
+    const summary =
+      aiResp.output?.[0]?.content?.[0]?.text || null;
+
+    return summary;
+
+  } catch (err) {
+    console.error("❌ SUMMARY ERROR:", err.message);
+    return null;
+  }
+}
+
 async function insertLearningQueue({ sessionId, question, answer }) {
   try {
     await queryAsync(`
@@ -685,22 +716,32 @@ wss.on("connection", (ws) => {
   // ======================================================
   // DISCONNECT
   // ======================================================
-  ws.on("close", async () => {
-    console.log("❌ Client disconnected", ws.sessionId);
-    // ============================================
-      // CLOSE SESSION
-      // ============================================
-      await queryAsync(`
-        UPDATE chatbot_conversation_sessions
-        SET ended_at = NOW(),
-            session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW())
-        WHERE session_id = ?
-      `, [ws.sessionId]);
-    if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-      ws.elWs.close();
-    }
-    callSessions.delete(ws.sessionId);
-  });
+ ws.on("close", async () => {
+  console.log("❌ Client disconnected", ws.sessionId);
+
+  try {
+    // 1️⃣ Generate summary
+    const summary = await summarizeConversation(ws.sessionId);
+
+    // 2️⃣ Update session
+    await queryAsync(`
+      UPDATE chatbot_conversation_sessions
+      SET ended_at = NOW(),
+          session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
+          conversation_summary = ?
+      WHERE session_id = ?
+    `, [summary, ws.sessionId]);
+
+  } catch (err) {
+    console.error("❌ Session close error:", err);
+  }
+
+  if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+    ws.elWs.close();
+  }
+
+  callSessions.delete(ws.sessionId);
+});
 
 
 });
@@ -4939,6 +4980,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
