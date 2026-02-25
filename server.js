@@ -524,7 +524,9 @@ wss.on("connection", (ws) => {
               // --- Metadata (log only) ---
                 case "conversation_initiation_metadata": {
                 ws.elReady = true;
-              console.log("EL READY:", ws.elReady);
+                console.log("EL READY:", ws.elReady);
+              
+                // 1️⃣ Override prompt agent (WAJIB)
                 elWs.send(JSON.stringify({
                   type: "conversation_initiation_client_data",
                   conversation_config_override: {
@@ -535,17 +537,19 @@ wss.on("connection", (ws) => {
                   }
                 }));
               
-                // ✅ DELAY AMAN
+                // 2️⃣ BIARKAN AGENT MENGUCAPKAN WELCOME
                 setTimeout(() => {
                   if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
-                    console.log("🎤 Sending welcome TTS (delayed)");
+                    console.log("🤖 Agent speaking welcome");
               
                     elWs.send(JSON.stringify({
-                      type: "text_to_speech",
-                      text: ws.welcomeMessage
+                      type: "agent_input",
+                      agent_input_event: {
+                        input: ws.welcomeMessage
+                      }
                     }));
                   }
-                }, 400);
+                }, 300);
               
                 break;
               }
@@ -5145,6 +5149,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
