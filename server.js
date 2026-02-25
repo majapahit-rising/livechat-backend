@@ -393,58 +393,58 @@ wss.on("connection", (ws) => {
         ws.elWs = elWs;
 
         elWs.on("open", async () => {
-          console.log("🟢 ConvAI connected");
+          // console.log("🟢 ConvAI connected");
         
-          const welcomeRows = await queryAsync(`
-            SELECT message_text
-            FROM chatbot_welcome_messages
-            WHERE is_active = 1
-            ORDER BY activated_at DESC, id DESC
-            LIMIT 1
-          `);
+          // const welcomeRows = await queryAsync(`
+          //   SELECT message_text
+          //   FROM chatbot_welcome_messages
+          //   WHERE is_active = 1
+          //   ORDER BY activated_at DESC, id DESC
+          //   LIMIT 1
+          // `);
         
-          if (!welcomeRows?.length) return;
+          // if (!welcomeRows?.length) return;
         
-          const firstMessage = welcomeRows[0].message_text.trim();
+          // const firstMessage = welcomeRows[0].message_text.trim();
         
-          // 1️⃣ Kirim text ke browser
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: "ai-text",
-              text: firstMessage
-            }));
-          }
+          // // 1️⃣ Kirim text ke browser
+          // if (ws.readyState === WebSocket.OPEN) {
+          //   ws.send(JSON.stringify({
+          //     type: "ai-text",
+          //     text: firstMessage
+          //   }));
+          // }
         
-          // 2️⃣ Generate TTS dari REST
-          const audioBuffer = await generateTTS(firstMessage);
+          // // 2️⃣ Generate TTS dari REST
+          // // const audioBuffer = await generateTTS(firstMessage);
         
-          // 3️⃣ Kirim audio ke browser
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(audioBuffer);
-          }
+          // // 3️⃣ Kirim audio ke browser
+          // // if (ws.readyState === WebSocket.OPEN) {
+          // //   ws.send(audioBuffer);
+          // // }
         
-          // 4️⃣ Simpan ke DB
-          await queryAsync(`
-            INSERT INTO chatbot_conversations
-            (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-          `, [
-            ws.sessionId,
-            prompt.agent_type,
-            prompt.id,
-            null,
-            firstMessage,
-            1.0
-          ]);
+          // // 4️⃣ Simpan ke DB
+          // await queryAsync(`
+          //   INSERT INTO chatbot_conversations
+          //   (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
+          //   VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+          // `, [
+          //   ws.sessionId,
+          //   prompt.agent_type,
+          //   prompt.id,
+          //   null,
+          //   firstMessage,
+          //   1.0
+          // ]);
         
           // 5️⃣ Update counter
-          await queryAsync(`
-            UPDATE chatbot_conversation_sessions
-            SET total_messages = total_messages + 1,
-                ai_messages = ai_messages + 1
-            WHERE session_id = ?
-          `, [ws.sessionId]);
-        });
+        //   await queryAsync(`
+        //     UPDATE chatbot_conversation_sessions
+        //     SET total_messages = total_messages + 1,
+        //         ai_messages = ai_messages + 1
+        //     WHERE session_id = ?
+        //   `, [ws.sessionId]);
+        // });
 
         // elWs.on("open", async () => {
           // console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
@@ -505,7 +505,7 @@ wss.on("connection", (ws) => {
           //     }
           //   }
           // }));
-        // });
+        });
 
         // ======================================================
         // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
@@ -518,38 +518,86 @@ wss.on("connection", (ws) => {
             switch (event.type) {
 
               // --- Metadata (log only) ---
-              //   case "conversation_initiation_metadata": {
-              //   ws.elReady = true;
-              
-              //   const welcomeRows = await queryAsync(`
-              //     SELECT message_text
-              //     FROM chatbot_welcome_messages
-              //     WHERE is_active = 1
-              //     ORDER BY activated_at DESC, id DESC
-              //     LIMIT 1
-              //   `);
-              
-              //   const firstMessage = welcomeRows?.[0]?.message_text?.trim();
-              
-              //   if (firstMessage) {
-              //     console.log("🔊 Sending welcome via TTS:", firstMessage);
-              
-              //     elWs.send(JSON.stringify({
-              //       type: "text_to_speech",
-              //       text: firstMessage
-              //     }));
-              //   }
-              
-              //   break;
-              // }
               case "conversation_initiation_metadata": {
+               if (ws.welcomeSent) break;
+                ws.welcomeSent = true;
+              
                 ws.elReady = true;
+              
                 const meta = event.conversation_initiation_metadata_event;
                 console.log("📋 ElevenLabs session:", meta.conversation_id);
-                console.log("   Input format:", meta.user_input_audio_format);
-                console.log("   Output format:", meta.agent_output_audio_format);
+              
+                // 🔹 WAJIB kirim config override dulu
+                elWs.send(JSON.stringify({
+                  type: "conversation_initiation_client_data",
+                  conversation_config_override: {
+                    agent: {
+                      prompt: {
+                        prompt: systemPrompt
+                      },
+                      language: "en"
+                    }
+                  }
+                }));
+              
+                const welcomeRows = await queryAsync(`
+                  SELECT message_text
+                  FROM chatbot_welcome_messages
+                  WHERE is_active = 1
+                  ORDER BY activated_at DESC, id DESC
+                  LIMIT 1
+                `);
+              
+                if (!welcomeRows?.length) break;
+              
+                const firstMessage = welcomeRows[0].message_text.trim();
+              
+                // tampilkan text
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({
+                    type: "ai-text",
+                    text: firstMessage
+                  }));
+                }
+              
+                // 🔹 kirim TTS SETELAH config
+                elWs.send(JSON.stringify({
+                  type: "text_to_speech",
+                  text: firstMessage
+                }));
+              
+                // 3️⃣ simpan ke DB
+                await queryAsync(`
+                  INSERT INTO chatbot_conversations
+                  (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+                `, [
+                  ws.sessionId,
+                  prompt.agent_type,
+                  prompt.id,
+                  null,
+                  firstMessage,
+                  1.0
+                ]);
+              
+                // 4️⃣ update counter
+                await queryAsync(`
+                  UPDATE chatbot_conversation_sessions
+                  SET total_messages = total_messages + 1,
+                      ai_messages = ai_messages + 1
+                  WHERE session_id = ?
+                `, [ws.sessionId]);
+              
                 break;
               }
+              // case "conversation_initiation_metadata": {
+              //   ws.elReady = true;
+              //   const meta = event.conversation_initiation_metadata_event;
+              //   console.log("📋 ElevenLabs session:", meta.conversation_id);
+              //   console.log("   Input format:", meta.user_input_audio_format);
+              //   console.log("   Output format:", meta.agent_output_audio_format);
+              //   break;
+              // }
 
               // --- User transcript (STT result) ---
               // case "user_transcript": {
@@ -5100,6 +5148,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
