@@ -464,7 +464,7 @@ wss.on("connection", (ws) => {
           }
         
           const firstMessage = welcomeRows[0].message_text.trim();
-          1️⃣ Send text to browser
+          //1️⃣ Send text to browser
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
               type: "ai-text",
@@ -472,7 +472,7 @@ wss.on("connection", (ws) => {
             }));
           }
           
-          2️⃣ Save to DB as first AI message
+          //2️⃣ Save to DB as first AI message
           await queryAsync(`
             INSERT INTO chatbot_conversations
             (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
@@ -486,7 +486,7 @@ wss.on("connection", (ws) => {
             1.0
           ]);
           
-          3️⃣ Update counters
+          //3️⃣ Update counters
           await queryAsync(`
             UPDATE chatbot_conversation_sessions
             SET total_messages = total_messages + 1,
@@ -5148,6 +5148,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
