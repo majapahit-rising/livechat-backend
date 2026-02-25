@@ -312,8 +312,22 @@ wss.on("connection", (ws) => {
       Always stay in this role.
             `.trim();
 
+       // ============================================
+      // CREATE SESSION RECORD
+      // ============================================
+      await queryAsync(`
+        INSERT INTO chatbot_conversation_sessions
+        (session_id, conversation_id, agent_type, user_name, user_ip, started_at, total_messages, ai_messages)
+        VALUES (?, ?, ?, ?, ?, NOW(), 0, 0)
+      `, [
+        ws.sessionId,
+        ws.sessionId,
+        prompt.agent_type,
+        "Guest",
+        ws._socket?.remoteAddress || null
+      ]);
       // Store session
-      callSessions.set(ws.sessionId, {
+      callSessions.set(ws.sessionId, {       
         agent: prompt.agent_type,
         promptId: prompt.id,
         systemPrompt,
@@ -544,22 +558,51 @@ wss.on("connection", (ws) => {
               case "agent_response": {
                 const text = event.agent_response_event.agent_response;
                 console.log("🤖 Agent:", text);
+              
                 if (ws.readyState === WebSocket.OPEN) {
                   ws.send(JSON.stringify({ type: "ai-text", text }));
                 }
-                if (session) {
-                  session.history.push({ role: "assistant", content: text });
-                  // ✅ INSERT INTO LEARNING QUEUE
-                  if (session.lastUserMessage) {
-                    await insertLearningQueue({
-                      sessionId: ws.sessionId,
-                      question: session.lastUserMessage,
-                      answer: text
-                    });
               
-                    session.lastUserMessage = null; // reset supaya tidak double
-                  }
+                if (!session) break;
+              
+                session.history.push({ role: "assistant", content: text });
+              
+                const userMessage = session.lastUserMessage;
+              
+                if (userMessage) {
+              
+                  // 1️⃣ INSERT conversation turn
+                  await queryAsync(`
+                    INSERT INTO chatbot_conversations
+                    (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+                  `, [
+                    ws.sessionId,
+                    session.agent,
+                    session.promptId,
+                    userMessage,
+                    text,
+                    0.90
+                  ]);
+              
+                  // 2️⃣ UPDATE session counters
+                  await queryAsync(`
+                    UPDATE chatbot_conversation_sessions
+                    SET total_messages = total_messages + 2,
+                        ai_messages = ai_messages + 1
+                    WHERE session_id = ?
+                  `, [ws.sessionId]);
+              
+                  // 3️⃣ INSERT learning queue
+                  await insertLearningQueue({
+                    sessionId: ws.sessionId,
+                    question: userMessage,
+                    answer: text
+                  });
+              
+                  session.lastUserMessage = null;
                 }
+              
                 break;
               }
 
@@ -642,8 +685,17 @@ wss.on("connection", (ws) => {
   // ======================================================
   // DISCONNECT
   // ======================================================
-  ws.on("close", () => {
+  ws.on("close", async () => {
     console.log("❌ Client disconnected", ws.sessionId);
+    // ============================================
+      // CLOSE SESSION
+      // ============================================
+      await queryAsync(`
+        UPDATE chatbot_conversation_sessions
+        SET ended_at = NOW(),
+            session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW())
+        WHERE session_id = ?
+      `, [ws.sessionId]);
     if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
       ws.elWs.close();
     }
@@ -4887,6 +4939,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
