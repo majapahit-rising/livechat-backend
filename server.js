@@ -292,10 +292,15 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 
 
 async function speakWelcome(text) {
-  try {
-    console.log("🔊 [TTS] Sending request to ElevenLabs...");
-    console.log("📝 Text:", text);
+  console.log("🔊 [TTS] Sending request to ElevenLabs...");
+  console.log("📝 Text length:", text.length);
+  console.log("🎤 Voice ID:", "s0XGIcqmceN2l7kjsqoZ");
+  console.log("🧠 Model:", "eleven_turbo_v2");
+  console.log("🎧 Output format:", "pcm_16000");
 
+  const startTime = Date.now();
+
+  try {
     const response = await axios({
       method: "POST",
       url: `https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ`,
@@ -306,67 +311,66 @@ async function speakWelcome(text) {
       data: {
         text: text,
         model_id: "eleven_turbo_v2",
-        output_format: "pcm_48000"
+        output_format: "pcm_16000"
       },
       responseType: "arraybuffer"
     });
 
+    const durationMs = Date.now() - startTime;
+
     console.log("✅ [TTS] Response received");
     console.log("📊 Status:", response.status);
-    console.log("📦 Audio byte length:", response.data.byteLength);
+    console.log("⏱️ API Response Time:", durationMs + "ms");
 
-    // Validasi cepat: cek apakah buffer tidak kosong
-    if (!response.data || response.data.byteLength === 0) {
-      console.error("❌ [TTS] Empty audio buffer!");
-      return null;
-    }
-
-    console.log("🎵 [TTS] PCM 16000 audio ready");
-
-    // return response.data;
     let audioBuffer = Buffer.from(response.data);
 
-console.log("Original byte length:", audioBuffer.length);
+    console.log("📦 Original byte length:", audioBuffer.length);
 
-// Detect WAV header
-if (audioBuffer.slice(0, 4).toString() === "RIFF") {
-  console.warn("⚠️ WAV detected. Extracting PCM data properly.");
+    // 🔎 Cek apakah WAV (tidak boleh untuk pcm_16000)
+    const header = audioBuffer.slice(0, 4).toString();
+    console.log("🔎 First 4 bytes:", header);
 
-  // Find "data" chunk
-  const dataIndex = audioBuffer.indexOf("data");
+    if (header === "RIFF") {
+      console.warn("⚠️ WARNING: This is WAV, not raw PCM!");
+    } else {
+      console.log("✅ Confirmed RAW PCM (no WAV header)");
+    }
 
-  if (dataIndex !== -1) {
-    const pcmStart = dataIndex + 8; // skip "data" + size (4 bytes)
-    audioBuffer = audioBuffer.slice(pcmStart);
-    console.log("PCM extracted. New length:", audioBuffer.length);
-  } else {
-    console.error("❌ Could not find data chunk in WAV.");
-  }
-}
+    // 🔎 Pastikan genap (karena 16-bit = 2 bytes per sample)
+    if (audioBuffer.length % 2 !== 0) {
+      console.warn("⚠️ Buffer not even, trimming 1 byte");
+      audioBuffer = audioBuffer.slice(0, audioBuffer.length - 1);
+    }
 
-// Ensure 16-bit alignment
-if (audioBuffer.length % 2 !== 0) {
-  console.warn("⚠️ Misaligned PCM detected. Trimming 1 byte.");
-  audioBuffer = audioBuffer.slice(0, audioBuffer.length - 1);
-}
+    console.log("📦 Final byte length:", audioBuffer.length);
 
-console.log("Final byte length:", audioBuffer.length);
+    // 🎧 Hitung estimasi durasi audio
+    const sampleRate = 16000;
+    const bytesPerSample = 2; // 16-bit
+    const totalSamples = audioBuffer.length / bytesPerSample;
+    const estimatedDuration = totalSamples / sampleRate;
 
-return audioBuffer;
+    console.log("🎵 Total samples:", totalSamples);
+    console.log("⏳ Estimated duration:", estimatedDuration.toFixed(2), "seconds");
+
+    console.log("🎉 PCM 16000 VALID & READY");
+
+    return audioBuffer;
 
   } catch (error) {
-    console.error("❌ [TTS] Error occurred");
+    console.error("❌ TTS ERROR:");
+    console.error("Message:", error.message);
 
     if (error.response) {
       console.error("Status:", error.response.status);
       console.error("Data:", error.response.data);
-    } else {
-      console.error(error.message);
     }
 
     throw error;
   }
 }
+
+
 
 
 wss.on("connection", (ws) => {
@@ -5257,6 +5261,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
