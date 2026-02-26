@@ -294,16 +294,14 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 async function speakWelcome(text) {
   const response = await axios({
     method: "POST",
-    url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream",
+    url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ",
     headers: {
       "xi-api-key": process.env.ELEVENLABS_API_KEY,
-      "Content-Type": "application/json",
-      "Accept": "audio/pcm;rate=16000"
+      "Content-Type": "application/json"
     },
     data: {
       text,
-      model_id: "eleven_turbo_v2",
-      output_format: "pcm_16000"
+      model_id: "eleven_turbo_v2"
     },
     responseType: "arraybuffer"
   });
@@ -5213,6 +5211,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
