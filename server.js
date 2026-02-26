@@ -309,92 +309,92 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 // );
 
 
-// async function speakWelcome(text) {
-//   console.log("🔊 [TTS] Request started");
-//   console.log("📝 Text length:", text.length);
-//   console.log("🎤 Voice ID:", "s0XGIcqmceN2l7kjsqoZ");
-//   console.log("🧠 Model:", "eleven_turbo_v2_5");
-//   console.log("🎧 Requested format:", "pcm_16000");
+async function speakWelcome(text) {
+  console.log("🔊 [TTS] Request started");
+  console.log("📝 Text length:", text.length);
+  console.log("🎤 Voice ID:", "s0XGIcqmceN2l7kjsqoZ");
+  console.log("🧠 Model:", "eleven_turbo_v2_5");
+  console.log("🎧 Requested format:", "pcm_16000");
 
-//   const startTime = Date.now();
+  const startTime = Date.now();
 
-//   try {
-//     const res = await axios({
-//       method: "POST",
-//       url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream",
-//       headers: {
-//         "xi-api-key": process.env.ELEVENLABS_API_KEY,
-//         "Content-Type": "application/json",
-//         "Accept": "audio/pcm;rate=16000"
-//       },
-//       data: {
-//         text,
-//         output_format: "pcm_16000",
-//         model_id: "eleven_turbo_v2_5"
-//       },
-//       responseType: "arraybuffer"
-//     });
+  try {
+    const res = await axios({
+      method: "POST",
+      url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream",
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/pcm;rate=16000"
+      },
+      data: {
+        text,
+        output_format: "pcm_16000",
+        model_id: "eleven_turbo_v2_5"
+      },
+      responseType: "arraybuffer"
+    });
 
-//     const duration = Date.now() - startTime;
+    const duration = Date.now() - startTime;
 
-//     console.log("✅ [TTS] Response received");
-//     console.log("📊 Status:", res.status);
-//     console.log("📦 Content-Type:", res.headers["content-type"]);
-//     console.log("⏱️ API Time:", duration + "ms");
+    console.log("✅ [TTS] Response received");
+    console.log("📊 Status:", res.status);
+    console.log("📦 Content-Type:", res.headers["content-type"]);
+    console.log("⏱️ API Time:", duration + "ms");
 
-//     let buffer = Buffer.from(res.data);
+    let buffer = Buffer.from(res.data);
 
-//     console.log("📦 Byte length:", buffer.length);
+    console.log("📦 Byte length:", buffer.length);
 
-//     // 🔎 Cek 8 byte pertama
-//     const firstBytesHex = buffer.slice(0, 8).toString("hex");
-//     const firstBytesText = buffer.slice(0, 4).toString();
+    // 🔎 Cek 8 byte pertama
+    const firstBytesHex = buffer.slice(0, 8).toString("hex");
+    const firstBytesText = buffer.slice(0, 4).toString();
 
-//     console.log("🔎 First 4 bytes (text):", firstBytesText);
-//     console.log("🔎 First 8 bytes (hex):", firstBytesHex);
+    console.log("🔎 First 4 bytes (text):", firstBytesText);
+    console.log("🔎 First 8 bytes (hex):", firstBytesHex);
 
-//     // 🔍 Deteksi format
-//     if (firstBytesText.startsWith("ID3")) {
-//       console.error("❌ DETECTED MP3 (ID3 header)");
-//     } else if (firstBytesText === "RIFF") {
-//       console.warn("⚠️ DETECTED WAV (RIFF header)");
-//     } else {
-//       console.log("✅ No MP3/WAV header detected (likely RAW PCM)");
-//     }
+    // 🔍 Deteksi format
+    if (firstBytesText.startsWith("ID3")) {
+      console.error("❌ DETECTED MP3 (ID3 header)");
+    } else if (firstBytesText === "RIFF") {
+      console.warn("⚠️ DETECTED WAV (RIFF header)");
+    } else {
+      console.log("✅ No MP3/WAV header detected (likely RAW PCM)");
+    }
 
-//     // 🔧 Pastikan genap (16-bit = 2 bytes)
-//     if (buffer.length % 2 !== 0) {
-//       console.warn("⚠️ Odd buffer length detected. Trimming 1 byte.");
-//       buffer = buffer.slice(0, buffer.length - 1);
-//     }
+    // 🔧 Pastikan genap (16-bit = 2 bytes)
+    if (buffer.length % 2 !== 0) {
+      console.warn("⚠️ Odd buffer length detected. Trimming 1 byte.");
+      buffer = buffer.slice(0, buffer.length - 1);
+    }
 
-//     console.log("📦 Final byte length:", buffer.length);
+    console.log("📦 Final byte length:", buffer.length);
 
-//     // 🎵 Estimasi durasi (hanya valid kalau benar PCM 16bit 16kHz)
-//     const sampleRate = 16000;
-//     const bytesPerSample = 2;
-//     const totalSamples = buffer.length / bytesPerSample;
-//     const estimatedSeconds = totalSamples / sampleRate;
+    // 🎵 Estimasi durasi (hanya valid kalau benar PCM 16bit 16kHz)
+    const sampleRate = 16000;
+    const bytesPerSample = 2;
+    const totalSamples = buffer.length / bytesPerSample;
+    const estimatedSeconds = totalSamples / sampleRate;
 
-//     console.log("🎵 Total samples:", totalSamples);
-//     console.log("⏳ Estimated duration:", estimatedSeconds.toFixed(2), "seconds");
+    console.log("🎵 Total samples:", totalSamples);
+    console.log("⏳ Estimated duration:", estimatedSeconds.toFixed(2), "seconds");
 
-//     console.log("🎉 TTS BUFFER READY");
+    console.log("🎉 TTS BUFFER READY");
 
-//     return buffer;
+    return buffer;
 
-//   } catch (err) {
-//     console.error("❌ TTS ERROR:", err.message);
+  } catch (err) {
+    console.error("❌ TTS ERROR:", err.message);
 
-//     if (err.response) {
-//       console.error("Status:", err.response.status);
-//       console.error("Headers:", err.response.headers);
-//       console.error("Data:", err.response.data);
-//     }
+    if (err.response) {
+      console.error("Status:", err.response.status);
+      console.error("Headers:", err.response.headers);
+      console.error("Data:", err.response.data);
+    }
 
-//     throw err;
-//   }
-// }
+    throw err;
+  }
+}
 
 
 wss.on("connection", (ws) => {
@@ -665,59 +665,58 @@ wss.on("connection", (ws) => {
             switch (event.type) {
 
               // --- Metadata (log only) ---
-                case "conversation_initiation_metadata": {   
-    ws.elReady = true;   
-    console.log("EL READY:", ws.elReady);    
-    // Fetch welcome message from DB   
-    const welcomeRows = await queryAsync(`SELECT message_text    FROM chatbot_welcome_messages    WHERE is_active = 1    ORDER BY activated_at DESC, id DESC    LIMIT 1  `);
-        const firstMessage = welcomeRows?.[0]?.message_text?.trim() || null;
-            // Send conversation_initiation_client_data with system prompt AND first_message   
-            elWs.send(JSON.stringify({     type: "conversation_initiation_client_data",
-                 conversation_config_override: {       
-                   agent: {         prompt: {           prompt: systemPrompt        },
-                   first_message: firstMessage || undefined,                                  
-                   language: "en"       }     }   }));
-                // Also send welcome text to browser immediately for UI display   
-                if (firstMessage && ws.readyState === WebSocket.OPEN) 
-                {     ws.send(JSON.stringify({ type: "ai-text", text: firstMessage }));   }
-                    // Save to DB   
-                    if (firstMessage) 
-                    {     await queryAsync(`
-                    INSERT INTO chatbot_conversations      
-                    (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, NOW())    `, [ws.sessionId, prompt.agent_type, prompt.id, null, firstMessage, 1.0]);      
-                    await queryAsync(`      UPDATE chatbot_conversation_sessions      SET total_messages = total_messages + 1, ai_messages = ai_messages + 1      WHERE session_id = ?    `, [ws.sessionId]);   
-                    
-                    }    
-                    break; 
-                    }
-                // case "conversation_initiation_metadata": {
-                //   ws.elReady = true;
-                
-                //   elWs.send(JSON.stringify({
-                //     type: "conversation_initiation_client_data",
-                //     conversation_config_override: {
-                //       agent: {
-                //         prompt: { prompt: systemPrompt },
-                //         language: "en"
-                //       }
-                //     }
-                //   }));
-                
-                //   // kirim welcome sebagai agent turn pertama
-                //   setTimeout(() => {
-                //     elWs.send(JSON.stringify({
-                //       type: "agent_input",
-                //       agent_input_event: {
-                //         role: "assistant",
-                //         input: ws.welcomeMessage,
-                //         is_first_turn: true
-                //       }
-                //     }));
-                //   }, 500);
-                
-                //   break;
+                // case "conversation_initiation_metadata": {   
+                // ws.elReady = true;   
+                // console.log("EL READY:", ws.elReady);    
+                // // Fetch welcome message from DB   
+                // const welcomeRows = await queryAsync(`SELECT message_text    FROM chatbot_welcome_messages    WHERE is_active = 1    ORDER BY activated_at DESC, id DESC    LIMIT 1  `);
+                //     const firstMessage = welcomeRows?.[0]?.message_text?.trim() || null;
+                //         // Send conversation_initiation_client_data with system prompt AND first_message   
+                //         elWs.send(JSON.stringify({     
+                //           type: "conversation_initiation_client_data",
+                //           conversation_config_override: {       
+                //                agent: {         
+                //                  prompt: { prompt: systemPrompt },
+                //                  first_message: firstMessage || undefined,                                  
+                //                  language: "en"       
+                //                }     
+                //           }   
+                //         }));
+                // // Also send welcome text to browser immediately for UI display   
+                // if (firstMessage && ws.readyState === WebSocket.OPEN) {     
+                //   ws.send(JSON.stringify({ 
+                //     type: "ai-text", 
+                //     text: firstMessage 
+                //   }));   
                 // }
+                //     // Save to DB   
+                // if (firstMessage) {
+                //   await queryAsync(`
+                // INSERT INTO chatbot_conversations      
+                // (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
+                // VALUES (?, ?, ?, ?, ?, ?, 1, NOW())    `, [ws.sessionId, prompt.agent_type, prompt.id, null, firstMessage, 1.0]);      
+                // await queryAsync(`      
+                // UPDATE chatbot_conversation_sessions      SET total_messages = total_messages + 1, ai_messages = ai_messages + 1      WHERE session_id = ?    `, [ws.sessionId]);   
+                //   }    
+                // break; 
+                // }
+                
+                case "conversation_initiation_metadata": {
+                  ws.elReady = true;
+                  console.log("EL READY:", ws.elReady);
+                
+                  elWs.send(JSON.stringify({
+                    type: "conversation_initiation_client_data",
+                    conversation_config_override: {
+                      agent: {
+                        prompt: { prompt: systemPrompt },
+                        language: "en"
+                      }
+                    }
+                  }));
+                
+                  break;
+                }
               // case "conversation_initiation_metadata": {
               //   // ⛔ Guard agar tidak double-trigger
               //   if (ws.welcomeSent) break;
@@ -5357,6 +5356,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
