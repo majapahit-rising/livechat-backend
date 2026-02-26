@@ -323,7 +323,19 @@ async function speakWelcome(text) {
 
     console.log("🎵 [TTS] PCM 16000 audio ready");
 
-    return response.data;
+    // return response.data;
+    let audioBuffer = Buffer.from(response.data);
+
+console.log("Original byte length:", audioBuffer.length);
+
+if (audioBuffer.length % 2 !== 0) {
+  console.warn("⚠️ Misaligned PCM detected. Trimming 1 byte.");
+  audioBuffer = audioBuffer.slice(0, audioBuffer.length - 1);
+}
+
+console.log("Final byte length:", audioBuffer.length);
+
+return audioBuffer;
 
   } catch (error) {
     console.error("❌ [TTS] Error occurred");
@@ -5228,6 +5240,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
