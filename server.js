@@ -968,10 +968,32 @@ wss.on("connection", (ws) => {
               // --- Audio chunk (TTS) → send as raw PCM to browser ---
               case "audio": {
                 console.log("🔊 AUDIO RECEIVED FROM EL");
-                const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
+              
+                const pcm = Buffer.from(
+                  event.audio_event.audio_base_64,
+                  "base64"
+                );
+              
                 if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(pcm);
+              
+                  // 🔥 WARMUP AUDIO (HANYA SEKALI)
+                  if (ws.isFirstAudio !== false) {
+                    ws.isFirstAudio = false;
+              
+                    console.log("🟡 Sending silence warmup (250ms)");
+              
+                    // 250ms silence PCM 16bit 16kHz
+                    const silence = Buffer.alloc(16000 * 2 * 0.25);
+              
+                    ws.send(silence);
+                    ws.send(pcm);
+              
+                    console.log("🔊 First audio sent after warmup");
+                  } else {
+                    ws.send(pcm);
+                  }
                 }
+              
                 break;
               }
 
@@ -5309,6 +5331,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
