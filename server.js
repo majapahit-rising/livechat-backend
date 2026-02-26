@@ -617,12 +617,12 @@ wss.on("connection", (ws) => {
           }
         
           // 2️⃣ Generate TTS via REST (BUKAN ConvAI)
-          const audioBuffer = await speakWelcome(firstMessage);
+          // const audioBuffer = await speakWelcome(firstMessage);
         
-          // 3️⃣ Kirim audio raw ke browser
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(audioBuffer);
-          }
+          // // 3️⃣ Kirim audio raw ke browser
+          // if (ws.readyState === WebSocket.OPEN) {
+          //   ws.send(audioBuffer);
+          // }
         });
 
         // ======================================================
@@ -5261,6 +5261,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
