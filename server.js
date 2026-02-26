@@ -302,7 +302,8 @@ async function speakWelcome(text) {
     responseType: "arraybuffer",
     data: {
       text: text,
-      model_id: "eleven_multilingual_v2"
+      model_id: "eleven_multilingual_v2",
+      output_format: "pcm_16000"
     }
   });
 
@@ -576,7 +577,6 @@ wss.on("connection", (ws) => {
               // --- Metadata (log only) ---
                 case "conversation_initiation_metadata": {
                   ws.elReady = true;
-                  console.log("EL READY:", ws.elReady);
                 
                   elWs.send(JSON.stringify({
                     type: "conversation_initiation_client_data",
@@ -588,7 +588,7 @@ wss.on("connection", (ws) => {
                     }
                   }));
                 
-                  // 2️⃣ delay sedikit
+                  // kirim welcome sebagai agent turn pertama
                   setTimeout(() => {
                     elWs.send(JSON.stringify({
                       type: "agent_input",
@@ -598,21 +598,7 @@ wss.on("connection", (ws) => {
                         is_first_turn: true
                       }
                     }));
-                  }, 600);
-                  // setTimeout(() => {
-                  //   if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
-                  //     console.log("🤖 Agent speaking welcome (first turn)");
-                
-                  //     elWs.send(JSON.stringify({
-                  //       type: "agent_input",
-                  //       agent_input_event: {
-                  //         role: "system",
-                  //         input: ws.welcomeMessage,
-                  //         is_first_turn: true
-                  //       }
-                  //     }));
-                  //   }
-                  // }, 400);
+                  }, 500);
                 
                   break;
                 }
@@ -5213,6 +5199,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
