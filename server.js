@@ -303,9 +303,10 @@ async function speakWelcome(text) {
   try {
     const response = await axios({
       method: "POST",
-      url: `https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream`,
+      url: `https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ`,
       headers: {
         "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Accept": "audio/pcm;rate=16000",
         "Content-Type": "application/json"
       },
       data: {
@@ -5258,6 +5259,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
