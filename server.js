@@ -327,8 +327,11 @@ async function speakWelcome(text) {
         text,
         model_id: "eleven_turbo_v2_5",
         voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.8
+          stability: 0.82,       // Berdasarkan slider 'More consistent'
+          similarity_boost: 0.78, // Berdasarkan slider 'Similarity High'
+          speed: 1.15,            // ElevenLabs API menggunakan range ~0.7 ke 1.2. 
+                             // Nilai 1.0 itu normal, 1.15 sedikit lebih cepat.
+          style: 0.0             // Default untuk model Turbo
         }
       },
       responseType: "arraybuffer"
@@ -5314,6 +5317,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
