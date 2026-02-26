@@ -328,6 +328,23 @@ async function speakWelcome(text) {
 
 console.log("Original byte length:", audioBuffer.length);
 
+// Detect WAV header
+if (audioBuffer.slice(0, 4).toString() === "RIFF") {
+  console.warn("⚠️ WAV detected. Extracting PCM data properly.");
+
+  // Find "data" chunk
+  const dataIndex = audioBuffer.indexOf("data");
+
+  if (dataIndex !== -1) {
+    const pcmStart = dataIndex + 8; // skip "data" + size (4 bytes)
+    audioBuffer = audioBuffer.slice(pcmStart);
+    console.log("PCM extracted. New length:", audioBuffer.length);
+  } else {
+    console.error("❌ Could not find data chunk in WAV.");
+  }
+}
+
+// Ensure 16-bit alignment
 if (audioBuffer.length % 2 !== 0) {
   console.warn("⚠️ Misaligned PCM detected. Trimming 1 byte.");
   audioBuffer = audioBuffer.slice(0, audioBuffer.length - 1);
@@ -5240,6 +5257,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
