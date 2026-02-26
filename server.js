@@ -632,19 +632,25 @@ wss.on("connection", (ws) => {
         
           const welcomeText = rows[0].message_text.trim();
         
-          // 1️⃣ kirim teks ke UI
-          // ws.send(JSON.stringify({
-          //   type: "ai-text",
-          //   text: welcomeText
-          // }));
+          // 1️⃣ kirim text ke UI
+          ws.send(JSON.stringify({
+            type: "ai-text",
+            text: welcomeText
+          }));
         
-          // // 2️⃣ 🔊 REST TTS
-          // const audioBuffer = await speakWelcome(welcomeText);
+          // 2️⃣ generate PCM via REST
+          const pcmWelcome = await speakWelcome(welcomeText);
         
-          // // 3️⃣ kirim PCM RAW ke browser
-          // if (ws.readyState === WebSocket.OPEN) {
-          //   ws.send(audioBuffer);
-          // }
+          // 3️⃣ WARMUP + SEND
+          if (ws.readyState === WebSocket.OPEN) {
+            console.log("🟡 Sending REST welcome audio");
+        
+            const silence = Buffer.alloc(16000 * 2 * 0.25);
+            ws.send(silence);
+            ws.send(pcmWelcome);
+        
+            ws.welcomeAudioSent = true;
+          }
         });
 
         // ======================================================
@@ -966,36 +972,56 @@ wss.on("connection", (ws) => {
               }
 
               // --- Audio chunk (TTS) → send as raw PCM to browser ---
-              case "audio": {
-                console.log("🔊 AUDIO RECEIVED FROM EL");
-              
-                const pcm = Buffer.from(
-                  event.audio_event.audio_base_64,
-                  "base64"
-                );
-              
-                if (ws.readyState === WebSocket.OPEN) {
-              
-                  // 🔥 WARMUP AUDIO (HANYA SEKALI)
-                  if (ws.isFirstAudio !== false) {
-                    ws.isFirstAudio = false;
-              
-                    console.log("🟡 Sending silence warmup (250ms)");
-              
-                    // 250ms silence PCM 16bit 16kHz
-                    const silence = Buffer.alloc(16000 * 2 * 0.25);
-              
-                    ws.send(silence);
-                    ws.send(pcm);
-              
-                    console.log("🔊 First audio sent after warmup");
-                  } else {
+                case "audio": {
+                  const pcm = Buffer.from(
+                    event.audio_event.audio_base_64,
+                    "base64"
+                  );
+                
+                  console.log("🔊 AUDIO FROM EL, bytes:", pcm.length);
+                
+                  // ❌ JANGAN kirim audio pertama ConvAI
+                  if (!ws.welcomeAudioSent) {
+                    console.warn("⛔ Skipping ConvAI audio (welcome handled by REST)");
+                    break;
+                  }
+                
+                  if (ws.readyState === WebSocket.OPEN) {
                     ws.send(pcm);
                   }
+                
+                  break;
                 }
+              // case "audio": {
+              //   console.log("🔊 AUDIO RECEIVED FROM EL");
               
-                break;
-              }
+              //   const pcm = Buffer.from(
+              //     event.audio_event.audio_base_64,
+              //     "base64"
+              //   );
+              
+              //   if (ws.readyState === WebSocket.OPEN) {
+              
+              //     // 🔥 WARMUP AUDIO (HANYA SEKALI)
+              //     if (ws.isFirstAudio !== false) {
+              //       ws.isFirstAudio = false;
+              
+              //       console.log("🟡 Sending silence warmup (250ms)");
+              
+              //       // 250ms silence PCM 16bit 16kHz
+              //       const silence = Buffer.alloc(16000 * 2 * 0.25);
+              
+              //       ws.send(silence);
+              //       ws.send(pcm);
+              
+              //       console.log("🔊 First audio sent after warmup");
+              //     } else {
+              //       ws.send(pcm);
+              //     }
+              //   }
+              
+              //   break;
+              // }
 
               // --- Interruption (user spoke while agent was talking) ---
               case "interruption": {
@@ -5331,6 +5357,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
