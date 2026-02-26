@@ -292,14 +292,13 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 
 
 async function speakWelcome(text) {
-  console.log("🔊 [TTS] Sending request to ElevenLabs (PCM STREAM)...");
-
   const response = await axios({
     method: "POST",
     url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream",
     headers: {
       "xi-api-key": process.env.ELEVENLABS_API_KEY,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Accept": "audio/pcm;rate=16000"
     },
     data: {
       text,
@@ -309,25 +308,22 @@ async function speakWelcome(text) {
     responseType: "arraybuffer"
   });
 
-  let audioBuffer = Buffer.from(response.data);
+  const audioBuffer = Buffer.from(response.data);
 
-  console.log("📦 Byte length:", audioBuffer.length);
-  console.log("🔎 First 4 bytes:", audioBuffer.slice(0, 4));
-
-  // RAW PCM TIDAK PUNYA HEADER
-  if (audioBuffer.slice(0, 4).toString() === "ID3") {
-    throw new Error("❌ MASIH MP3 — endpoint salah");
+  // 🚨 HARD GUARD
+  const h = audioBuffer.slice(0, 3).toString("ascii");
+  if (h === "ID3" || h === "RIF") {
+    throw new Error("❌ ElevenLabs masih kirim MP3/WAV, bukan PCM");
   }
 
   if (audioBuffer.length % 2 !== 0) {
-    audioBuffer = audioBuffer.slice(0, audioBuffer.length - 1);
+    throw new Error("❌ PCM corrupt (odd length)");
   }
 
-  console.log("✅ TRUE RAW PCM 16kHz");
+  console.log("✅ CONFIRMED: RAW PCM 16-bit 16kHz");
 
   return audioBuffer;
 }
-
 
 
 
@@ -5217,6 +5213,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
