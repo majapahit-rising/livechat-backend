@@ -517,6 +517,7 @@ wss.on("connection", (ws) => {
         elWs.on("message", async (elMsg) => {
           try {
             const event = JSON.parse(elMsg.toString());
+            console.log("📩 EL EVENT:", event.type);
             const session = callSessions.get(ws.sessionId);
 
             switch (event.type) {
@@ -5161,6 +5162,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
