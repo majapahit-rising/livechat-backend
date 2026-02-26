@@ -292,22 +292,51 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 
 
 async function speakWelcome(text) {
-  const response = await axios({
-    method: "POST",
-    url: `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-    headers: {
-      "xi-api-key": ELEVENLABS_API_KEY,
-      "Content-Type": "application/json"
-    },
-    responseType: "arraybuffer",
-    data: {
-      text: text,
-      model_id: "eleven_multilingual_v2",
-      output_format: "pcm_16000"
-    }
-  });
+  try {
+    console.log("🔊 [TTS] Sending request to ElevenLabs...");
+    console.log("📝 Text:", text);
 
-  return response.data;
+    const response = await axios({
+      method: "POST",
+      url: `https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM`,
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json"
+      },
+      data: {
+        text: text,
+        model_id: "eleven_multilingual_v2",
+        output_format: "pcm_16000"
+      },
+      responseType: "arraybuffer"
+    });
+
+    console.log("✅ [TTS] Response received");
+    console.log("📊 Status:", response.status);
+    console.log("📦 Audio byte length:", response.data.byteLength);
+
+    // Validasi cepat: cek apakah buffer tidak kosong
+    if (!response.data || response.data.byteLength === 0) {
+      console.error("❌ [TTS] Empty audio buffer!");
+      return null;
+    }
+
+    console.log("🎵 [TTS] PCM 16000 audio ready");
+
+    return response.data;
+
+  } catch (error) {
+    console.error("❌ [TTS] Error occurred");
+
+    if (error.response) {
+      console.error("Status:", error.response.status);
+      console.error("Data:", error.response.data);
+    } else {
+      console.error(error.message);
+    }
+
+    throw error;
+  }
 }
 
 
@@ -5199,6 +5228,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
