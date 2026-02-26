@@ -291,6 +291,25 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 }
 
 
+async function speakWelcome(text) {
+  const response = await axios({
+    method: "POST",
+    url: `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+    headers: {
+      "xi-api-key": ELEVENLABS_API_KEY,
+      "Content-Type": "application/json"
+    },
+    responseType: "arraybuffer",
+    data: {
+      text: text,
+      model_id: "eleven_multilingual_v2"
+    }
+  });
+
+  return response.data;
+}
+
+
 wss.on("connection", (ws) => {
   ws.sessionId = crypto.randomUUID();
   ws.sessionReady = false;
@@ -446,9 +465,73 @@ wss.on("connection", (ws) => {
         // //   `, [ws.sessionId]);
         // // });
 
-        elWs.on("open", async () => {
-          console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
+        // elWs.on("open", async () => {
+        //   console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
           
+        
+        //   const welcomeRows = await queryAsync(`
+        //     SELECT message_text
+        //     FROM chatbot_welcome_messages
+        //     WHERE is_active = 1
+        //     ORDER BY activated_at DESC, id DESC
+        //     LIMIT 1
+        //   `);
+        
+        //   console.log("📦 welcomeRows RAW:", welcomeRows);
+        
+        //   if (!welcomeRows?.length || !welcomeRows[0]?.message_text?.trim()) {
+        //     throw new Error("❌ No active welcome message found in DB");
+        //   }
+        
+        //   const firstMessage = welcomeRows[0].message_text.trim();
+        //   // di elWs.on("open")
+        //   ws.welcomeMessage = firstMessage;
+          
+        //   //1️⃣ Send text to browser
+        //   if (ws.readyState === WebSocket.OPEN) {
+        //     ws.send(JSON.stringify({
+        //       type: "ai-text",
+        //       text: firstMessage
+        //     }));
+        //   }
+          
+        //   //2️⃣ Save to DB as first AI message
+        //   await queryAsync(`
+        //     INSERT INTO chatbot_conversations
+        //     (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
+        //     VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+        //   `, [
+        //     ws.sessionId,
+        //     prompt.agent_type,
+        //     prompt.id,
+        //     null,
+        //     firstMessage,
+        //     1.0
+        //   ]);
+          
+        //   //3️⃣ Update counters
+        //   await queryAsync(`
+        //     UPDATE chatbot_conversation_sessions
+        //     SET total_messages = total_messages + 1,
+        //         ai_messages = ai_messages + 1
+        //     WHERE session_id = ?
+        //   `, [ws.sessionId]);
+        
+        //   // elWs.send(JSON.stringify({
+        //   //   type: "conversation_initiation_client_data",
+        //   //   conversation_config_override: {
+        //   //     agent: {
+        //   //       prompt: {
+        //   //         prompt: systemPrompt
+        //   //       },
+        //   //       language: "en"
+        //   //     }
+        //   //   }
+        //   // }));
+        // });
+
+        elWs.on("open", async () => {
+          console.log("🟢 ElevenLabs ConvAI connected");
         
           const welcomeRows = await queryAsync(`
             SELECT message_text
@@ -458,57 +541,25 @@ wss.on("connection", (ws) => {
             LIMIT 1
           `);
         
-          console.log("📦 welcomeRows RAW:", welcomeRows);
-        
-          if (!welcomeRows?.length || !welcomeRows[0]?.message_text?.trim()) {
-            throw new Error("❌ No active welcome message found in DB");
-          }
+          if (!welcomeRows?.length) return;
         
           const firstMessage = welcomeRows[0].message_text.trim();
-          // di elWs.on("open")
-          ws.welcomeMessage = firstMessage;
-          
-          //1️⃣ Send text to browser
+        
+          // 1️⃣ Kirim text ke browser
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
               type: "ai-text",
               text: firstMessage
             }));
           }
-          
-          //2️⃣ Save to DB as first AI message
-          await queryAsync(`
-            INSERT INTO chatbot_conversations
-            (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-          `, [
-            ws.sessionId,
-            prompt.agent_type,
-            prompt.id,
-            null,
-            firstMessage,
-            1.0
-          ]);
-          
-          //3️⃣ Update counters
-          await queryAsync(`
-            UPDATE chatbot_conversation_sessions
-            SET total_messages = total_messages + 1,
-                ai_messages = ai_messages + 1
-            WHERE session_id = ?
-          `, [ws.sessionId]);
         
-          // elWs.send(JSON.stringify({
-          //   type: "conversation_initiation_client_data",
-          //   conversation_config_override: {
-          //     agent: {
-          //       prompt: {
-          //         prompt: systemPrompt
-          //       },
-          //       language: "en"
-          //     }
-          //   }
-          // }));
+          // 2️⃣ Generate TTS via REST (BUKAN ConvAI)
+          const audioBuffer = await speakWelcome(firstMessage);
+        
+          // 3️⃣ Kirim audio raw ke browser
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(audioBuffer);
+          }
         });
 
         // ======================================================
@@ -5162,6 +5213,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
