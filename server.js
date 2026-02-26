@@ -292,37 +292,24 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 
 
 async function speakWelcome(text) {
-  const response = await axios({
+  const res = await axios({
     method: "POST",
-    url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ",
+    url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream",
     headers: {
       "xi-api-key": process.env.ELEVENLABS_API_KEY,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Accept": "audio/pcm;rate=16000"
     },
     data: {
       text,
-      model_id: "eleven_turbo_v2"
+      output_format: "pcm_16000",
+      model_id: "eleven_turbo_v2_5"
     },
     responseType: "arraybuffer"
   });
 
-  const audioBuffer = Buffer.from(response.data);
-
-  // 🚨 HARD GUARD
-  const h = audioBuffer.slice(0, 3).toString("ascii");
-  if (h === "ID3" || h === "RIF") {
-    throw new Error("❌ ElevenLabs masih kirim MP3/WAV, bukan PCM");
-  }
-
-  if (audioBuffer.length % 2 !== 0) {
-    throw new Error("❌ PCM corrupt (odd length)");
-  }
-
-  console.log("✅ CONFIRMED: RAW PCM 16-bit 16kHz");
-
-  return audioBuffer;
+  return Buffer.from(res.data);
 }
-
 
 
 wss.on("connection", (ws) => {
@@ -5211,6 +5198,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
