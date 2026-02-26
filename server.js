@@ -526,7 +526,6 @@ wss.on("connection", (ws) => {
                   ws.elReady = true;
                   console.log("EL READY:", ws.elReady);
                 
-                  // 1️⃣ Override agent prompt
                   elWs.send(JSON.stringify({
                     type: "conversation_initiation_client_data",
                     conversation_config_override: {
@@ -537,19 +536,17 @@ wss.on("connection", (ws) => {
                     }
                   }));
                 
-                  // 2️⃣ SYSTEM FIRST TURN (WELCOME)
+                  // 2️⃣ delay sedikit
                   setTimeout(() => {
-                    if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
-                  
-                      console.log("🎤 Sending welcome to ElevenLabs");
-                  
-                      elWs.send(JSON.stringify({
-                        type: "text_to_speech",
-                        text: ws.welcomeMessage,
-                        voice_id: ELEVENLABS_VOICE_ID
-                      }));
-                    }
-                  }, 400);
+                    elWs.send(JSON.stringify({
+                      type: "agent_input",
+                      agent_input_event: {
+                        role: "assistant",
+                        input: ws.welcomeMessage,
+                        is_first_turn: true
+                      }
+                    }));
+                  }, 600);
                   // setTimeout(() => {
                   //   if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
                   //     console.log("🤖 Agent speaking welcome (first turn)");
@@ -822,6 +819,7 @@ wss.on("connection", (ws) => {
 
               // --- Audio chunk (TTS) → send as raw PCM to browser ---
               case "audio": {
+                console.log("🔊 AUDIO RECEIVED FROM EL");
                 const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
                 if (ws.readyState === WebSocket.OPEN) {
                   ws.send(pcm);
@@ -5163,6 +5161,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
