@@ -310,7 +310,6 @@ async function speakWelcome(text) {
       },
       data: {
         text: text,
-        model_id: "eleven_multilingual_v2",
         output_format: "pcm_16000"
       },
       responseType: "arraybuffer"
@@ -594,35 +593,33 @@ wss.on("connection", (ws) => {
         // });
 
         elWs.on("open", async () => {
-          console.log("🟢 ElevenLabs ConvAI connected");
+          console.log("🟢 Connected (REST TTS mode)");
         
-          const welcomeRows = await queryAsync(`
+          const rows = await queryAsync(`
             SELECT message_text
             FROM chatbot_welcome_messages
             WHERE is_active = 1
-            ORDER BY activated_at DESC, id DESC
+            ORDER BY activated_at DESC
             LIMIT 1
           `);
         
-          if (!welcomeRows?.length) return;
+          if (!rows.length) return;
         
-          const firstMessage = welcomeRows[0].message_text.trim();
+          const welcomeText = rows[0].message_text.trim();
         
-          // 1️⃣ Kirim text ke browser
+          // 1️⃣ kirim teks ke UI
+          ws.send(JSON.stringify({
+            type: "ai-text",
+            text: welcomeText
+          }));
+        
+          // 2️⃣ 🔊 REST TTS
+          const audioBuffer = await speakWelcome(welcomeText);
+        
+          // 3️⃣ kirim PCM RAW ke browser
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: "ai-text",
-              text: firstMessage
-            }));
+            ws.send(audioBuffer);
           }
-        
-          // 2️⃣ Generate TTS via REST (BUKAN ConvAI)
-          // const audioBuffer = await speakWelcome(firstMessage);
-        
-          // // 3️⃣ Kirim audio raw ke browser
-          // if (ws.readyState === WebSocket.OPEN) {
-          //   ws.send(audioBuffer);
-          // }
         });
 
         // ======================================================
@@ -5261,6 +5258,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
