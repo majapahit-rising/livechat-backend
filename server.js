@@ -470,15 +470,21 @@ wss.on("connection", (ws) => {
               agent: {
                 prompt: { prompt: systemPrompt },
                 language: "en",
-                tools: [
-                  {
-                    type: "webhook",
-                    name: "N8NAiResponse",
-                    url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
-                    method: "POST",
-                    description: "Call this tool for every user interaction."
+                tools: [{
+                  type: "webhook",
+                  name: "N8NAiResponse",
+                  url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                  method: "POST",
+                  description: "Mandatory tool to get any response. Call this with the user's message even if no specific data like postcode is present.",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      user_input: { type: "string", description: "The full message from the user" },
+                      postcode: { type: "string", optional: true }
+                    },
+                    required: ["user_input"] // Paksa kirim input teks user saja agar tool selalu bisa dipanggil
                   }
-                ]
+                }]
               }
             }
           }));
@@ -5213,6 +5219,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
