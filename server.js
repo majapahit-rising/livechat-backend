@@ -292,82 +292,40 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 
 
 async function speakWelcome(text) {
-  console.log("🔊 [TTS] Sending request to ElevenLabs...");
-  console.log("📝 Text length:", text.length);
-  console.log("🎤 Voice ID:", "s0XGIcqmceN2l7kjsqoZ");
-  console.log("🧠 Model:", "eleven_turbo_v2");
-  console.log("🎧 Output format:", "pcm_16000");
+  console.log("🔊 [TTS] Sending request to ElevenLabs (PCM STREAM)...");
 
-  const startTime = Date.now();
+  const response = await axios({
+    method: "POST",
+    url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream",
+    headers: {
+      "xi-api-key": process.env.ELEVENLABS_API_KEY,
+      "Content-Type": "application/json"
+    },
+    data: {
+      text,
+      model_id: "eleven_turbo_v2",
+      output_format: "pcm_16000"
+    },
+    responseType: "arraybuffer"
+  });
 
-  try {
-    const response = await axios({
-      method: "POST",
-      url: `https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ`,
-      headers: {
-        "xi-api-key": process.env.ELEVENLABS_API_KEY,
-        "Accept": "audio/pcm;rate=16000",
-        "Content-Type": "application/json"
-      },
-      data: {
-        text: text,
-        output_format: "pcm_16000"
-      },
-      responseType: "arraybuffer"
-    });
+  let audioBuffer = Buffer.from(response.data);
 
-    const durationMs = Date.now() - startTime;
+  console.log("📦 Byte length:", audioBuffer.length);
+  console.log("🔎 First 4 bytes:", audioBuffer.slice(0, 4));
 
-    console.log("✅ [TTS] Response received");
-    console.log("📊 Status:", response.status);
-    console.log("⏱️ API Response Time:", durationMs + "ms");
-
-    let audioBuffer = Buffer.from(response.data);
-
-    console.log("📦 Original byte length:", audioBuffer.length);
-
-    // 🔎 Cek apakah WAV (tidak boleh untuk pcm_16000)
-    const header = audioBuffer.slice(0, 4).toString();
-    console.log("🔎 First 4 bytes:", header);
-
-    if (header === "RIFF") {
-      console.warn("⚠️ WARNING: This is WAV, not raw PCM!");
-    } else {
-      console.log("✅ Confirmed RAW PCM (no WAV header)");
-    }
-
-    // 🔎 Pastikan genap (karena 16-bit = 2 bytes per sample)
-    if (audioBuffer.length % 2 !== 0) {
-      console.warn("⚠️ Buffer not even, trimming 1 byte");
-      audioBuffer = audioBuffer.slice(0, audioBuffer.length - 1);
-    }
-
-    console.log("📦 Final byte length:", audioBuffer.length);
-
-    // 🎧 Hitung estimasi durasi audio
-    const sampleRate = 16000;
-    const bytesPerSample = 2; // 16-bit
-    const totalSamples = audioBuffer.length / bytesPerSample;
-    const estimatedDuration = totalSamples / sampleRate;
-
-    console.log("🎵 Total samples:", totalSamples);
-    console.log("⏳ Estimated duration:", estimatedDuration.toFixed(2), "seconds");
-
-    console.log("🎉 PCM 16000 VALID & READY");
-
-    return audioBuffer;
-
-  } catch (error) {
-    console.error("❌ TTS ERROR:");
-    console.error("Message:", error.message);
-
-    if (error.response) {
-      console.error("Status:", error.response.status);
-      console.error("Data:", error.response.data);
-    }
-
-    throw error;
+  // RAW PCM TIDAK PUNYA HEADER
+  if (audioBuffer.slice(0, 4).toString() === "ID3") {
+    throw new Error("❌ MASIH MP3 — endpoint salah");
   }
+
+  if (audioBuffer.length % 2 !== 0) {
+    audioBuffer = audioBuffer.slice(0, audioBuffer.length - 1);
+  }
+
+  console.log("✅ TRUE RAW PCM 16kHz");
+
+  return audioBuffer;
 }
 
 
@@ -5259,6 +5217,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
