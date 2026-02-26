@@ -600,15 +600,15 @@ wss.on("connection", (ws) => {
           }));
         
           // 2️⃣ generate PCM via REST
-          const pcmWelcome = await speakWelcome(welcomeText);
+          // const pcmWelcome = await speakWelcome(welcomeText);
         
           // 3️⃣ WARMUP + SEND
           if (ws.readyState === WebSocket.OPEN) {
             console.log("🟡 Sending REST welcome audio");
         
             const silence = Buffer.alloc(16000 * 2 * 0.25);
-            ws.send(silence);
-            ws.send(pcmWelcome);
+            // ws.send(silence);
+            // ws.send(pcmWelcome);
         
             ws.welcomeAudioSent = true;
           }
@@ -5326,6 +5326,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
