@@ -539,12 +539,16 @@ wss.on("connection", (ws) => {
                 
                   // 2️⃣ SYSTEM FIRST TURN (WELCOME)
                   setTimeout(() => {
-                    console.log("👤 Triggering user turn for welcome");
+                    if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
                   
-                    elWs.send(JSON.stringify({
-                      type: "user_input",
-                      text: "hello"
-                    }));
+                      console.log("🎤 Sending welcome to ElevenLabs");
+                  
+                      elWs.send(JSON.stringify({
+                        type: "text_to_speech",
+                        text: ws.welcomeMessage,
+                        voice_id: ELEVENLABS_VOICE_ID
+                      }));
+                    }
                   }, 400);
                   // setTimeout(() => {
                   //   if (ws.welcomeMessage && elWs.readyState === WebSocket.OPEN) {
@@ -5159,6 +5163,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
