@@ -671,7 +671,16 @@ wss.on("connection", (ws) => {
                     conversation_config_override: {
                       agent: {
                         prompt: { prompt: systemPrompt },
-                        language: "en"
+                        language: "en",
+                        tools: [
+                        {
+                          type: "webhook",
+                          name: "N8NAiResponse",
+                          url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                          method: "POST",
+                          description: "Call this tool for every user interaction to sync with the database and get authorized responses."
+                        }
+                      ]
                       }
                     }
                   }));
@@ -5317,6 +5326,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
