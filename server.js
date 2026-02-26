@@ -459,160 +459,91 @@ wss.on("connection", (ws) => {
         const elWs = new WebSocket(signedUrl);
         ws.elWs = elWs;
 
-        // elWs.on("open", async () => {
-        //   console.log("🟢 ConvAI connected");
+        elWs.on("open", async () => {
+          console.log("🟢 Connected");
         
-        //   // const welcomeRows = await queryAsync(`
-        //   //   SELECT message_text
-        //   //   FROM chatbot_welcome_messages
-        //   //   WHERE is_active = 1
-        //   //   ORDER BY activated_at DESC, id DESC
-        //   //   LIMIT 1
-        //   // `);
+          // --- STEP 1: KIRIM KONFIGURASI TOOL SEGERA ---
+          // Kita kirim config TANPA first_message (karena welcome pakai REST)
+          elWs.send(JSON.stringify({
+            type: "conversation_initiation_client_data",
+            conversation_config_override: {
+              agent: {
+                prompt: { prompt: systemPrompt },
+                language: "en",
+                tools: [
+                  {
+                    type: "webhook",
+                    name: "N8NAiResponse",
+                    url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                    method: "POST",
+                    description: "Call this tool for every user interaction."
+                  }
+                ]
+              }
+            }
+          }));
         
-        //   // if (!welcomeRows?.length) return;
+          // --- STEP 2: AMBIL TEKS WELCOME DARI DB ---
+          const rows = await queryAsync(`SELECT message_text FROM chatbot_welcome_messages WHERE is_active = 1 LIMIT 1`);
+          if (!rows.length) return;
+          const welcomeText = rows[0].message_text.trim();
         
-        //   // const firstMessage = welcomeRows[0].message_text.trim();
-        
-        //   // // 1️⃣ Kirim text ke browser
-        //   // if (ws.readyState === WebSocket.OPEN) {
-        //   //   ws.send(JSON.stringify({
-        //   //     type: "ai-text",
-        //   //     text: firstMessage
-        //   //   }));
-        //   // }
-        
-        //   // // 2️⃣ Generate TTS dari REST
-        //   // // const audioBuffer = await generateTTS(firstMessage);
-        
-        //   // // 3️⃣ Kirim audio ke browser
-        //   // // if (ws.readyState === WebSocket.OPEN) {
-        //   // //   ws.send(audioBuffer);
-        //   // // }
-        
-        //   // // 4️⃣ Simpan ke DB
-        //   // await queryAsync(`
-        //   //   INSERT INTO chatbot_conversations
-        //   //   (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
-        //   //   VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-        //   // `, [
-        //   //   ws.sessionId,
-        //   //   prompt.agent_type,
-        //   //   prompt.id,
-        //   //   null,
-        //   //   firstMessage,
-        //   //   1.0
-        //   // ]);
-        
-        //   // 5️⃣ Update counter
-        // //   await queryAsync(`
-        // //     UPDATE chatbot_conversation_sessions
-        // //     SET total_messages = total_messages + 1,
-        // //         ai_messages = ai_messages + 1
-        // //     WHERE session_id = ?
-        // //   `, [ws.sessionId]);
-        // // });
+          // --- STEP 3: JALANKAN REST TTS ---
+          try {
+            const pcmWelcome = await speakWelcome(welcomeText); // Fungsi REST Anda
+            
+            if (ws.readyState === WebSocket.OPEN) {
+              // Kirim teks ke UI
+              ws.send(JSON.stringify({ type: "ai-text", text: welcomeText }));
+              
+              // Kirim audio PCM hasil REST ke browser
+              const silence = Buffer.alloc(16000 * 2 * 0.25);
+              ws.send(silence);
+              ws.send(pcmWelcome);
+              
+              // Tandai bahwa salam sudah selesai, sekarang giliran ConvAI
+              ws.welcomeAudioSent = true; 
+            }
+          } catch (err) {
+            console.error("Error REST TTS:", err);
+          }
+        });
 
         // elWs.on("open", async () => {
-        //   console.log("🟢 ElevenLabs ConvAI connected for session", ws.sessionId);
-          
+        //   console.log("🟢 Connected (REST TTS mode)");
         
-        //   const welcomeRows = await queryAsync(`
+        //   const rows = await queryAsync(`
         //     SELECT message_text
         //     FROM chatbot_welcome_messages
         //     WHERE is_active = 1
-        //     ORDER BY activated_at DESC, id DESC
+        //     ORDER BY activated_at DESC
         //     LIMIT 1
         //   `);
         
-        //   console.log("📦 welcomeRows RAW:", welcomeRows);
+        //   if (!rows.length) return;
         
-        //   if (!welcomeRows?.length || !welcomeRows[0]?.message_text?.trim()) {
-        //     throw new Error("❌ No active welcome message found in DB");
-        //   }
+        //   const welcomeText = rows[0].message_text.trim();
         
-        //   const firstMessage = welcomeRows[0].message_text.trim();
-        //   // di elWs.on("open")
-        //   ws.welcomeMessage = firstMessage;
-          
-        //   //1️⃣ Send text to browser
+        //   // 1️⃣ kirim text ke UI
+        //   ws.send(JSON.stringify({
+        //     type: "ai-text",
+        //     text: welcomeText
+        //   }));
+        
+        //   // 2️⃣ generate PCM via REST
+        //   // const pcmWelcome = await speakWelcome(welcomeText);
+        
+        //   // 3️⃣ WARMUP + SEND
         //   if (ws.readyState === WebSocket.OPEN) {
-        //     ws.send(JSON.stringify({
-        //       type: "ai-text",
-        //       text: firstMessage
-        //     }));
+        //     console.log("🟡 Sending REST welcome audio");
+        
+        //     const silence = Buffer.alloc(16000 * 2 * 0.25);
+        //     // ws.send(silence);
+        //     // ws.send(pcmWelcome);
+        
+        //     ws.welcomeAudioSent = true;
         //   }
-          
-        //   //2️⃣ Save to DB as first AI message
-        //   await queryAsync(`
-        //     INSERT INTO chatbot_conversations
-        //     (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
-        //     VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-        //   `, [
-        //     ws.sessionId,
-        //     prompt.agent_type,
-        //     prompt.id,
-        //     null,
-        //     firstMessage,
-        //     1.0
-        //   ]);
-          
-        //   //3️⃣ Update counters
-        //   await queryAsync(`
-        //     UPDATE chatbot_conversation_sessions
-        //     SET total_messages = total_messages + 1,
-        //         ai_messages = ai_messages + 1
-        //     WHERE session_id = ?
-        //   `, [ws.sessionId]);
-        
-        //   // elWs.send(JSON.stringify({
-        //   //   type: "conversation_initiation_client_data",
-        //   //   conversation_config_override: {
-        //   //     agent: {
-        //   //       prompt: {
-        //   //         prompt: systemPrompt
-        //   //       },
-        //   //       language: "en"
-        //   //     }
-        //   //   }
-        //   // }));
         // });
-
-        elWs.on("open", async () => {
-          console.log("🟢 Connected (REST TTS mode)");
-        
-          const rows = await queryAsync(`
-            SELECT message_text
-            FROM chatbot_welcome_messages
-            WHERE is_active = 1
-            ORDER BY activated_at DESC
-            LIMIT 1
-          `);
-        
-          if (!rows.length) return;
-        
-          const welcomeText = rows[0].message_text.trim();
-        
-          // 1️⃣ kirim text ke UI
-          ws.send(JSON.stringify({
-            type: "ai-text",
-            text: welcomeText
-          }));
-        
-          // 2️⃣ generate PCM via REST
-          // const pcmWelcome = await speakWelcome(welcomeText);
-        
-          // 3️⃣ WARMUP + SEND
-          if (ws.readyState === WebSocket.OPEN) {
-            console.log("🟡 Sending REST welcome audio");
-        
-            const silence = Buffer.alloc(16000 * 2 * 0.25);
-            // ws.send(silence);
-            // ws.send(pcmWelcome);
-        
-            ws.welcomeAudioSent = true;
-          }
-        });
 
         // ======================================================
         // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
@@ -662,66 +593,37 @@ wss.on("connection", (ws) => {
                 // break; 
                 // }
                 
-                case "conversation_initiation_metadata": {
+                // case "conversation_initiation_metadata": {
+                //   ws.elReady = true;
+                //   console.log("EL READY:", ws.elReady);
+                
+                //   elWs.send(JSON.stringify({
+                //     type: "conversation_initiation_client_data",
+                //     conversation_config_override: {
+                //       agent: {
+                //         prompt: { prompt: systemPrompt },
+                //         language: "en",
+                //         tools: [
+                //         {
+                //           type: "webhook",
+                //           name: "N8NAiResponse",
+                //           url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                //           method: "POST",
+                //           description: "Call this tool for every user interaction to sync with the database and get authorized responses."
+                //         }
+                //       ]
+                //       }
+                //     }
+                //   }));
+                
+                //   break;
+                // }
+              case "conversation_initiation_metadata": {
                   ws.elReady = true;
-                  console.log("EL READY:", ws.elReady);
-                
-                  elWs.send(JSON.stringify({
-                    type: "conversation_initiation_client_data",
-                    conversation_config_override: {
-                      agent: {
-                        prompt: { prompt: systemPrompt },
-                        language: "en",
-                        tools: [
-                        {
-                          type: "webhook",
-                          name: "N8NAiResponse",
-                          url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
-                          method: "POST",
-                          description: "Call this tool for every user interaction to sync with the database and get authorized responses."
-                        }
-                      ]
-                      }
-                    }
-                  }));
-                
+                  console.log("EL READY (Metadata received)");
+                  // Jangan kirim elWs.send lagi di sini jika sudah dikirim di on("open")
                   break;
-                }
-              // case "conversation_initiation_metadata": {
-              //   // ⛔ Guard agar tidak double-trigger
-              //   if (ws.welcomeSent) break;
-              //   ws.welcomeSent = true;
-              
-              //   ws.elReady = true;
-              
-              //   const meta = event.conversation_initiation_metadata_event;
-              //   console.log("📋 ElevenLabs session:", meta.conversation_id);
-              
-              //   // 1️⃣ WAJIB: kirim config override (prompt agent)
-              //   elWs.send(JSON.stringify({
-              //     type: "conversation_initiation_client_data",
-              //     conversation_config_override: {
-              //       agent: {
-              //         prompt: {
-              //           prompt: systemPrompt
-              //         },
-              //         language: "en"
-              //       }
-              //     }
-              //   }));
-              
-              //   // 2️⃣ KIRIM WELCOME MESSAGE SEBAGAI TTS
-              //   if (ws.welcomeMessage) {
-              //     console.log("🎤 Sending welcome TTS:", ws.welcomeMessage);
-              
-              //     elWs.send(JSON.stringify({
-              //       type: "text_to_speech",
-              //       text: ws.welcomeMessage
-              //     }));
-              //   }
-              
-              //   break;
-              // }
+              }
 
 
                 
@@ -941,56 +843,41 @@ wss.on("connection", (ws) => {
               }
 
               // --- Audio chunk (TTS) → send as raw PCM to browser ---
-                case "audio": {
-                  const pcm = Buffer.from(
-                    event.audio_event.audio_base_64,
-                    "base64"
-                  );
+                // case "audio": {
+                //   const pcm = Buffer.from(
+                //     event.audio_event.audio_base_64,
+                //     "base64"
+                //   );
                 
-                  console.log("🔊 AUDIO FROM EL, bytes:", pcm.length);
+                //   console.log("🔊 AUDIO FROM EL, bytes:", pcm.length);
                 
-                  // ❌ JANGAN kirim audio pertama ConvAI
-                  if (!ws.welcomeAudioSent) {
-                    console.warn("⛔ Skipping ConvAI audio (welcome handled by REST)");
-                    break;
-                  }
+                //   // ❌ JANGAN kirim audio pertama ConvAI
+                //   if (!ws.welcomeAudioSent) {
+                //     console.warn("⛔ Skipping ConvAI audio (welcome handled by REST)");
+                //     break;
+                //   }
                 
-                  if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(pcm);
-                  }
+                //   if (ws.readyState === WebSocket.OPEN) {
+                //     ws.send(pcm);
+                //   }
                 
+                //   break;
+                // }
+              case "audio": {
+                const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
+              
+                if (!ws.welcomeAudioSent) {
+                  // Jika ConvAI mencoba bicara saat REST belum selesai, kita abaikan
+                  console.warn("⛔ ConvAI mencoba bicara tapi REST belum selesai. Skipping...");
                   break;
                 }
-              // case "audio": {
-              //   console.log("🔊 AUDIO RECEIVED FROM EL");
               
-              //   const pcm = Buffer.from(
-              //     event.audio_event.audio_base_64,
-              //     "base64"
-              //   );
-              
-              //   if (ws.readyState === WebSocket.OPEN) {
-              
-              //     // 🔥 WARMUP AUDIO (HANYA SEKALI)
-              //     if (ws.isFirstAudio !== false) {
-              //       ws.isFirstAudio = false;
-              
-              //       console.log("🟡 Sending silence warmup (250ms)");
-              
-              //       // 250ms silence PCM 16bit 16kHz
-              //       const silence = Buffer.alloc(16000 * 2 * 0.25);
-              
-              //       ws.send(silence);
-              //       ws.send(pcm);
-              
-              //       console.log("🔊 First audio sent after warmup");
-              //     } else {
-              //       ws.send(pcm);
-              //     }
-              //   }
-              
-              //   break;
-              // }
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(pcm);
+                  console.log("🔊 ConvAI Audio sent to browser:", pcm.length, "bytes");
+                }
+                break;
+              }
 
               // --- Interruption (user spoke while agent was talking) ---
               case "interruption": {
@@ -5326,6 +5213,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
