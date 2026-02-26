@@ -310,88 +310,46 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 
 
 async function speakWelcome(text) {
-  console.log("🔊 [TTS] Request started");
-  console.log("📝 Text length:", text.length);
-  console.log("🎤 Voice ID:", "s0XGIcqmceN2l7kjsqoZ");
-  console.log("🧠 Model:", "eleven_turbo_v2_5");
-  console.log("🎧 Requested format:", "pcm_16000");
-
-  const startTime = Date.now();
+  // Gunakan query parameter langsung di URL untuk memaksa format
+  const format = "pcm_16000"; 
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream?output_format=${format}`;
 
   try {
     const res = await axios({
       method: "POST",
-      url: "https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream",
+      url: url,
       headers: {
         "xi-api-key": process.env.ELEVENLABS_API_KEY,
         "Content-Type": "application/json",
-        "Accept": "audio/pcm;rate=16000"
+        "Accept": "audio/lpcm" // Gunakan audio/lpcm untuk raw PCM
       },
       data: {
         text,
-        output_format: "pcm_16000",
-        model_id: "eleven_turbo_v2_5"
+        model_id: "eleven_turbo_v2_5",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.8
+        }
       },
       responseType: "arraybuffer"
     });
 
-    const duration = Date.now() - startTime;
-
-    console.log("✅ [TTS] Response received");
-    console.log("📊 Status:", res.status);
-    console.log("📦 Content-Type:", res.headers["content-type"]);
-    console.log("⏱️ API Time:", duration + "ms");
-
     let buffer = Buffer.from(res.data);
 
-    console.log("📦 Byte length:", buffer.length);
-
-    // 🔎 Cek 8 byte pertama
-    const firstBytesHex = buffer.slice(0, 8).toString("hex");
+    // LOG UNTUK MEMASTIKAN BUKAN MP3 LAGI
     const firstBytesText = buffer.slice(0, 4).toString();
-
-    console.log("🔎 First 4 bytes (text):", firstBytesText);
-    console.log("🔎 First 8 bytes (hex):", firstBytesHex);
-
-    // 🔍 Deteksi format
     if (firstBytesText.startsWith("ID3")) {
-      console.error("❌ DETECTED MP3 (ID3 header)");
-    } else if (firstBytesText === "RIFF") {
-      console.warn("⚠️ DETECTED WAV (RIFF header)");
-    } else {
-      console.log("✅ No MP3/WAV header detected (likely RAW PCM)");
+       throw new Error("API tetap mengirim MP3, periksa konfigurasi ElevenLabs!");
     }
 
-    // 🔧 Pastikan genap (16-bit = 2 bytes)
+    // Pastikan byte alignment 16-bit (harus genap)
     if (buffer.length % 2 !== 0) {
-      console.warn("⚠️ Odd buffer length detected. Trimming 1 byte.");
       buffer = buffer.slice(0, buffer.length - 1);
     }
 
-    console.log("📦 Final byte length:", buffer.length);
-
-    // 🎵 Estimasi durasi (hanya valid kalau benar PCM 16bit 16kHz)
-    const sampleRate = 16000;
-    const bytesPerSample = 2;
-    const totalSamples = buffer.length / bytesPerSample;
-    const estimatedSeconds = totalSamples / sampleRate;
-
-    console.log("🎵 Total samples:", totalSamples);
-    console.log("⏳ Estimated duration:", estimatedSeconds.toFixed(2), "seconds");
-
-    console.log("🎉 TTS BUFFER READY");
-
     return buffer;
-
   } catch (err) {
     console.error("❌ TTS ERROR:", err.message);
-
-    if (err.response) {
-      console.error("Status:", err.response.status);
-      console.error("Headers:", err.response.headers);
-      console.error("Data:", err.response.data);
-    }
-
     throw err;
   }
 }
@@ -5356,6 +5314,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
