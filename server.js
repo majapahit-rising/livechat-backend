@@ -311,7 +311,7 @@ async function speakWelcome(text) {
       data: {
         text: text,
         model_id: "eleven_turbo_v2",
-        output_format: "pcm_16000"
+        output_format: "wav_16000"
       },
       responseType: "arraybuffer"
     });
@@ -5261,6 +5261,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
