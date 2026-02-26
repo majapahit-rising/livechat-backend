@@ -291,6 +291,24 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 }
 
 
+const res = await axios.get(
+  "https://api.elevenlabs.io/v1/models",
+  {
+    headers: {
+      "xi-api-key": process.env.ELEVENLABS_API_KEY
+    }
+  }
+);
+
+console.log(
+  res.data.map(m => ({
+    id: m.model_id,
+    stream: m.can_stream,
+    formats: m.supported_output_formats
+  }))
+);
+
+
 async function speakWelcome(text) {
   console.log("🔊 [TTS] Request started");
   console.log("📝 Text length:", text.length);
@@ -5265,6 +5283,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
