@@ -383,6 +383,7 @@ wss.on("connection", (ws) => {
     // 1️⃣ START CALL
     // ======================================================
     if (data?.type === "start-call") {
+      ws.sessionId = data.session_id;
       ws.sessionReady = true;
       const requestedAgent = data.agent || "sales";
 
@@ -5286,6 +5287,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
