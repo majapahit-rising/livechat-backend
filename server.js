@@ -359,7 +359,7 @@ async function speakWelcome(text) {
 
 
 wss.on("connection", (ws) => {
-  ws.sessionId = crypto.randomUUID();
+  ws.sessionId = null;    
   ws.sessionReady = false;
   ws.elWs = null;
   ws.callState = "WELCOME";
@@ -1017,6 +1017,39 @@ wss.on("connection", (ws) => {
 });
 
 
+});
+
+
+app.post("/api/chat/ai-feedback", async (req, res) => {
+
+  const {
+    session_id,
+    ai_rating,
+    ai_feedback,
+    duration
+  } = req.body;
+
+  if (!session_id || !ai_rating) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+
+  await db.query(`
+    UPDATE chatbot_conversation_sessions
+    SET
+      ai_rating = ?,
+      ai_feedback = ?,
+      session_duration = ?,
+      ended_at = NOW()
+    WHERE session_id = ?
+    LIMIT 1
+  `, [
+    ai_rating,
+    ai_feedback ?? null,
+    duration ?? null,
+    session_id
+  ]);
+
+  res.json({ ok: true });
 });
 
 
@@ -5253,6 +5286,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
