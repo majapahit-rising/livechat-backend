@@ -362,6 +362,7 @@ wss.on("connection", (ws) => {
   ws.sessionId = crypto.randomUUID();
   ws.sessionReady = false;
   ws.elWs = null;
+  ws.callState = "WELCOME";
 
   console.log("📞 Client connected", ws.sessionId);
 
@@ -498,17 +499,33 @@ wss.on("connection", (ws) => {
           try {
             const pcmWelcome = await speakWelcome(welcomeText); // Fungsi REST Anda
             
-            if (ws.readyState === WebSocket.OPEN) {
-              // Kirim teks ke UI
-              ws.send(JSON.stringify({ type: "ai-text", text: welcomeText }));
+            // if (ws.readyState === WebSocket.OPEN) {
+            //   // Kirim teks ke UI
+            //   ws.send(JSON.stringify({ type: "ai-text", text: welcomeText }));
               
-              // Kirim audio PCM hasil REST ke browser
+            //   // Kirim audio PCM hasil REST ke browser
+            //   const silence = Buffer.alloc(16000 * 2 * 0.25);
+            //   ws.send(silence);
+            //   ws.send(pcmWelcome);
+              
+            //   // Tandai bahwa salam sudah selesai, sekarang giliran ConvAI
+            //   ws.welcomeAudioSent = true; 
+            // }
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "ai-text", text: welcomeText }));
+          
               const silence = Buffer.alloc(16000 * 2 * 0.25);
               ws.send(silence);
               ws.send(pcmWelcome);
-              
-              // Tandai bahwa salam sudah selesai, sekarang giliran ConvAI
-              ws.welcomeAudioSent = true; 
+          
+              // 🔴 TAMBAHAN WAJIB: hitung durasi audio
+              const durationMs = (pcmWelcome.length / 2 / 16000) * 1000;
+          
+              setTimeout(() => {
+                ws.callState = "ACTIVE";     // 🟢 SELESAI WELCOME
+                ws.welcomeAudioSent = true;
+                console.log("✅ Welcome selesai, mic dibuka");
+              }, durationMs + 100);
             }
           } catch (err) {
             console.error("Error REST TTS:", err);
@@ -940,12 +957,29 @@ wss.on("connection", (ws) => {
     // ======================================================
     // 2️⃣ AUDIO PCM → ELEVENLABS (base64 encoded)
     // ======================================================
-    if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
-      if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
+    // if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
+    //   if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
 
+    //   if (ws.elWs.readyState === WebSocket.OPEN) {
+    //     ws.elWs.send(JSON.stringify({
+    //     user_audio_chunk: Buffer.from(msg).toString("base64")
+    //     }));
+    //   }
+    //   return;
+    // }
+    if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
+
+  // 🔴 TAMBAHAN WAJIB: BLOK AUDIO SAAT WELCOME
+      if (ws.callState !== "ACTIVE") {
+        console.log("⛔ Audio user diblok (welcome)");
+        return;
+      }
+    
+      if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
+    
       if (ws.elWs.readyState === WebSocket.OPEN) {
         ws.elWs.send(JSON.stringify({
-        user_audio_chunk: Buffer.from(msg).toString("base64")
+          user_audio_chunk: Buffer.from(msg).toString("base64")
         }));
       }
       return;
@@ -5219,6 +5253,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
