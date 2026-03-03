@@ -482,6 +482,7 @@ if (ws.elWs) {
         console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
         const signedUrl = await getElevenLabsSignedUrl();
         const elWs = new WebSocket(signedUrl);
+        elWs.sessionId = ws.sessionId;
         console.log("🔌 ElevenLabs WS instance created");
         ws.elWs = elWs;
 
@@ -972,7 +973,7 @@ if (ws.elWs) {
         });
 
         elWs.on("close", () => {
-          console.log("❌ ElevenLabs disconnected for session", currentSessionId);
+          console.log("❌ ElevenLabs disconnected for session", elWs.sessionId);
         });
 
         elWs.on("error", (err) => {
@@ -5341,6 +5342,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
