@@ -122,6 +122,8 @@ const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8i
 if (!ELEVENLABS_API_KEY) throw new Error("Missing ELEVENLABS_API_KEY");
 if (!ELEVENLABS_AGENT_ID) throw new Error("Missing ELEVENLABS_AGENT_ID");
 
+
+
 async function getElevenLabsSignedUrl() {
   const res = await fetch(
     `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${ELEVENLABS_AGENT_ID}`,
@@ -358,6 +360,15 @@ async function speakWelcome(text) {
 }
 
 
+  process.on("unhandledRejection", (err) => {
+  console.error("🔥 UNHANDLED REJECTION:", err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err);
+});
+
+
 wss.on("connection", (ws) => {
   ws.sessionId = null;    
   ws.sessionReady = false;
@@ -378,7 +389,9 @@ wss.on("connection", (ws) => {
     } catch {
       data = null;
     }
-console.log("🚀 START CALL RECEIVED:", data.session_id);
+if (data?.type === "start-call") {
+  console.log("🚀 START CALL RECEIVED:", data.session_id);
+}
 console.log("Previous elWs state:", ws.elWs?.readyState);
     // ======================================================
     // 1️⃣ START CALL
@@ -587,10 +600,17 @@ if (ws.elWs) {
         // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
         // ======================================================
         elWs.on("message", async (elMsg) => {
+          if (!ws.sessionId || ws.callState === "ENDED") {
+  return;
+}
           try {
             const event = JSON.parse(elMsg.toString());
             console.log("📩 EL EVENT:", event.type);
             const session = callSessions.get(ws.sessionId);
+            if (!session) {
+  console.warn("⚠️ Session missing in Map. Ignoring EL event.");
+  return;
+}
 
             switch (event.type) {
 
@@ -928,12 +948,14 @@ if (ws.elWs) {
 
               // --- Ping → respond with Pong ---
               case "ping": {
-                elWs.send(JSON.stringify({
-                  type: "pong",
-                  event_id: event.ping_event.event_id
-                }));
-                break;
-              }
+  if (elWs.readyState === WebSocket.OPEN) {
+    elWs.send(JSON.stringify({
+      type: "pong",
+      event_id: event.ping_event.event_id
+    }));
+  }
+  break;
+}
 
               // --- VAD score (optional, for UI) ---
               case "vad_score":
@@ -950,7 +972,7 @@ if (ws.elWs) {
         });
 
         elWs.on("close", () => {
-          console.log("❌ ElevenLabs disconnected for session", ws.sessionId);
+          console.log("❌ ElevenLabs disconnected for session", currentSessionId);
         });
 
         elWs.on("error", (err) => {
@@ -1005,12 +1027,21 @@ if (ws.elWs) {
   // DISCONNECT
   // ======================================================
  ws.on("close", async () => {
-  console.log("❌ Client disconnected", ws.sessionId);
-   console.log("🧹 Cleaning up ElevenLabs for:", ws.sessionId);
+  const sessionId = ws.sessionId;
+
+  console.log("❌ Client disconnected", sessionId);
+
+  // 🛑 GUARD: kalau tidak ada session, jangan lanjut
+  if (!sessionId) {
+    console.log("⚠️ No sessionId on close, skipping cleanup");
+    return;
+  }
 
   try {
+    console.log("🧹 Cleaning up ElevenLabs for:", sessionId);
+
     // 1️⃣ Generate summary
-    const summary = await summarizeConversation(ws.sessionId);
+    const summary = await summarizeConversation(sessionId);
 
     // 2️⃣ Update session
     await queryAsync(`
@@ -1019,18 +1050,26 @@ if (ws.elWs) {
           session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
           conversation_summary = ?
       WHERE session_id = ?
-    `, [summary, ws.sessionId]);
+    `, [summary, sessionId]);
 
   } catch (err) {
     console.error("❌ Session close error:", err);
   }
 
-  if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-    ws.elWs.close();
+  // 3️⃣ Close ElevenLabs safely
+  if (ws.elWs) {
+    try { ws.elWs.close(); } catch {}
+    ws.elWs = null;
   }
 
-  callSessions.delete(ws.sessionId);
-});
+  // 4️⃣ Delete session safely
+  callSessions.delete(sessionId);
+   ws.sessionId = null;
+ws.sessionReady = false;
+ws.callState = "ENDED";
+ws.welcomeAudioSent = false;
+ws.elReady = false;
+  });
 
 
 });
@@ -5302,6 +5341,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
