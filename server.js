@@ -378,12 +378,21 @@ wss.on("connection", (ws) => {
     } catch {
       data = null;
     }
-
+console.log("🚀 START CALL RECEIVED:", data.session_id);
+console.log("Previous elWs state:", ws.elWs?.readyState);
     // ======================================================
     // 1️⃣ START CALL
     // ======================================================
     if (data?.type === "start-call") {
       ws.sessionId = data.session_id;
+      ws.welcomeAudioSent = false;
+ws.callState = "WELCOME";
+ws.elReady = false;
+
+if (ws.elWs) {
+  try { ws.elWs.close(); } catch {}
+  ws.elWs = null;
+}
       ws.sessionReady = true;
       const requestedAgent = data.agent || "sales";
 
@@ -457,11 +466,14 @@ wss.on("connection", (ws) => {
       // CONNECT TO ELEVENLABS CONVERSATIONAL AI
       // ======================================================
       try {
+        console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
         const signedUrl = await getElevenLabsSignedUrl();
         const elWs = new WebSocket(signedUrl);
+        console.log("🔌 ElevenLabs WS instance created");
         ws.elWs = elWs;
 
         elWs.on("open", async () => {
+          console.log("🟢 ElevenLabs OPEN for session:", ws.sessionId);
           console.log("🟢 Connected");
         
           // --- STEP 1: KIRIM KONFIGURASI TOOL SEGERA ---
@@ -498,6 +510,7 @@ wss.on("connection", (ws) => {
         
           // --- STEP 3: JALANKAN REST TTS ---
           try {
+            console.log("🎤 Generating welcome TTS for:", ws.sessionId);
             const pcmWelcome = await speakWelcome(welcomeText); // Fungsi REST Anda
             
             // if (ws.readyState === WebSocket.OPEN) {
@@ -514,6 +527,7 @@ wss.on("connection", (ws) => {
             // }
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "ai-text", text: welcomeText }));
+              console.log("📤 Welcome text sent to browser");
           
               const silence = Buffer.alloc(16000 * 2 * 0.25);
               ws.send(silence);
@@ -992,6 +1006,7 @@ wss.on("connection", (ws) => {
   // ======================================================
  ws.on("close", async () => {
   console.log("❌ Client disconnected", ws.sessionId);
+   console.log("🧹 Cleaning up ElevenLabs for:", ws.sessionId);
 
   try {
     // 1️⃣ Generate summary
@@ -5287,6 +5302,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
