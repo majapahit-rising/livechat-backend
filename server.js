@@ -2558,6 +2558,7 @@ app.post("/push/register", (req, res) => {
       agent_type: finalAgentType,
       conversation_id: conversation_id || sessionId,
       source: "n8n",
+      context: n8nData.context,
       timestamp: new Date().toISOString(),
       response_time_ms: Date.now() - startTime
     });
@@ -5342,6 +5343,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
