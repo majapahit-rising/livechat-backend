@@ -452,6 +452,40 @@ if (ws.elWs) {
       Always stay in this role.
             `.trim();
 
+      // 1. Ambil context dari data yang dikirim client (jika ada)
+      const incomingContext = data.context || {};
+      
+      // 2. Buat struktur context yang konsisten sesuai permintaan Anda
+      const finalContext = {
+        agent_type: prompt.agent_type,
+        postcode: incomingContext.postcode || null,
+        waste_type_id: incomingContext.waste_type_id || null,
+        selected_bin_size_id: incomingContext.selected_bin_size_id || null,
+        leadId: incomingContext.leadId || 707767, // Gunakan default jika tidak ada
+        delivery_date: incomingContext.delivery_date || "2026-03-05",
+        hire_days: incomingContext.hire_days || null,
+        pickup_date: incomingContext.pickup_date || null,
+        streetNumber: incomingContext.streetNumber || null,
+        streetName: incomingContext.streetName || null,
+        suburb: incomingContext.suburb || "Canberra",
+        state: incomingContext.state || "ACT",
+        country: incomingContext.country || "Australia",
+        fullAddress: incomingContext.fullAddress || "Canberra, ACT, Australia",
+        name: incomingContext.name || "Guest",
+        email: incomingContext.email || null,
+        phoneNumber: incomingContext.phoneNumber || null,
+        note: incomingContext.note || "none"
+      };
+      
+      // 3. Masukkan ke dalam callSessions Map agar bisa diakses nanti
+      callSessions.set(ws.sessionId, {       
+        agent: prompt.agent_type,
+        promptId: prompt.id,
+        systemPrompt,
+        history: [],
+        context: finalContext // Simpan context yang sudah rapi di sini
+      });
+
        // ============================================
       // CREATE SESSION RECORD
       // ============================================
@@ -467,13 +501,13 @@ if (ws.elWs) {
         ws._socket?.remoteAddress || null
       ]);
       // Store session
-      callSessions.set(ws.sessionId, {       
-        agent: prompt.agent_type,
-        promptId: prompt.id,
-        systemPrompt,
-        history: [],
-        context: data.context || {} 
-      });
+      // callSessions.set(ws.sessionId, {       
+      //   agent: prompt.agent_type,
+      //   promptId: prompt.id,
+      //   systemPrompt,
+      //   history: [],
+      //   context: data.context || {} 
+      // });
 
       // ======================================================
       // CONNECT TO ELEVENLABS CONVERSATIONAL AI
@@ -503,18 +537,40 @@ if (ws.elWs) {
                   name: "N8NAiResponse",
                   url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
                   method: "POST",
-                  description: "Mandatory tool to get any response. Call this with the user's message even if no specific data like postcode is present.",
+                  description: "Mandatory tool to get any response. Call this with user_input and the full context object.",
                   parameters: {
                     type: "object",
                     properties: {
                       user_input: { type: "string", description: "The full message from the user" },
-                      postcode: { type: "string", optional: true }
+                      // MASUKKAN CONTEXT DI DALAM PROPERTIES
+                      context: {
+                        type: "object",
+                        description: "Full session context for n8n processing",
+                        properties: {
+                          agent_type: { type: "string" },
+                          postcode: { type: "string" }, // Sebaiknya string untuk postcode
+                          waste_type_id: { type: "integer" },
+                          selected_bin_size_id: { type: "integer" },
+                          delivery_date: { type: "string" },
+                          pickup_date: { type: "string" },
+                          hire_days: { type: "string" },
+                          leadId: { type: "integer" },
+                          suburb: { type: "string" },
+                          state: { type: "string" },
+                          country: { type: "string" },
+                          fullAddress: { type: "string" },
+                          name: { type: "string" },
+                          note: { type: "string" }
+                        }
+                      }
                     },
-                    required: ["user_input"] // Paksa kirim input teks user saja agar tool selalu bisa dipanggil
+                    required: ["user_input", "context"] // Pastikan keduanya wajib
                   }
                 }]
               }
-            }
+            },
+            // Mengirim data awal ke ElevenLabs agar tersimpan di session state mereka
+            dynamic_variables: finalContext
           }));
         
           // --- STEP 2: AMBIL TEKS WELCOME DARI DB ---
@@ -686,143 +742,109 @@ if (ws.elWs) {
 
 
                 
-              // case "conversation_initiation_metadata": {
-              //   ws.elReady = true;
-              //   const meta = event.conversation_initiation_metadata_event;
-              //   console.log("📋 ElevenLabs session:", meta.conversation_id);
-              //   console.log("   Input format:", meta.user_input_audio_format);
-              //   console.log("   Output format:", meta.agent_output_audio_format);
-              //   break;
-              // }
-
-              // --- User transcript (STT result) ---
-              // case "user_transcript": {
-              //   try {
-              //     const text = event.user_transcription_event.user_transcript;
-              //     console.log("🗣️ User:", text);
+              case "user_transcript": {
+                try {
+                  const text = event.user_transcription_event.user_transcript;
+                  console.log("🗣️ User:", text);
               
-              //     // Send transcript to browser UI
-              //     if (ws.readyState === WebSocket.OPEN) {
-              //       ws.send(JSON.stringify({ type: "user-text", text }));
-              //     }
-              
-              //     if (!session) {
-              //       console.warn("⚠ No session found");
-              //       break;
-              //     }
-              
-              //     // =========================
-              //     // UPDATE HISTORY
-              //     // =========================
-              //     session.history.push({ role: "user", content: text });
-              
-              //     // Ensure context exists
-              //     session.context = session.context || {};
-              
-              //     // =========================
-              //     // CONTEXT EXTRACTION
-              //     // =========================
-              
-              //     const extractedPostcode = extractPostcode(text);
-              //     if (extractedPostcode) {
-              //       session.context.postcode = extractedPostcode;
-              //       console.log("✅ Postcode extracted:", extractedPostcode);
-              //     }
-              
-              //     const deliveryDate = extractDeliveryDate(text);
-              //     if (deliveryDate) {
-              //       session.context.delivery_date = deliveryDate;
-              //       console.log("📦 Delivery date extracted:", deliveryDate);
-              //     }
-              
-              //     const pickupDate = extractPickupDate(text);
-              //     if (pickupDate) {
-              //       session.context.pickup_date = pickupDate;
-              //       console.log("🚛 Pickup date extracted:", pickupDate);
-              //     }
-              
-              //     console.log("📦 Final Context:", session.context);
-              
-              //     // =========================
-              //     // SEND TO N8N
-              //     // =========================
-              
-              //     // const response = await fetch(N8N_WEBHOOK, {
-              //     //   method: "POST",
-              //     //   headers: { "Content-Type": "application/json" },
-              //     //   body: JSON.stringify({
-              //     //     session_id: ws.sessionId,
-              //     //     agent_type: session.agent,
-              //     //     message: text,
-              //     //     conversation_id: session.conversationId ?? null,
-              //     //     user_name: session.context?.name ?? "Guest",
-              //     //     user_email: session.context?.email ?? null,
-              //     //     user_phone: session.context?.phoneNumber ?? null,
-              //     //     conversationHistory: session.history,
-              //     //     context: session.context
-              //     //   })
-              //     // });
-              
-              //     // if (!response.ok) {
-              //     //   const errorText = await response.text().catch(() => "");
-              //     //   console.error("❌ N8N webhook failed:", response.status, errorText);
-              //     //   break;
-              //     // }
-              
-              //     // const data = await response.json().catch(() => null);
-              
-              //     // console.log("📩 N8N Response:", data);
-              
-              //     // if (!data || !data.reply) {
-              //     //   console.warn("⚠ N8N returned no reply");
-              //       break;
-              //     }
-
-                case "user_transcript": {
-                  try {
-                    const text = event.user_transcription_event.user_transcript;
-                    console.log("🗣️ User:", text);
-                
-                    if (ws.readyState === WebSocket.OPEN) {
-                      ws.send(JSON.stringify({ type: "user-text", text }));
-                    }
-                
-                    if (!session) {
-                      console.warn("⚠ No session found");
-                      break;
-                    }
-                
-                    session.history.push({ role: "user", content: text });
-                    session.lastUserMessage = text;
-                    session.context = session.context || {};
-                
-                    const extractedPostcode = extractPostcode(text);
-                    if (extractedPostcode) {
-                      session.context.postcode = extractedPostcode;
-                      console.log("✅ Postcode extracted:", extractedPostcode);
-                    }
-                
-                    const deliveryDate = extractDeliveryDate(text);
-                    if (deliveryDate) {
-                      session.context.delivery_date = deliveryDate;
-                      console.log("📦 Delivery date extracted:", deliveryDate);
-                    }
-                
-                    const pickupDate = extractPickupDate(text);
-                    if (pickupDate) {
-                      session.context.pickup_date = pickupDate;
-                      console.log("🚛 Pickup date extracted:", pickupDate);
-                    }
-                
-                    console.log("📦 Final Context:", session.context);
-                
-                    // 🚫 SENGAJA TIDAK kirim ke N8N (mode sementara)
-                  } catch (err) {
-                    console.error("❌ user_transcript error:", err);
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "user-text", text }));
                   }
-                
-                  break;
+              
+                  if (!session) {
+                    console.warn("⚠ No session found");
+                    break;
+                  }
+              
+                  session.history.push({ role: "user", content: text });
+                  session.lastUserMessage = text;
+                  session.context = session.context || {};
+              
+                  const extractedPostcode = extractPostcode(text);
+                  if (extractedPostcode) {
+                    session.context.postcode = extractedPostcode;
+                    console.log("✅ Postcode extracted:", extractedPostcode);
+                  }
+              
+                  const deliveryDate = extractDeliveryDate(text);
+                  if (deliveryDate) {
+                    session.context.delivery_date = deliveryDate;
+                    console.log("📦 Delivery date extracted:", deliveryDate);
+                  }
+              
+                  const pickupDate = extractPickupDate(text);
+                  if (pickupDate) {
+                    session.context.pickup_date = pickupDate;
+                    console.log("🚛 Pickup date extracted:", pickupDate);
+                  }
+              
+                  console.log("📦 Final Context updated in Node:", session.context);
+              
+                  // ======================================================
+                  // 🚀 UPDATE ELEVENLABS DISINI
+                  // ======================================================
+                  if (extractedPostcode || deliveryDate || pickupDate) {
+                    console.log("🔄 Syncing updated context to ElevenLabs...");
+                    elWs.send(JSON.stringify({
+                      // Gunakan tipe ini untuk mengupdate variabel dinamis di tengah percakapan
+                      type: "client_tool_outputs", 
+                      dynamic_variables: session.context
+                    }));
+                  }
+                  // ======================================================
+              
+                } catch (err) {
+                  console.error("❌ user_transcript error:", err);
                 }
+              
+                break; // Selesai proses transcript
+              }
+
+                // case "user_transcript": {
+                //   try {
+                //     const text = event.user_transcription_event.user_transcript;
+                //     console.log("🗣️ User:", text);
+                
+                //     if (ws.readyState === WebSocket.OPEN) {
+                //       ws.send(JSON.stringify({ type: "user-text", text }));
+                //     }
+                
+                //     if (!session) {
+                //       console.warn("⚠ No session found");
+                //       break;
+                //     }
+                
+                //     session.history.push({ role: "user", content: text });
+                //     session.lastUserMessage = text;
+                //     session.context = session.context || {};
+                
+                //     const extractedPostcode = extractPostcode(text);
+                //     if (extractedPostcode) {
+                //       session.context.postcode = extractedPostcode;
+                //       console.log("✅ Postcode extracted:", extractedPostcode);
+                //     }
+                
+                //     const deliveryDate = extractDeliveryDate(text);
+                //     if (deliveryDate) {
+                //       session.context.delivery_date = deliveryDate;
+                //       console.log("📦 Delivery date extracted:", deliveryDate);
+                //     }
+                
+                //     const pickupDate = extractPickupDate(text);
+                //     if (pickupDate) {
+                //       session.context.pickup_date = pickupDate;
+                //       console.log("🚛 Pickup date extracted:", pickupDate);
+                //     }
+                
+                //     console.log("📦 Final Context:", session.context);
+                
+                //     // 🚫 SENGAJA TIDAK kirim ke N8N (mode sementara)
+                //   } catch (err) {
+                //     console.error("❌ user_transcript error:", err);
+                //   }
+                
+                //   break;
+                // }
               
               //     // =========================
               //     // SEND REPLY BACK TO ELEVENLABS
@@ -5357,6 +5379,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
