@@ -2267,7 +2267,7 @@ app.post("/push/register", (req, res) => {
       user_phone = null,
       context = {},
       conversation_id,
-      conversationHistory = []
+      conversation_history = []
     } = req.body;
 
     // ======================================================
@@ -2486,7 +2486,7 @@ app.post("/push/register", (req, res) => {
           user_email: finalUserEmail,
           user_phone: finalUserPhone,
           context,
-          conversationHistory
+          conversation_history
         })
       }
     );
@@ -5343,6 +5343,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
