@@ -2270,6 +2270,11 @@ app.post("/push/register", (req, res) => {
       conversation_history = []
     } = req.body;
 
+    console.log("========== STEP 1: INCOMING REQUEST ==========");
+console.log("Session ID:", session_id);
+console.log("Incoming context:", JSON.stringify(context, null, 2));
+console.log("Waste Type in request:", context?.waste_type_id);
+
     // ======================================================
     // VALIDATION
     // ======================================================
@@ -2470,6 +2475,9 @@ app.post("/push/register", (req, res) => {
       });
     }
 
+    console.log("========== STEP 2: BEFORE SEND TO N8N ==========");
+console.log("Context being sent to n8n:", JSON.stringify(context, null, 2));
+console.log("Waste Type sent:", context?.waste_type_id);
     // ======================================================
     // SEND TO N8N
     // ======================================================
@@ -2492,6 +2500,9 @@ app.post("/push/register", (req, res) => {
     );
 
     const n8nData = await n8nResp.json();
+    console.log("========== STEP 3: RESPONSE FROM N8N ==========");
+console.log("Context from n8n:", JSON.stringify(n8nData.context, null, 2));
+console.log("Waste Type from n8n:", n8nData?.context?.waste_type_id);
 
     const aiReply =
       n8nData.reply ||
@@ -2548,6 +2559,9 @@ app.post("/push/register", (req, res) => {
       conversationId
     ]);
 
+    console.log("========== STEP 4: FINAL RESPONSE TO FRONTEND ==========");
+console.log("Final context returned:", JSON.stringify(n8nData.context, null, 2));
+console.log("Final Waste Type:", n8nData?.context?.waste_type_id);  
     // ======================================================
     // RESPONSE
     // ======================================================
@@ -5343,6 +5357,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
