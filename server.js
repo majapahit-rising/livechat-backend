@@ -461,16 +461,16 @@ if (ws.elWs) {
         postcode: incomingContext.postcode || null,
         waste_type_id: incomingContext.waste_type_id || null,
         selected_bin_size_id: incomingContext.selected_bin_size_id || null,
-        leadId: incomingContext.leadId || 707767, // Gunakan default jika tidak ada
-        delivery_date: incomingContext.delivery_date || "2026-03-05",
+        leadId: incomingContext.leadId || null, // Gunakan default jika tidak ada
+        delivery_date: incomingContext.delivery_date || null,
         hire_days: incomingContext.hire_days || null,
         pickup_date: incomingContext.pickup_date || null,
         streetNumber: incomingContext.streetNumber || null,
         streetName: incomingContext.streetName || null,
-        suburb: incomingContext.suburb || "Canberra",
-        state: incomingContext.state || "ACT",
-        country: incomingContext.country || "Australia",
-        fullAddress: incomingContext.fullAddress || "Canberra, ACT, Australia",
+        suburb: incomingContext.suburb || null,
+        state: incomingContext.state || null,
+        country: incomingContext.country || null,
+        fullAddress: incomingContext.fullAddress || null,
         name: incomingContext.name || "Guest",
         email: incomingContext.email || null,
         phoneNumber: incomingContext.phoneNumber || null,
@@ -657,17 +657,17 @@ if (ws.elWs) {
         // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
         // ======================================================
         elWs.on("message", async (elMsg) => {
-          if (!ws.sessionId || ws.callState === "ENDED") {
-  return;
-}
-          try {
-            const event = JSON.parse(elMsg.toString());
-            console.log("📩 EL EVENT:", event.type);
-            const session = callSessions.get(ws.sessionId);
-            if (!session) {
-  console.warn("⚠️ Session missing in Map. Ignoring EL event.");
-  return;
-}
+            if (!ws.sessionId || ws.callState === "ENDED") {
+              return;
+            }
+            try {
+              const event = JSON.parse(elMsg.toString());
+              console.log("📩 EL EVENT:", event.type);
+              const session = callSessions.get(ws.sessionId);
+              if (!session) {
+              console.warn("⚠️ Session missing in Map. Ignoring EL event.");
+              return;
+            }
 
             switch (event.type) {
 
@@ -740,7 +740,21 @@ if (ws.elWs) {
                   break;
               }
 
-
+              case "tool_call_result": {
+                try {
+                  const toolOutput = event.tool_call_result_event?.output;
+                  if (toolOutput?.context) {
+                    session.context = {
+                      ...session.context,
+                      ...toolOutput.context
+                    };
+                    console.log("🔄 Context synced from N8N:", session.context);
+                  }
+                } catch (err) {
+                  console.error("Tool result parse error:", err);
+                }
+                break;
+              }
                 
               case "user_transcript": {
                 try {
@@ -922,28 +936,6 @@ if (ws.elWs) {
               
                 break;
               }
-
-              // --- Audio chunk (TTS) → send as raw PCM to browser ---
-                // case "audio": {
-                //   const pcm = Buffer.from(
-                //     event.audio_event.audio_base_64,
-                //     "base64"
-                //   );
-                
-                //   console.log("🔊 AUDIO FROM EL, bytes:", pcm.length);
-                
-                //   // ❌ JANGAN kirim audio pertama ConvAI
-                //   if (!ws.welcomeAudioSent) {
-                //     console.warn("⛔ Skipping ConvAI audio (welcome handled by REST)");
-                //     break;
-                //   }
-                
-                //   if (ws.readyState === WebSocket.OPEN) {
-                //     ws.send(pcm);
-                //   }
-                
-                //   break;
-                // }
               case "audio": {
                 const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
               
@@ -1014,19 +1006,6 @@ if (ws.elWs) {
       return;
     }
 
-    // ======================================================
-    // 2️⃣ AUDIO PCM → ELEVENLABS (base64 encoded)
-    // ======================================================
-    // if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
-    //   if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
-
-    //   if (ws.elWs.readyState === WebSocket.OPEN) {
-    //     ws.elWs.send(JSON.stringify({
-    //     user_audio_chunk: Buffer.from(msg).toString("base64")
-    //     }));
-    //   }
-    //   return;
-    // }
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
 
   // 🔴 TAMBAHAN WAJIB: BLOK AUDIO SAAT WELCOME
@@ -5379,6 +5358,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
