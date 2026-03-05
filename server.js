@@ -656,10 +656,7 @@ Always stay in this role.
                   ]
                 }
               },
-              dynamic_variables: {
-                conversation_history: [],
-                ...finalContext
-              }
+              dynamic_variables: finalContext
             })
           );
 
@@ -5429,6 +5426,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
