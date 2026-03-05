@@ -537,11 +537,22 @@ if (ws.elWs) {
                   name: "N8NAiResponse",
                   url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
                   method: "POST",
-                  description: "Mandatory tool to get any response. Call this with user_input and the full context object.",
+                  description: "ALWAYS call this tool for every user message. Pass user_input, conversation_history, and context. Never answer directly.",
                   parameters: {
                     type: "object",
                     properties: {
                       user_input: { type: "string", description: "The full message from the user" },
+                       conversation_history: {
+                        type: "array",
+                        description: "Full conversation history between user and assistant",
+                        items: {
+                          type: "object",
+                          properties: {
+                            role: { type: "string" },
+                            content: { type: "string" }
+                          }
+                        }
+                      },
                       // MASUKKAN CONTEXT DI DALAM PROPERTIES
                       context: {
                         type: "object",
@@ -564,13 +575,16 @@ if (ws.elWs) {
                         }
                       }
                     },
-                    required: ["user_input", "context"] // Pastikan keduanya wajib
+                    required: ["user_input", "conversation_history", "context"] // Pastikan keduanya wajib
                   }
                 }]
               }
             },
             // Mengirim data awal ke ElevenLabs agar tersimpan di session state mereka
-            dynamic_variables: finalContext
+            dynamic_variables: {
+              conversation_history: [],
+              ...finalContext
+            }
           }));
         
           // --- STEP 2: AMBIL TEKS WELCOME DARI DB ---
@@ -797,14 +811,15 @@ if (ws.elWs) {
                   // ======================================================
                   // 🚀 UPDATE ELEVENLABS DISINI
                   // ======================================================
-                  if (extractedPostcode || deliveryDate || pickupDate) {
-                    console.log("🔄 Syncing updated context to ElevenLabs...");
+                  session.history = session.history.slice(-20);
+
                     elWs.send(JSON.stringify({
-                      // Gunakan tipe ini untuk mengupdate variabel dinamis di tengah percakapan
-                      type: "client_tool_outputs", 
-                      dynamic_variables: session.context
+                      type: "client_tool_outputs",
+                      dynamic_variables: {
+                        conversation_history: session.history,
+                        ...session.context
+                      }
                     }));
-                  }
                   // ======================================================
               
                 } catch (err) {
@@ -901,6 +916,7 @@ if (ws.elWs) {
                 if (!session) break;
               
                 session.history.push({ role: "assistant", content: text });
+                session.history = session.history.slice(-20);
               
                 const userMessage = session.lastUserMessage || null;
               
@@ -5358,6 +5374,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
