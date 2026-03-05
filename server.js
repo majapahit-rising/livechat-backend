@@ -100,36 +100,45 @@ const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 
 import { WebSocketServer } from "ws";
+
 // import { createClient } from "@deepgram/sdk";
-import crypto from "crypto";
+// import crypto from "crypto";
+
 // ======================================================
 // CONFIG
 // ======================================================
 
 // const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 // console.log("DG KEY:", DEEPGRAM_API_KEY);
-// if (!DEEPGRAM_API_KEY) throw new Error("Missing Deepgram API key");
-const N8N_WEBHOOK =
-  "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
 
-  // ======================================================
+// if (!DEEPGRAM_API_KEY) throw new Error("Missing Deepgram API key");
+
+const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
+
+// ======================================================
 // ELEVENLABS CONFIG
 // ======================================================
+
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
+const ELEVENLABS_VOICE_ID =
+  process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
 
 if (!ELEVENLABS_API_KEY) throw new Error("Missing ELEVENLABS_API_KEY");
 if (!ELEVENLABS_AGENT_ID) throw new Error("Missing ELEVENLABS_AGENT_ID");
 
-
-
 async function getElevenLabsSignedUrl() {
   const res = await fetch(
     `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${ELEVENLABS_AGENT_ID}`,
-    { headers: { "xi-api-key": ELEVENLABS_API_KEY } }
+    {
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY
+      }
+    }
   );
+
   if (!res.ok) throw new Error(`Signed URL failed: ${res.status}`);
+
   const body = await res.json();
   return body.signed_url;
 }
@@ -137,16 +146,13 @@ async function getElevenLabsSignedUrl() {
 const extractPostcode = (text) => {
   if (!text) return null;
 
-  // Normalize text
   const clean = text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " "); // remove punctuation
+    .replace(/[^a-z0-9\s]/g, " ");
 
-  // 1️⃣ Direct numeric (2350)
   const numericMatch = clean.match(/\b\d{4}\b/);
   if (numericMatch) return numericMatch[0];
 
-  // 2️⃣ Word to digit
   const wordMap = {
     zero: "0",
     one: "1",
@@ -163,6 +169,7 @@ const extractPostcode = (text) => {
   const words = clean.split(/\s+/);
 
   let digits = "";
+
   for (let w of words) {
     if (wordMap[w]) {
       digits += wordMap[w];
@@ -173,7 +180,6 @@ const extractPostcode = (text) => {
 
   return null;
 };
-
 
 const extractDeliveryDate = (text) => {
   if (!text) return null;
@@ -195,9 +201,6 @@ const extractPickupDate = (text) => {
   return match ? match[3] : null;
 };
 
-
-
-
 const wss = new WebSocketServer({
   server,
   path: "/ws/deepcall"
@@ -213,35 +216,43 @@ const callSessions = new Map();
 // WEBSOCKET CONNECTION
 // ======================================================
 
-// const conversation = await fetch('https://api.elevenlabs.io/v1/convai/conversation', {
+// const conversation = await fetch(
+//   'https://api.elevenlabs.io/v1/convai/conversation',
+//   {
 //     method: 'POST',
 //     headers: {
-//       'xi-api-key': 'sk_bcbde92d462b946931754893acae0f6db2a08a4c9233891b',
+//       'xi-api-key': 'sk_xxxxx',
 //       'Content-Type': 'application/json'
-//     },    
+//     },
 //     body: JSON.stringify({
 //       agent_id: 'agent_4601kh08xk3rebm9naf9x8zvf5fa'
 //     })
-//   }).then(r => r.json());
+//   }
+// ).then(r => r.json());
 
 async function summarizeConversation(sessionId) {
   try {
-    const rows = await queryAsync(`
+    const rows = await queryAsync(
+      `
       SELECT user_message, ai_response
       FROM chatbot_conversations
       WHERE session_id = ?
       ORDER BY created_at ASC
-    `, [sessionId]);
+      `,
+      [sessionId]
+    );
 
     if (!rows.length) {
       return "Session ended with no recorded conversation.";
     }
 
     const conversationText = rows
-      .map(r => {
+      .map((r) => {
         let text = "";
+
         if (r.user_message) text += `User: ${r.user_message}\n`;
         if (r.ai_response) text += `AI: ${r.ai_response}\n`;
+
         return text;
       })
       .join("\n");
@@ -261,11 +272,10 @@ Focus on:
 
 Conversation:
 ${conversationText}
-      `
+`
     });
 
     return aiResp.output?.[0]?.content?.[0]?.text || null;
-
   } catch (err) {
     console.error("❌ SUMMARY ERROR:", err.message);
     return "Summary generation failed.";
@@ -274,17 +284,29 @@ ${conversationText}
 
 async function insertLearningQueue({ sessionId, question, answer }) {
   try {
-    await queryAsync(`
+    await queryAsync(
+      `
       INSERT INTO chatbot_learning_queue
-      (source_type, source_id, proposed_question, proposed_answer, confidence_score, status, created_at, updated_at)
+      (
+        source_type,
+        source_id,
+        proposed_question,
+        proposed_answer,
+        confidence_score,
+        status,
+        created_at,
+        updated_at
+      )
       VALUES (?, ?, ?, ?, ?, 'pending_review', NOW(), NOW())
-    `, [
-      'conversation',
-      sessionId,
-      question,
-      answer,
-      0.80 // default confidence
-    ]);
+      `,
+      [
+        "conversation",
+        sessionId,
+        question,
+        answer,
+        0.8
+      ]
+    );
 
     console.log("🧠 Learning queue inserted");
   } catch (err) {
@@ -292,28 +314,9 @@ async function insertLearningQueue({ sessionId, question, answer }) {
   }
 }
 
-
-// const res = await axios.get(
-//   "https://api.elevenlabs.io/v1/models",
-//   {
-//     headers: {
-//       "xi-api-key": process.env.ELEVENLABS_API_KEY
-//     }
-//   }
-// );
-
-// console.log(
-//   res.data.map(m => ({
-//     id: m.model_id,
-//     stream: m.can_stream,
-//     formats: m.supported_output_formats
-//   }))
-// );
-
-
 async function speakWelcome(text) {
-  // Gunakan query parameter langsung di URL untuk memaksa format
-  const format = "pcm_16000"; 
+  const format = "pcm_16000";
+
   const url = `https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream?output_format=${format}`;
 
   try {
@@ -323,17 +326,16 @@ async function speakWelcome(text) {
       headers: {
         "xi-api-key": process.env.ELEVENLABS_API_KEY,
         "Content-Type": "application/json",
-        "Accept": "audio/lpcm" // Gunakan audio/lpcm untuk raw PCM
+        "Accept": "audio/lpcm"
       },
       data: {
         text,
         model_id: "eleven_turbo_v2_5",
         voice_settings: {
-          stability: 0.82,       // Berdasarkan slider 'More consistent'
-          similarity_boost: 0.78, // Berdasarkan slider 'Similarity High'
-          speed: 1.15,            // ElevenLabs API menggunakan range ~0.7 ke 1.2. 
-                             // Nilai 1.0 itu normal, 1.15 sedikit lebih cepat.
-          style: 0.0             // Default untuk model Turbo
+          stability: 0.82,
+          similarity_boost: 0.78,
+          speed: 1.15,
+          style: 0.0
         }
       },
       responseType: "arraybuffer"
@@ -341,13 +343,14 @@ async function speakWelcome(text) {
 
     let buffer = Buffer.from(res.data);
 
-    // LOG UNTUK MEMASTIKAN BUKAN MP3 LAGI
     const firstBytesText = buffer.slice(0, 4).toString();
+
     if (firstBytesText.startsWith("ID3")) {
-       throw new Error("API tetap mengirim MP3, periksa konfigurasi ElevenLabs!");
+      throw new Error(
+        "API tetap mengirim MP3, periksa konfigurasi ElevenLabs!"
+      );
     }
 
-    // Pastikan byte alignment 16-bit (harus genap)
     if (buffer.length % 2 !== 0) {
       buffer = buffer.slice(0, buffer.length - 1);
     }
@@ -359,8 +362,7 @@ async function speakWelcome(text) {
   }
 }
 
-
-  process.on("unhandledRejection", (err) => {
+process.on("unhandledRejection", (err) => {
   console.error("🔥 UNHANDLED REJECTION:", err);
 });
 
@@ -368,578 +370,553 @@ process.on("uncaughtException", (err) => {
   console.error("🔥 UNCAUGHT EXCEPTION:", err);
 });
 
-
 wss.on("connection", (ws) => {
-  ws.sessionId = null;    
+
+  ws.sessionId = null;
   ws.sessionReady = false;
   ws.elWs = null;
   ws.callState = "WELCOME";
 
   console.log("📞 Client connected", ws.sessionId);
 
-  // ======================================================
-  // MESSAGE FROM BROWSER
-  // ======================================================
   ws.on("message", async (msg) => {
 
-    // --- Try parse JSON ---
     let data = null;
+
     try {
-      data = JSON.parse(typeof msg === "string" ? msg : msg.toString());
+      data = JSON.parse(
+        typeof msg === "string" ? msg : msg.toString()
+      );
     } catch {
       data = null;
     }
-if (data?.type === "start-call") {
-  console.log("🚀 START CALL RECEIVED:", data.session_id);
-}
-console.log("Previous elWs state:", ws.elWs?.readyState);
-    // ======================================================
-    // 1️⃣ START CALL
-    // ======================================================
+
     if (data?.type === "start-call") {
+      console.log("🚀 START CALL RECEIVED:", data.session_id);
+    }
+
+    console.log("Previous elWs state:", ws.elWs?.readyState);
+
+    if (data?.type === "start-call") {
+
       ws.sessionId = data.session_id;
       ws.welcomeAudioSent = false;
-ws.callState = "WELCOME";
-ws.elReady = false;
+      ws.callState = "WELCOME";
+      ws.elReady = false;
 
-if (ws.elWs) {
-  try { ws.elWs.close(); } catch {}
-  ws.elWs = null;
-}
+      if (ws.elWs) {
+        try {
+          ws.elWs.close();
+        } catch {}
+        ws.elWs = null;
+      }
+
       ws.sessionReady = true;
+
       const requestedAgent = data.agent || "sales";
 
-      // Load prompt from database (same as before)
-      const rows = await queryAsync(`
-        SELECT id, agent_type, identity, role_description, primary_goals,
-               context_knowledge, language, tone, response_format,
-               do_guidelines, dont_guidelines
+      const rows = await queryAsync(
+        `
+        SELECT
+          id,
+          agent_type,
+          identity,
+          role_description,
+          primary_goals,
+          context_knowledge,
+          language,
+          tone,
+          response_format,
+          do_guidelines,
+          dont_guidelines
         FROM chatbot_prompts
-        WHERE agent_type = ? AND status = 'active' AND is_active = 1
+        WHERE agent_type = ?
+        AND status = 'active'
+        AND is_active = 1
         LIMIT 1
-      `, [requestedAgent]);
+        `,
+        [requestedAgent]
+      );
 
       let prompt = rows[0];
 
       if (!prompt) {
-        const fallback = await queryAsync(`
-          SELECT id, agent_type, identity, role_description, primary_goals,
-                 context_knowledge, language, tone, response_format,
-                 do_guidelines, dont_guidelines
+
+        const fallback = await queryAsync(
+          `
+          SELECT
+            id,
+            agent_type,
+            identity,
+            role_description,
+            primary_goals,
+            context_knowledge,
+            language,
+            tone,
+            response_format,
+            do_guidelines,
+            dont_guidelines
           FROM chatbot_prompts
-          WHERE agent_type = 'sales' AND status = 'active' AND is_active = 1
+          WHERE agent_type = 'sales'
+          AND status = 'active'
+          AND is_active = 1
           LIMIT 1
-        `);
+          `
+        );
+
         if (!fallback.length) {
           console.error("❌ No active prompt found");
-          ws.send(JSON.stringify({ type: "ai-text", text: "Sorry, no agent available." }));
+
+          ws.send(
+            JSON.stringify({
+              type: "ai-text",
+              text: "Sorry, no agent available."
+            })
+          );
+
           return;
         }
+
         prompt = fallback[0];
       }
 
-      // Build system prompt from DB
       const systemPrompt = `
-      You are ${prompt.identity}.
-      Role: ${prompt.role_description}.
-      Base Knowledge: ${prompt.context_knowledge || ""}.
-      Goals: ${prompt.primary_goals}.
-      Language: ${prompt.language || "en"}.
-      Tone: ${prompt.tone || "professional"}.
-      Response format: ${prompt.response_format || "concise"}.
-      Do guidelines: ${prompt.do_guidelines || ""}.
-      Don't guidelines: ${prompt.dont_guidelines || ""}.
-      Always stay in this role.
-            `.trim();
+You are ${prompt.identity}.
 
-      // 1. Ambil context dari data yang dikirim client (jika ada)
+Role:
+${prompt.role_description}
+
+Base Knowledge:
+${prompt.context_knowledge || ""}
+
+Goals:
+${prompt.primary_goals}
+
+Language:
+${prompt.language || "en"}
+
+Tone:
+${prompt.tone || "professional"}
+
+Response format:
+${prompt.response_format || "concise"}
+
+Do guidelines:
+${prompt.do_guidelines || ""}
+
+Don't guidelines:
+${prompt.dont_guidelines || ""}
+
+Always stay in this role.
+`.trim();
+
       const incomingContext = data.context || {};
-      
-      // 2. Buat struktur context yang konsisten sesuai permintaan Anda
+
       const finalContext = {
+
         agent_type: prompt.agent_type,
         postcode: incomingContext.postcode || null,
         waste_type_id: incomingContext.waste_type_id || null,
         selected_bin_size_id: incomingContext.selected_bin_size_id || null,
-        leadId: incomingContext.leadId || null, // Gunakan default jika tidak ada
+        leadId: incomingContext.leadId || null,
+
         delivery_date: incomingContext.delivery_date || null,
         hire_days: incomingContext.hire_days || null,
         pickup_date: incomingContext.pickup_date || null,
+
         streetNumber: incomingContext.streetNumber || null,
         streetName: incomingContext.streetName || null,
         suburb: incomingContext.suburb || null,
         state: incomingContext.state || null,
         country: incomingContext.country || null,
         fullAddress: incomingContext.fullAddress || null,
+
         name: incomingContext.name || "Guest",
         email: incomingContext.email || null,
         phoneNumber: incomingContext.phoneNumber || null,
         note: incomingContext.note || "none"
       };
-      
-      // 3. Masukkan ke dalam callSessions Map agar bisa diakses nanti
-      callSessions.set(ws.sessionId, {       
+
+      callSessions.set(ws.sessionId, {
         agent: prompt.agent_type,
         promptId: prompt.id,
         systemPrompt,
         history: [],
-        context: finalContext // Simpan context yang sudah rapi di sini
+        context: finalContext
       });
 
-       // ============================================
-      // CREATE SESSION RECORD
-      // ============================================
-      await queryAsync(`
+      await queryAsync(
+        `
         INSERT INTO chatbot_conversation_sessions
-        (session_id, conversation_id, agent_type, user_name, user_ip, started_at, total_messages, ai_messages)
+        (
+          session_id,
+          conversation_id,
+          agent_type,
+          user_name,
+          user_ip,
+          started_at,
+          total_messages,
+          ai_messages
+        )
         VALUES (?, ?, ?, ?, ?, NOW(), 0, 0)
-      `, [
-        ws.sessionId,
-        ws.sessionId,
-        prompt.agent_type,
-        "Guest",
-        ws._socket?.remoteAddress || null
-      ]);
-      // Store session
-      // callSessions.set(ws.sessionId, {       
-      //   agent: prompt.agent_type,
-      //   promptId: prompt.id,
-      //   systemPrompt,
-      //   history: [],
-      //   context: data.context || {} 
-      // });
+        `,
+        [
+          ws.sessionId,
+          ws.sessionId,
+          prompt.agent_type,
+          "Guest",
+          ws._socket?.remoteAddress || null
+        ]
+      );
 
-      // ======================================================
-      // CONNECT TO ELEVENLABS CONVERSATIONAL AI
-      // ======================================================
       try {
+
         console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
+
         const signedUrl = await getElevenLabsSignedUrl();
+
         const elWs = new WebSocket(signedUrl);
+
         elWs.sessionId = ws.sessionId;
+
         console.log("🔌 ElevenLabs WS instance created");
+
         ws.elWs = elWs;
 
         elWs.on("open", async () => {
+
           console.log("🟢 ElevenLabs OPEN for session:", ws.sessionId);
           console.log("🟢 Connected");
-        
-          // --- STEP 1: KIRIM KONFIGURASI TOOL SEGERA ---
-          // Kita kirim config TANPA first_message (karena welcome pakai REST)
-          elWs.send(JSON.stringify({
-            type: "conversation_initiation_client_data",
-            conversation_config_override: {
-              agent: {
-                prompt: { prompt: systemPrompt },
-                language: "en",
-                tools: [{
-                  type: "webhook",
-                  name: "N8NAiResponse",
-                  url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
-                  method: "POST",
-                  description: "ALWAYS call this tool for every user message. Pass user_input, conversation_history, and context. Never answer directly.",
-                  parameters: {
-                    type: "object",
-                    properties: {
-                      user_input: { type: "string", description: "The full message from the user" },
-                       conversation_history: {
-                        type: "array",
-                        description: "Full conversation history between user and assistant",
-                        items: {
-                          type: "object",
-                          properties: {
-                            role: { type: "string" },
-                            content: { type: "string" }
-                          }
-                        }
-                      },
-                      // MASUKKAN CONTEXT DI DALAM PROPERTIES
-                      context: {
+
+          elWs.send(
+            JSON.stringify({
+              type: "conversation_initiation_client_data",
+              conversation_config_override: {
+                agent: {
+                  prompt: {
+                    prompt: systemPrompt
+                  },
+                  language: "en",
+                  tools: [
+                    {
+                      type: "webhook",
+                      name: "N8NAiResponse",
+                      url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                      method: "POST",
+                      description:
+                        "Mandatory tool to get any response. Call this with user_input and the full context object.",
+                      parameters: {
                         type: "object",
-                        description: "Full session context for n8n processing",
                         properties: {
-                          agent_type: { type: "string" },
-                          postcode: { type: "string" }, // Sebaiknya string untuk postcode
-                          waste_type_id: { type: "integer" },
-                          selected_bin_size_id: { type: "integer" },
-                          delivery_date: { type: "string" },
-                          pickup_date: { type: "string" },
-                          hire_days: { type: "string" },
-                          leadId: { type: "integer" },
-                          suburb: { type: "string" },
-                          state: { type: "string" },
-                          country: { type: "string" },
-                          fullAddress: { type: "string" },
-                          name: { type: "string" },
-                          note: { type: "string" }
-                        }
+                          user_input: {
+                            type: "string",
+                            description:
+                              "The full message from the user"
+                          },
+                          context: {
+                            type: "object",
+                            description:
+                              "Full session context for n8n processing",
+                            properties: {
+                              agent_type: { type: "string" },
+                              postcode: { type: "string" },
+                              waste_type_id: { type: "integer" },
+                              selected_bin_size_id: { type: "integer" },
+                              delivery_date: { type: "string" },
+                              pickup_date: { type: "string" },
+                              hire_days: { type: "string" },
+                              leadId: { type: "integer" },
+                              suburb: { type: "string" },
+                              state: { type: "string" },
+                              country: { type: "string" },
+                              fullAddress: { type: "string" },
+                              name: { type: "string" },
+                              note: { type: "string" }
+                            }
+                          }
+                        },
+                        required: [
+                          "user_input",
+                          "context"
+                        ]
                       }
-                    },
-                    required: ["user_input", "conversation_history", "context"] // Pastikan keduanya wajib
-                  }
-                }]
-              }
-            },
-            // Mengirim data awal ke ElevenLabs agar tersimpan di session state mereka
-            dynamic_variables: {
-              conversation_history: [],
-              ...finalContext
-            }
-          }));
-        
-          // --- STEP 2: AMBIL TEKS WELCOME DARI DB ---
-          const rows = await queryAsync(`SELECT message_text FROM chatbot_welcome_messages WHERE is_active = 1 LIMIT 1`);
+                    }
+                  ]
+                }
+              },
+              dynamic_variables: finalContext
+            })
+          );
+
+          const rows = await queryAsync(
+            `
+            SELECT message_text
+            FROM chatbot_welcome_messages
+            WHERE is_active = 1
+            LIMIT 1
+            `
+          );
+
           if (!rows.length) return;
+
           const welcomeText = rows[0].message_text.trim();
-        
-          // --- STEP 3: JALANKAN REST TTS ---
+
           try {
+
             console.log("🎤 Generating welcome TTS for:", ws.sessionId);
-            const pcmWelcome = await speakWelcome(welcomeText); // Fungsi REST Anda
-            
-            // if (ws.readyState === WebSocket.OPEN) {
-            //   // Kirim teks ke UI
-            //   ws.send(JSON.stringify({ type: "ai-text", text: welcomeText }));
-              
-            //   // Kirim audio PCM hasil REST ke browser
-            //   const silence = Buffer.alloc(16000 * 2 * 0.25);
-            //   ws.send(silence);
-            //   ws.send(pcmWelcome);
-              
-            //   // Tandai bahwa salam sudah selesai, sekarang giliran ConvAI
-            //   ws.welcomeAudioSent = true; 
-            // }
+
+            const pcmWelcome = await speakWelcome(welcomeText);
+
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "ai-text", text: welcomeText }));
+
+              ws.send(
+                JSON.stringify({
+                  type: "ai-text",
+                  text: welcomeText
+                })
+              );
+
               console.log("📤 Welcome text sent to browser");
-          
+
               const silence = Buffer.alloc(16000 * 2 * 0.25);
+
               ws.send(silence);
               ws.send(pcmWelcome);
-          
-              // 🔴 TAMBAHAN WAJIB: hitung durasi audio
-              const durationMs = (pcmWelcome.length / 2 / 16000) * 1000;
-          
+
+              const durationMs =
+                (pcmWelcome.length / 2 / 16000) * 1000;
+
               setTimeout(() => {
-                ws.callState = "ACTIVE";     // 🟢 SELESAI WELCOME
+
+                ws.callState = "ACTIVE";
                 ws.welcomeAudioSent = true;
+
                 console.log("✅ Welcome selesai, mic dibuka");
+
               }, durationMs + 100);
             }
+
           } catch (err) {
             console.error("Error REST TTS:", err);
           }
         });
 
-        // elWs.on("open", async () => {
-        //   console.log("🟢 Connected (REST TTS mode)");
-        
-        //   const rows = await queryAsync(`
-        //     SELECT message_text
-        //     FROM chatbot_welcome_messages
-        //     WHERE is_active = 1
-        //     ORDER BY activated_at DESC
-        //     LIMIT 1
-        //   `);
-        
-        //   if (!rows.length) return;
-        
-        //   const welcomeText = rows[0].message_text.trim();
-        
-        //   // 1️⃣ kirim text ke UI
-        //   ws.send(JSON.stringify({
-        //     type: "ai-text",
-        //     text: welcomeText
-        //   }));
-        
-        //   // 2️⃣ generate PCM via REST
-        //   // const pcmWelcome = await speakWelcome(welcomeText);
-        
-        //   // 3️⃣ WARMUP + SEND
-        //   if (ws.readyState === WebSocket.OPEN) {
-        //     console.log("🟡 Sending REST welcome audio");
-        
-        //     const silence = Buffer.alloc(16000 * 2 * 0.25);
-        //     // ws.send(silence);
-        //     // ws.send(pcmWelcome);
-        
-        //     ws.welcomeAudioSent = true;
-        //   }
-        // });
-
-        // ======================================================
-        // EVENTS FROM ELEVENLABS → FORWARD TO BROWSER
-        // ======================================================
         elWs.on("message", async (elMsg) => {
-            if (!ws.sessionId || ws.callState === "ENDED") {
-              return;
-            }
-            try {
-              const event = JSON.parse(elMsg.toString());
-              console.log("📩 EL EVENT:", event.type);
-              const session = callSessions.get(ws.sessionId);
-              if (!session) {
+
+          if (!ws.sessionId || ws.callState === "ENDED") {
+            return;
+          }
+
+          try {
+
+            const event = JSON.parse(elMsg.toString());
+
+            console.log("📩 EL EVENT:", event.type);
+
+            const session = callSessions.get(ws.sessionId);
+
+            if (!session) {
               console.warn("⚠️ Session missing in Map. Ignoring EL event.");
               return;
             }
 
             switch (event.type) {
 
-              // --- Metadata (log only) ---
-                // case "conversation_initiation_metadata": {   
-                // ws.elReady = true;   
-                // console.log("EL READY:", ws.elReady);    
-                // // Fetch welcome message from DB   
-                // const welcomeRows = await queryAsync(`SELECT message_text    FROM chatbot_welcome_messages    WHERE is_active = 1    ORDER BY activated_at DESC, id DESC    LIMIT 1  `);
-                //     const firstMessage = welcomeRows?.[0]?.message_text?.trim() || null;
-                //         // Send conversation_initiation_client_data with system prompt AND first_message   
-                //         elWs.send(JSON.stringify({     
-                //           type: "conversation_initiation_client_data",
-                //           conversation_config_override: {       
-                //                agent: {         
-                //                  prompt: { prompt: systemPrompt },
-                //                  first_message: firstMessage || undefined,                                  
-                //                  language: "en"       
-                //                }     
-                //           }   
-                //         }));
-                // // Also send welcome text to browser immediately for UI display   
-                // if (firstMessage && ws.readyState === WebSocket.OPEN) {     
-                //   ws.send(JSON.stringify({ 
-                //     type: "ai-text", 
-                //     text: firstMessage 
-                //   }));   
-                // }
-                //     // Save to DB   
-                // if (firstMessage) {
-                //   await queryAsync(`
-                // INSERT INTO chatbot_conversations      
-                // (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
-                // VALUES (?, ?, ?, ?, ?, ?, 1, NOW())    `, [ws.sessionId, prompt.agent_type, prompt.id, null, firstMessage, 1.0]);      
-                // await queryAsync(`      
-                // UPDATE chatbot_conversation_sessions      SET total_messages = total_messages + 1, ai_messages = ai_messages + 1      WHERE session_id = ?    `, [ws.sessionId]);   
-                //   }    
-                // break; 
-                // }
-                
-                // case "conversation_initiation_metadata": {
-                //   ws.elReady = true;
-                //   console.log("EL READY:", ws.elReady);
-                
-                //   elWs.send(JSON.stringify({
-                //     type: "conversation_initiation_client_data",
-                //     conversation_config_override: {
-                //       agent: {
-                //         prompt: { prompt: systemPrompt },
-                //         language: "en",
-                //         tools: [
-                //         {
-                //           type: "webhook",
-                //           name: "N8NAiResponse",
-                //           url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
-                //           method: "POST",
-                //           description: "Call this tool for every user interaction to sync with the database and get authorized responses."
-                //         }
-                //       ]
-                //       }
-                //     }
-                //   }));
-                
-                //   break;
-                // }
               case "conversation_initiation_metadata": {
-                  ws.elReady = true;
-                  console.log("EL READY (Metadata received)");
-                  // Jangan kirim elWs.send lagi di sini jika sudah dikirim di on("open")
-                  break;
+                ws.elReady = true;
+                console.log("EL READY (Metadata received)");
+                break;
               }
 
               case "tool_call_result": {
                 try {
-                  const toolOutput = event.tool_call_result_event?.output;
+
+                  const toolOutput =
+                    event.tool_call_result_event?.output;
+
                   if (toolOutput?.context) {
                     session.context = {
                       ...session.context,
                       ...toolOutput.context
                     };
-                    console.log("🔄 Context synced from N8N:", session.context);
+
+                    console.log(
+                      "🔄 Context synced from N8N:",
+                      session.context
+                    );
                   }
+
                 } catch (err) {
                   console.error("Tool result parse error:", err);
                 }
+
                 break;
               }
-                
+
               case "user_transcript": {
+
                 try {
-                  const text = event.user_transcription_event.user_transcript;
+
+                  const text =
+                    event.user_transcription_event.user_transcript;
+
                   console.log("🗣️ User:", text);
-              
+
                   if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: "user-text", text }));
+                    ws.send(
+                      JSON.stringify({
+                        type: "user-text",
+                        text
+                      })
+                    );
                   }
-              
+
                   if (!session) {
                     console.warn("⚠ No session found");
                     break;
                   }
-              
-                  session.history.push({ role: "user", content: text });
+
+                  session.history.push({
+                    role: "user",
+                    content: text
+                  });
+
                   session.lastUserMessage = text;
+
                   session.context = session.context || {};
-              
-                  const extractedPostcode = extractPostcode(text);
+
+                  const extractedPostcode =
+                    extractPostcode(text);
+
                   if (extractedPostcode) {
                     session.context.postcode = extractedPostcode;
-                    console.log("✅ Postcode extracted:", extractedPostcode);
+                    console.log(
+                      "✅ Postcode extracted:",
+                      extractedPostcode
+                    );
                   }
-              
-                  const deliveryDate = extractDeliveryDate(text);
-                  if (deliveryDate) {
-                    session.context.delivery_date = deliveryDate;
-                    console.log("📦 Delivery date extracted:", deliveryDate);
-                  }
-              
-                  const pickupDate = extractPickupDate(text);
-                  if (pickupDate) {
-                    session.context.pickup_date = pickupDate;
-                    console.log("🚛 Pickup date extracted:", pickupDate);
-                  }
-              
-                  console.log("📦 Final Context updated in Node:", session.context);
-              
-                  // ======================================================
-                  // 🚀 UPDATE ELEVENLABS DISINI
-                  // ======================================================
-                  session.history = session.history.slice(-20);
 
-                    elWs.send(JSON.stringify({
-                      type: "client_tool_outputs",
-                      dynamic_variables: {
-                        conversation_history: session.history,
-                        ...session.context
-                      }
-                    }));
-                  // ======================================================
-              
+                  const deliveryDate =
+                    extractDeliveryDate(text);
+
+                  if (deliveryDate) {
+                    session.context.delivery_date =
+                      deliveryDate;
+
+                    console.log(
+                      "📦 Delivery date extracted:",
+                      deliveryDate
+                    );
+                  }
+
+                  const pickupDate =
+                    extractPickupDate(text);
+
+                  if (pickupDate) {
+                    session.context.pickup_date =
+                      pickupDate;
+
+                    console.log(
+                      "🚛 Pickup date extracted:",
+                      pickupDate
+                    );
+                  }
+
+                  console.log(
+                    "📦 Final Context updated in Node:",
+                    session.context
+                  );
+
+                  if (
+                    extractedPostcode ||
+                    deliveryDate ||
+                    pickupDate
+                  ) {
+
+                    console.log(
+                      "🔄 Syncing updated context to ElevenLabs..."
+                    );
+
+                    elWs.send(
+                      JSON.stringify({
+                        type: "client_tool_outputs",
+                        dynamic_variables: session.context
+                      })
+                    );
+                  }
+
                 } catch (err) {
-                  console.error("❌ user_transcript error:", err);
+                  console.error(
+                    "❌ user_transcript error:",
+                    err
+                  );
                 }
-              
-                break; // Selesai proses transcript
+
+                break;
               }
 
-                // case "user_transcript": {
-                //   try {
-                //     const text = event.user_transcription_event.user_transcript;
-                //     console.log("🗣️ User:", text);
-                
-                //     if (ws.readyState === WebSocket.OPEN) {
-                //       ws.send(JSON.stringify({ type: "user-text", text }));
-                //     }
-                
-                //     if (!session) {
-                //       console.warn("⚠ No session found");
-                //       break;
-                //     }
-                
-                //     session.history.push({ role: "user", content: text });
-                //     session.lastUserMessage = text;
-                //     session.context = session.context || {};
-                
-                //     const extractedPostcode = extractPostcode(text);
-                //     if (extractedPostcode) {
-                //       session.context.postcode = extractedPostcode;
-                //       console.log("✅ Postcode extracted:", extractedPostcode);
-                //     }
-                
-                //     const deliveryDate = extractDeliveryDate(text);
-                //     if (deliveryDate) {
-                //       session.context.delivery_date = deliveryDate;
-                //       console.log("📦 Delivery date extracted:", deliveryDate);
-                //     }
-                
-                //     const pickupDate = extractPickupDate(text);
-                //     if (pickupDate) {
-                //       session.context.pickup_date = pickupDate;
-                //       console.log("🚛 Pickup date extracted:", pickupDate);
-                //     }
-                
-                //     console.log("📦 Final Context:", session.context);
-                
-                //     // 🚫 SENGAJA TIDAK kirim ke N8N (mode sementara)
-                //   } catch (err) {
-                //     console.error("❌ user_transcript error:", err);
-                //   }
-                
-                //   break;
-                // }
-              
-              //     // =========================
-              //     // SEND REPLY BACK TO ELEVENLABS
-              //     // =========================
-              
-              //     if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-              //       ws.elWs.send(JSON.stringify({
-              //         type: "text_to_speech",
-              //         text: data.reply,
-              //         voice_id: ELEVENLABS_VOICE_ID
-              //       }));
-              //       console.log("🔊 Audio request sent to ElevenLabs (TTS only)");
-              //     }
-              
-              //     // =========================
-              //     // SAVE ASSISTANT MESSAGE
-              //     // =========================
-              
-              //     session.history.push({
-              //       role: "assistant",
-              //       content: data.reply
-              //     });
-              
-              //   } catch (err) {
-              //     console.error("❌ user_transcript error:", err);
-              //   }
-              
-              //   break;
-              // }
-
-              // --- Agent response (LLM text) ---
               case "agent_response": {
-                const text = event.agent_response_event.agent_response;
+
+                const text =
+                  event.agent_response_event.agent_response;
+
                 console.log("🤖 Agent:", text);
-              
+
                 if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: "ai-text", text }));
+                  ws.send(
+                    JSON.stringify({
+                      type: "ai-text",
+                      text
+                    })
+                  );
                 }
-              
+
                 if (!session) break;
-              
-                session.history.push({ role: "assistant", content: text });
-                session.history = session.history.slice(-20);
-              
-                const userMessage = session.lastUserMessage || null;
-              
-                await queryAsync(`
+
+                session.history.push({
+                  role: "assistant",
+                  content: text
+                });
+
+                const userMessage =
+                  session.lastUserMessage || null;
+
+                await queryAsync(
+                  `
                   INSERT INTO chatbot_conversations
-                  (session_id, agent_type, prompt_id, user_message, ai_response, confidence, resolved, created_at)
+                  (
+                    session_id,
+                    agent_type,
+                    prompt_id,
+                    user_message,
+                    ai_response,
+                    confidence,
+                    resolved,
+                    created_at
+                  )
                   VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-                `, [
-                  ws.sessionId,
-                  session.agent,
-                  session.promptId,
-                  userMessage,
-                  text,
-                  0.90
-                ]);
-              
-                await queryAsync(`
+                  `,
+                  [
+                    ws.sessionId,
+                    session.agent,
+                    session.promptId,
+                    userMessage,
+                    text,
+                    0.9
+                  ]
+                );
+
+                await queryAsync(
+                  `
                   UPDATE chatbot_conversation_sessions
-                  SET total_messages = total_messages + 1,
-                      ai_messages = ai_messages + 1
+                  SET
+                    total_messages = total_messages + 1,
+                    ai_messages = ai_messages + 1
                   WHERE session_id = ?
-                `, [ws.sessionId]);
-              
+                  `,
+                  [ws.sessionId]
+                );
+
                 if (userMessage) {
                   await insertLearningQueue({
                     sessionId: ws.sessionId,
@@ -947,154 +924,201 @@ if (ws.elWs) {
                     answer: text
                   });
                 }
-              
+
                 session.lastUserMessage = null;
-              
+
                 break;
               }
+
               case "audio": {
-                const pcm = Buffer.from(event.audio_event.audio_base_64, "base64");
-              
+
+                const pcm = Buffer.from(
+                  event.audio_event.audio_base_64,
+                  "base64"
+                );
+
                 if (!ws.welcomeAudioSent) {
-                  // Jika ConvAI mencoba bicara saat REST belum selesai, kita abaikan
-                  console.warn("⛔ ConvAI mencoba bicara tapi REST belum selesai. Skipping...");
+                  console.warn(
+                    "⛔ ConvAI mencoba bicara tapi REST belum selesai. Skipping..."
+                  );
                   break;
                 }
-              
+
                 if (ws.readyState === WebSocket.OPEN) {
                   ws.send(pcm);
-                  console.log("🔊 ConvAI Audio sent to browser:", pcm.length, "bytes");
+
+                  console.log(
+                    "🔊 ConvAI Audio sent to browser:",
+                    pcm.length,
+                    "bytes"
+                  );
                 }
+
                 break;
               }
 
-              // --- Interruption (user spoke while agent was talking) ---
               case "interruption": {
+
                 console.log("⚡ Interruption detected");
+
                 if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: "interruption" }));
+                  ws.send(
+                    JSON.stringify({
+                      type: "interruption"
+                    })
+                  );
                 }
+
                 break;
               }
 
-              // --- Ping → respond with Pong ---
               case "ping": {
-  if (elWs.readyState === WebSocket.OPEN) {
-    elWs.send(JSON.stringify({
-      type: "pong",
-      event_id: event.ping_event.event_id
-    }));
-  }
-  break;
-}
 
-              // --- VAD score (optional, for UI) ---
+                if (elWs.readyState === WebSocket.OPEN) {
+                  elWs.send(
+                    JSON.stringify({
+                      type: "pong",
+                      event_id: event.ping_event.event_id
+                    })
+                  );
+                }
+
+                break;
+              }
+
               case "vad_score":
               case "internal_tentative_agent_response":
-                // Ignore or use for "thinking" indicator
                 break;
 
               default:
-                console.log("📩 ElevenLabs event:", event.type);
+                console.log(
+                  "📩 ElevenLabs event:",
+                  event.type
+                );
             }
+
           } catch (err) {
-            console.error("❌ ElevenLabs parse error:", err);
+            console.error(
+              "❌ ElevenLabs parse error:",
+              err
+            );
           }
         });
 
         elWs.on("close", () => {
-          console.log("❌ ElevenLabs disconnected for session", elWs.sessionId);
+          console.log(
+            "❌ ElevenLabs disconnected for session",
+            elWs.sessionId
+          );
         });
 
         elWs.on("error", (err) => {
-          console.error("❌ ElevenLabs error:", err.message);
+          console.error(
+            "❌ ElevenLabs error:",
+            err.message
+          );
         });
 
       } catch (err) {
-        console.error("❌ ElevenLabs connection failed:", err);
-        ws.send(JSON.stringify({
-          type: "ai-text",
-          text: "Sorry, I'm having trouble connecting. Please try again."
-        }));
+
+        console.error(
+          "❌ ElevenLabs connection failed:",
+          err
+        );
+
+        ws.send(
+          JSON.stringify({
+            type: "ai-text",
+            text:
+              "Sorry, I'm having trouble connecting. Please try again."
+          })
+        );
       }
 
       console.log("🎯 Active agent:", prompt.agent_type);
+
       return;
     }
 
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
 
-  // 🔴 TAMBAHAN WAJIB: BLOK AUDIO SAAT WELCOME
       if (ws.callState !== "ACTIVE") {
         console.log("⛔ Audio user diblok (welcome)");
         return;
       }
-    
-      if (!ws.sessionReady || !ws.elWs) return;
 
-        if (ws.elWs.readyState !== WebSocket.OPEN) {
-          console.log("⚠ ElevenLabs not open");
-          return;
-        }
-    
+      if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
+
       if (ws.elWs.readyState === WebSocket.OPEN) {
-        ws.elWs.send(JSON.stringify({
-          user_audio_chunk: Buffer.from(msg).toString("base64")
-        }));
+        ws.elWs.send(
+          JSON.stringify({
+            user_audio_chunk: Buffer.from(msg).toString("base64")
+          })
+        );
       }
+
       return;
     }
   });
 
-  // ======================================================
-  // DISCONNECT
-  // ======================================================
- ws.on("close", async () => {
-  const sessionId = ws.sessionId;
+  ws.on("close", async () => {
 
-  console.log("❌ Client disconnected", sessionId);
+    const sessionId = ws.sessionId;
 
-  // 🛑 GUARD: kalau tidak ada session, jangan lanjut
-  if (!sessionId) {
-    console.log("⚠️ No sessionId on close, skipping cleanup");
-    return;
-  }
+    console.log("❌ Client disconnected", sessionId);
 
-  try {
-    console.log("🧹 Cleaning up ElevenLabs for:", sessionId);
+    if (!sessionId) {
+      console.log(
+        "⚠️ No sessionId on close, skipping cleanup"
+      );
+      return;
+    }
 
-    // 1️⃣ Generate summary
-    const summary = await summarizeConversation(sessionId);
+    try {
 
-    // 2️⃣ Update session
-    await queryAsync(`
-      UPDATE chatbot_conversation_sessions
-      SET ended_at = NOW(),
+      console.log(
+        "🧹 Cleaning up ElevenLabs for:",
+        sessionId
+      );
+
+      const summary =
+        await summarizeConversation(sessionId);
+
+      await queryAsync(
+        `
+        UPDATE chatbot_conversation_sessions
+        SET
+          ended_at = NOW(),
           session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
           conversation_summary = ?
-      WHERE session_id = ?
-    `, [summary, sessionId]);
+        WHERE session_id = ?
+        `,
+        [
+          summary,
+          sessionId
+        ]
+      );
 
-  } catch (err) {
-    console.error("❌ Session close error:", err);
-  }
+    } catch (err) {
+      console.error("❌ Session close error:", err);
+    }
 
-  // 3️⃣ Close ElevenLabs safely
-  if (ws.elWs) {
-    try { ws.elWs.close(); } catch {}
-    ws.elWs = null;
-  }
+    if (ws.elWs) {
+      try {
+        ws.elWs.close();
+      } catch {}
 
-  // 4️⃣ Delete session safely
-  callSessions.delete(sessionId);
-   ws.sessionId = null;
-ws.sessionReady = false;
-ws.callState = "ENDED";
-ws.welcomeAudioSent = false;
-ws.elReady = false;
+      ws.elWs = null;
+    }
+
+    callSessions.delete(sessionId);
+
+    ws.sessionId = null;
+    ws.sessionReady = false;
+    ws.callState = "ENDED";
+    ws.welcomeAudioSent = false;
+    ws.elReady = false;
   });
-
-
 });
 
 
@@ -5379,6 +5403,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
