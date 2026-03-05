@@ -613,6 +613,17 @@ Always stay in this role.
                             description:
                               "The full message from the user"
                           },
+                          conversation_history: {
+                            type: "array",
+                            description: "Recent conversation history",
+                            items: {
+                              type: "object",
+                              properties: {
+                                role: { type: "string" },
+                                content: { type: "string" }
+                              }
+                            }
+                          },
                           context: {
                             type: "object",
                             description:
@@ -636,7 +647,8 @@ Always stay in this role.
                           }
                         },
                         required: [
-                          "user_input",
+                          "user_input",                          
+                          "conversation_history",
                           "context"
                         ]
                       }
@@ -5403,6 +5415,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
