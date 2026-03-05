@@ -1030,7 +1030,12 @@ if (ws.elWs) {
         return;
       }
     
-      if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
+      if (!ws.sessionReady || !ws.elWs) return;
+
+        if (ws.elWs.readyState !== WebSocket.OPEN) {
+          console.log("⚠ ElevenLabs not open");
+          return;
+        }
     
       if (ws.elWs.readyState === WebSocket.OPEN) {
         ws.elWs.send(JSON.stringify({
@@ -5374,6 +5379,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
