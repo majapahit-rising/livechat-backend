@@ -656,7 +656,10 @@ Always stay in this role.
                   ]
                 }
               },
-              dynamic_variables: finalContext
+              dynamic_variables: {
+                conversation_history: [],
+                ...finalContext
+              }
             })
           );
 
@@ -793,6 +796,10 @@ Always stay in this role.
                     content: text
                   });
 
+                  if (session.history.length > 20) {
+                    session.history.shift();
+                  }
+
                   session.lastUserMessage = text;
 
                   session.context = session.context || {};
@@ -852,7 +859,10 @@ Always stay in this role.
                     elWs.send(
                       JSON.stringify({
                         type: "client_tool_outputs",
-                        dynamic_variables: session.context
+                        dynamic_variables: {
+                          conversation_history: session.history.slice(-10),
+                          ...session.context
+                        }
                       })
                     );
                   }
@@ -889,6 +899,10 @@ Always stay in this role.
                   role: "assistant",
                   content: text
                 });
+
+                if (session.history.length > 20) {
+                  session.history.shift();
+                }
 
                 const userMessage =
                   session.lastUserMessage || null;
@@ -5415,6 +5429,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
