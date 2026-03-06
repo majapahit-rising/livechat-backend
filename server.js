@@ -413,7 +413,6 @@ wss.on("connection", (ws) => {
       console.log("🚀 START CALL RECEIVED:", data.session_id);
     }
 
-    console.log("Previous elWs state:", ws.elWs?.readyState);
 
     if (data?.type === "start-call") {
 
@@ -5602,5 +5601,6 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
