@@ -264,15 +264,15 @@ async function summarizeConversation(sessionId) {
     const aiResp = await openai.responses.create({
       model: "gpt-4.1-mini",
       input: `
-Summarize this support call in 3 concise sentences.
-Focus on:
-- Main intent
-- Key data mentioned
-- Outcome
-
-Conversation:
-${conversationText}
-`
+      Summarize this support call in 3 concise sentences.
+      Focus on:
+      - Main intent
+      - Key data mentioned
+      - Outcome
+      
+      Conversation:
+      ${conversationText}
+      `
     });
 
     return aiResp.output?.[0]?.content?.[0]?.text || null;
@@ -431,9 +431,9 @@ wss.on("connection", (ws) => {
 
       ws.sessionReady = true;
 
-      const requestedAgent = data.agent || "general";
+      let rows;
 
-      const rows = await queryAsync(
+      rows = await queryAsync(
         `
         SELECT
           id,
@@ -448,13 +448,33 @@ wss.on("connection", (ws) => {
           do_guidelines,
           dont_guidelines
         FROM chatbot_prompts
-        WHERE agent_type = ?
-        AND status = 'active'
-        AND is_active = 1
+        WHERE agent_type = 'general'
         LIMIT 1
-        `,
-        [requestedAgent]
+        `
       );
+      // const requestedAgent = data.agent || "sales";
+      // const rows = await queryAsync(
+      //   `
+      //   SELECT
+      //     id,
+      //     agent_type,
+      //     identity,
+      //     role_description,
+      //     primary_goals,
+      //     context_knowledge,
+      //     language,
+      //     tone,
+      //     response_format,
+      //     do_guidelines,
+      //     dont_guidelines
+      //   FROM chatbot_prompts
+      //   WHERE agent_type = ?
+      //   AND status = 'active'
+      //   AND is_active = 1
+      //   LIMIT 1
+      //   `,
+      //   [requestedAgent]
+      // );
 
       let prompt = rows[0];
 
@@ -821,6 +841,7 @@ Always stay in this role.
 
                   const text =
                     event.user_transcription_event.user_transcript;
+                  
                   // ==============================
                   // SWITCH GENERAL → SALES
                   // ==============================
@@ -840,6 +861,9 @@ Always stay in this role.
                   }
 
                   console.log("🗣️ User:", text);
+                  // ==============================
+                  // SWITCH GENERAL → SALES
+                  // ==============================
 
                   if (ws.readyState === WebSocket.OPEN) {
                     ws.send(
@@ -5488,3 +5512,4 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
