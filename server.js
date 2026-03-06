@@ -264,15 +264,15 @@ async function summarizeConversation(sessionId) {
     const aiResp = await openai.responses.create({
       model: "gpt-4.1-mini",
       input: `
-      Summarize this support call in 3 concise sentences.
-      Focus on:
-      - Main intent
-      - Key data mentioned
-      - Outcome
-      
-      Conversation:
-      ${conversationText}
-      `
+Summarize this support call in 3 concise sentences.
+Focus on:
+- Main intent
+- Key data mentioned
+- Outcome
+
+Conversation:
+${conversationText}
+`
     });
 
     return aiResp.output?.[0]?.content?.[0]?.text || null;
@@ -312,24 +312,6 @@ async function insertLearningQueue({ sessionId, question, answer }) {
   } catch (err) {
     console.error("❌ Learning queue insert failed:", err);
   }
-}
-
-function shouldSwitchToSales(text) {
-
-  if (!text) return false;
-
-  const lower = text.toLowerCase();
-
-  const triggers = [
-    "order",
-    "i want",
-    "i need",
-    "book",
-    "hire",
-    "get a bin"
-  ];
-
-  return triggers.some(t => lower.includes(t));
 }
 
 async function speakWelcome(text) {
@@ -413,6 +395,7 @@ wss.on("connection", (ws) => {
       console.log("🚀 START CALL RECEIVED:", data.session_id);
     }
 
+    console.log("Previous elWs state:", ws.elWs?.readyState);
 
     if (data?.type === "start-call") {
 
@@ -430,28 +413,8 @@ wss.on("connection", (ws) => {
 
       ws.sessionReady = true;
 
-      // let rows;
-
-      // rows = await queryAsync(
-      //   `
-      //   SELECT
-      //     id,
-      //     agent_type,
-      //     identity,
-      //     role_description,
-      //     primary_goals,
-      //     context_knowledge,
-      //     language,
-      //     tone,
-      //     response_format,
-      //     do_guidelines,
-      //     dont_guidelines
-      //   FROM chatbot_prompts
-      //   WHERE agent_type = 'general'
-      //   LIMIT 1
-      //   `
-      // );
       const requestedAgent = data.agent || "sales";
+
       const rows = await queryAsync(
         `
         SELECT
@@ -840,131 +803,8 @@ Always stay in this role.
 
                   const text =
                     event.user_transcription_event.user_transcript;
-                  
-                  ==============================
-                  SWITCH GENERAL → SALES
-                  ==============================
-
-                  if (
-                    session.agent === "general" &&
-                    shouldSwitchToSales(text)
-                  ) {
-                  
-                    console.log(
-                      "🔁 Switching agent: general → sales"
-                    );
-                  
-                    session.agent = "sales";
-                  
-                    session.context.agent_type = "sales";
-                  }
-                  
-                  // if (
-                  //   session.agent === "general" &&
-                  //   shouldSwitchToSales(text)
-                  // ) {
-                  
-                  //   console.log("🔁 Switching agent: general → sales");
-                  
-                  //   const salesRows = await queryAsync(
-                  //     `
-                  //     SELECT
-                  //       id,
-                  //       agent_type,
-                  //       identity,
-                  //       role_description,
-                  //       primary_goals,
-                  //       context_knowledge,
-                  //       language,
-                  //       tone,
-                  //       response_format,
-                  //       do_guidelines,
-                  //       dont_guidelines
-                  //     FROM chatbot_prompts
-                  //     WHERE agent_type = 'sales'
-                  //     AND status = 'active'
-                  //     AND is_active = 1
-                  //     LIMIT 1
-                  //     `
-                  //   );
-                  
-                  //   if (salesRows.length) {
-                  
-                  //     const salesPrompt = salesRows[0];
-                  
-                  //     const newSystemPrompt = `
-                  // You are ${salesPrompt.identity}.
-                  
-                  // Role:
-                  // ${salesPrompt.role_description}
-                  
-                  // Base Knowledge:
-                  // ${salesPrompt.context_knowledge || ""}
-                  
-                  // Goals:
-                  // ${salesPrompt.primary_goals}
-                  
-                  // Language:
-                  // ${salesPrompt.language || "en"}
-                  
-                  // Tone:
-                  // ${salesPrompt.tone || "professional"}
-                  
-                  // Response format:
-                  // ${salesPrompt.response_format || "concise"}
-                  
-                  // Do guidelines:
-                  // ${salesPrompt.do_guidelines || ""}
-                  
-                  // Don't guidelines:
-                  // ${salesPrompt.dont_guidelines || ""}
-                  
-                  // Always stay in this role.
-                  // `.trim();
-                  
-                  //     session.agent = "sales";
-                  //     session.promptId = salesPrompt.id;
-                  //     session.systemPrompt = newSystemPrompt;
-                  //     session.context.agent_type = "sales";
-                  //     session.history = [];
-                  
-                  //     console.log("✅ Sales prompt loaded");
-                  
-                  //     if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-                  
-                  //       ws.elWs.send(JSON.stringify({
-                  //       type: "conversation_update",
-                  //       conversation_config_override: {
-                  //         agent: {
-                  //           prompt: {
-                  //             prompt: newSystemPrompt
-                  //           },
-                  //           language: "en",
-                  //           tools: [
-                  //             {
-                  //               type: "webhook",
-                  //               name: "N8NAiResponse",
-                  //               url: N8N_WEBHOOK,
-                  //               method: "POST"
-                  //             }
-                  //           ]
-                  //         }
-                  //       },
-                  //       dynamic_variables: session.context
-                  //     }));
-                  
-                  //       console.log("📡 ElevenLabs prompt switched to SALES");
-                  
-                  //     }
-                  
-                  //   }
-                  // return;
-                  // }
 
                   console.log("🗣️ User:", text);
-                  // ==============================
-                  // SWITCH GENERAL → SALES
-                  // ==============================
 
                   if (ws.readyState === WebSocket.OPEN) {
                     ws.send(
@@ -973,6 +813,11 @@ Always stay in this role.
                         text
                       })
                     );
+                  }
+
+                  if (!session) {
+                    console.warn("⚠ No session found");
+                    break;
                   }
 
                   session.history.push({
@@ -1253,6 +1098,7 @@ Always stay in this role.
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
 
       if (ws.callState !== "ACTIVE") {
+        console.log("⛔ Audio user diblok (welcome)");
         return;
       }
 
@@ -5612,9 +5458,3 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
-
-
-
-
-
-
