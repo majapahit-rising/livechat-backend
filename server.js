@@ -933,7 +933,7 @@ Always stay in this role.
                       if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
                   
                         ws.elWs.send(JSON.stringify({
-                        type: "conversation_initiation_client_data",
+                        type: "conversation_update",
                         conversation_config_override: {
                           agent: {
                             prompt: {
@@ -958,7 +958,7 @@ Always stay in this role.
                       }
                   
                     }
-                  
+                  return;
                   }
 
                   console.log("🗣️ User:", text);
@@ -5612,6 +5612,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
