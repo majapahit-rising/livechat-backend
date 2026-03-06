@@ -909,17 +909,49 @@ Always stay in this role.
                   
                     if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
                   
-                      ws.elWs.send(JSON.stringify({
-                        type: "conversation_update",
-                        conversation_config_override: {
-                          agent: {
-                            prompt: {
-                              prompt: newSystemPrompt
+                     ws.elWs.send(JSON.stringify({
+                      type: "conversation_update",
+                      conversation_config_override: {
+                        agent: {
+                          prompt: {
+                            prompt: newSystemPrompt
+                          },
+                          language: "en",
+                          tools: [
+                            {
+                              type: "webhook",
+                              name: "N8NAiResponse",
+                              url: N8N_WEBHOOK,
+                              method: "POST",
+                              description: "Mandatory tool to get any response",
+                              parameters: {
+                                type: "object",
+                                properties: {
+                                  user_input: { type: "string" },
+                                  conversation_history: { type: "array" },
+                                  context: { type: "object" }
+                                },
+                                required: [
+                                  "user_input",
+                                  "conversation_history",
+                                  "context"
+                                ]
+                              }
                             }
-                          }
-                        },
-                        dynamic_variables: session.context
+                          ]
+                        }
+                      }
+                    }));
+                    
+                    setTimeout(() => {
+                      ws.elWs.send(JSON.stringify({
+                        type: "client_tool_outputs",
+                        dynamic_variables: {
+                          ...session.context,
+                          agent_type: "sales"
+                        }
                       }));
+                    }, 50);
                   
                       console.log("📡 ElevenLabs prompt switched to SALES");
                     }
@@ -5578,5 +5610,6 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
