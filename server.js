@@ -314,6 +314,24 @@ async function insertLearningQueue({ sessionId, question, answer }) {
   }
 }
 
+function shouldSwitchToSales(text) {
+
+  if (!text) return false;
+
+  const lower = text.toLowerCase();
+
+  const triggers = [
+    "order",
+    "i want",
+    "i need",
+    "book",
+    "hire",
+    "get a bin"
+  ];
+
+  return triggers.some(t => lower.includes(t));
+}
+
 async function speakWelcome(text) {
   const format = "pcm_16000";
 
@@ -413,7 +431,7 @@ wss.on("connection", (ws) => {
 
       ws.sessionReady = true;
 
-      const requestedAgent = data.agent || "sales";
+      const requestedAgent = data.agent || "general";
 
       const rows = await queryAsync(
         `
@@ -803,6 +821,23 @@ Always stay in this role.
 
                   const text =
                     event.user_transcription_event.user_transcript;
+                  // ==============================
+                  // SWITCH GENERAL → SALES
+                  // ==============================
+                  
+                  if (
+                    session.agent === "general" &&
+                    shouldSwitchToSales(text)
+                  ) {
+                  
+                    console.log(
+                      "🔁 Switching agent: general → sales"
+                    );
+                  
+                    session.agent = "sales";
+                  
+                    session.context.agent_type = "sales";
+                  }
 
                   console.log("🗣️ User:", text);
 
@@ -813,11 +848,6 @@ Always stay in this role.
                         text
                       })
                     );
-                  }
-
-                  if (!session) {
-                    console.warn("⚠ No session found");
-                    break;
                   }
 
                   session.history.push({
@@ -5458,159 +5488,3 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
