@@ -933,13 +933,25 @@ Always stay in this role.
                       if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
                   
                         ws.elWs.send(JSON.stringify({
-                          type: "conversation_update",
+                        type: "conversation_initiation_client_data",
+                        conversation_config_override: {
                           agent: {
                             prompt: {
                               prompt: newSystemPrompt
-                            }
+                            },
+                            language: "en",
+                            tools: [
+                              {
+                                type: "webhook",
+                                name: "N8NAiResponse",
+                                url: N8N_WEBHOOK,
+                                method: "POST"
+                              }
+                            ]
                           }
-                        }));
+                        },
+                        dynamic_variables: session.context
+                      }));
                   
                         console.log("📡 ElevenLabs prompt switched to SALES");
                   
@@ -1241,7 +1253,6 @@ Always stay in this role.
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
 
       if (ws.callState !== "ACTIVE") {
-        console.log("⛔ Audio user diblok (welcome)");
         return;
       }
 
@@ -5601,6 +5612,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
