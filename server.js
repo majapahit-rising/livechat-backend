@@ -825,18 +825,104 @@ Always stay in this role.
                   // SWITCH GENERAL → SALES
                   // ==============================
                   
+                  // if (
+                  //   session.agent === "general" &&
+                  //   shouldSwitchToSales(text)
+                  // ) {
+                  
+                  //   console.log(
+                  //     "🔁 Switching agent: general → sales"
+                  //   );
+                  
+                  //   session.agent = "sales";
+                  
+                  //   session.context.agent_type = "sales";
+                  // }
+
+
                   if (
                     session.agent === "general" &&
                     shouldSwitchToSales(text)
                   ) {
                   
-                    console.log(
-                      "🔁 Switching agent: general → sales"
-                    );
+                    console.log("🔁 Switching agent: general → sales");
+                  
+                    const rows = await queryAsync(`
+                      SELECT
+                        id,
+                        agent_type,
+                        identity,
+                        role_description,
+                        primary_goals,
+                        context_knowledge,
+                        language,
+                        tone,
+                        response_format,
+                        do_guidelines,
+                        dont_guidelines
+                      FROM chatbot_prompts
+                      WHERE agent_type = 'sales'
+                      AND status = 'active'
+                      AND is_active = 1
+                      LIMIT 1
+                    `);
+                  
+                    if (!rows.length) return;
+                  
+                    const salesPrompt = rows[0];
+                  
+                    const newSystemPrompt = `
+                  You are ${salesPrompt.identity}.
+                  
+                  Role:
+                  ${salesPrompt.role_description}
+                  
+                  Base Knowledge:
+                  ${salesPrompt.context_knowledge || ""}
+                  
+                  Goals:
+                  ${salesPrompt.primary_goals}
+                  
+                  Language:
+                  ${salesPrompt.language || "en"}
+                  
+                  Tone:
+                  ${salesPrompt.tone || "professional"}
+                  
+                  Response format:
+                  ${salesPrompt.response_format || "concise"}
+                  
+                  Do guidelines:
+                  ${salesPrompt.do_guidelines || ""}
+                  
+                  Don't guidelines:
+                  ${salesPrompt.dont_guidelines || ""}
+                  
+                  Always stay in this role.
+                  `.trim();
                   
                     session.agent = "sales";
-                  
+                    session.promptId = salesPrompt.id;
+                    session.systemPrompt = newSystemPrompt;
                     session.context.agent_type = "sales";
+                    session.history = [];
+                  
+                    if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+                  
+                      ws.elWs.send(JSON.stringify({
+                        type: "conversation_update",
+                        conversation_config_override: {
+                          agent: {
+                            prompt: {
+                              prompt: newSystemPrompt
+                            }
+                          }
+                        },
+                        dynamic_variables: session.context
+                      }));
+                  
+                      console.log("📡 ElevenLabs prompt switched to SALES");
+                    }
                   }
 
                   console.log("🗣️ User:", text);
@@ -5492,4 +5578,5 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
