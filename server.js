@@ -741,27 +741,59 @@ Always stay in this role.
               }
 
               case "tool_call_result": {
-                try {
 
+                try {
+              
                   const toolOutput =
                     event.tool_call_result_event?.output;
-
-                  if (toolOutput?.context) {
+              
+                  if (!toolOutput) break;
+              
+                  // ==============================
+                  // UPDATE CONTEXT
+                  // ==============================
+              
+                  if (toolOutput.context) {
                     session.context = {
                       ...session.context,
                       ...toolOutput.context
                     };
-
-                    console.log(
-                      "🔄 Context synced from N8N:",
-                      session.context
-                    );
+              
+                    console.log("🔄 Context synced:", session.context);
                   }
-
+              
+                  // ==============================
+                  // SEND N8N RESPONSE
+                  // ==============================
+              
+                  if (toolOutput.response) {
+              
+                    const text = toolOutput.response;
+              
+                    console.log("📦 N8N Response:", text);
+              
+                    if (ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify({
+                        type: "ai-text",
+                        text
+                      }));
+                    }
+              
+                    session.history.push({
+                      role: "assistant",
+                      content: text
+                    });
+              
+                    if (session.history.length > 20) {
+                      session.history.shift();
+                    }
+              
+                  }
+              
                 } catch (err) {
                   console.error("Tool result parse error:", err);
                 }
-
+              
                 break;
               }
 
@@ -5426,6 +5458,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
