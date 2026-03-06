@@ -875,11 +875,11 @@ Always stay in this role.
                     session.context
                   );
 
-                  if (
-                    extractedPostcode ||
-                    deliveryDate ||
-                    pickupDate
-                  ) {
+                  // if (
+                  //   extractedPostcode ||
+                  //   deliveryDate ||
+                  //   pickupDate
+                  // ) {
 
                     console.log(
                       "🔄 Syncing updated context to ElevenLabs..."
@@ -894,7 +894,7 @@ Always stay in this role.
                         }
                       })
                     );
-                  }
+                  // }
 
                 } catch (err) {
                   console.error(
@@ -5458,6 +5458,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
