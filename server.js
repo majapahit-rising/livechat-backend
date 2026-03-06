@@ -181,6 +181,24 @@ const extractPostcode = (text) => {
   return null;
 };
 
+function shouldSwitchToSales(text) {
+
+  if (!text) return false;
+
+  const lower = text.toLowerCase();
+
+  const triggers = [
+    "order",
+    "i want",
+    "i need",
+    "book",
+    "hire",
+    "get a bin"
+  ];
+
+  return triggers.some(t => lower.includes(t));
+}
+
 const extractDeliveryDate = (text) => {
   if (!text) return null;
 
@@ -395,7 +413,6 @@ wss.on("connection", (ws) => {
       console.log("🚀 START CALL RECEIVED:", data.session_id);
     }
 
-    console.log("Previous elWs state:", ws.elWs?.readyState);
 
     if (data?.type === "start-call") {
 
@@ -413,7 +430,8 @@ wss.on("connection", (ws) => {
 
       ws.sessionReady = true;
 
-      const requestedAgent = data.agent || "sales";
+      // const requestedAgent = data.agent || "sales";
+      const requestedAgent = data.agent || "general";
 
       const rows = await queryAsync(
         `
@@ -803,6 +821,23 @@ Always stay in this role.
 
                   const text =
                     event.user_transcription_event.user_transcript;
+                  // ==============================
+                  // SWITCH GENERAL → SALES
+                  // ==============================
+                  
+                  if (
+                    session.agent === "general" &&
+                    shouldSwitchToSales(text)
+                  ) {
+                  
+                    console.log(
+                      "🔁 Switching agent: general → sales"
+                    );
+                  
+                    session.agent = "sales";
+                  
+                    session.context.agent_type = "sales";
+                  }
 
                   console.log("🗣️ User:", text);
 
@@ -1098,7 +1133,6 @@ Always stay in this role.
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
 
       if (ws.callState !== "ACTIVE") {
-        console.log("⛔ Audio user diblok (welcome)");
         return;
       }
 
@@ -5458,3 +5492,4 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
