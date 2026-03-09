@@ -986,9 +986,9 @@ Always stay in this role.
                   // SEND N8N RESPONSE
                   // ==============================
               
-                  if (toolOutput.response) {
+                  if (toolOutput.reply) {
               
-                    const text = toolOutput.response;
+                    const text = toolOutput.reply;
               
                     console.log("📦 N8N Response:", text);
               
@@ -5730,6 +5730,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
