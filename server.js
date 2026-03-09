@@ -458,7 +458,7 @@ async function handleElevenLabsMessage(ws, elMsg) {
 
     // Log event untuk memantau apa yang dikirim ElevenLabs
     if (data.type !== "audio") {
-        console.log(`📩 EL EVENT: ${data.type}`, data.user_transcript || "");
+        console.log(`📩 EL EVENT: ${data.type}`);
     }
 
     switch (data.type) {
@@ -468,21 +468,28 @@ async function handleElevenLabsMessage(ws, elMsg) {
             break;
 
         case "audio":
-            // Kirim audio dari ElevenLabs langsung ke browser user
-            if (ws.readyState === 1) { // 1 = OPEN
-                const audioBuffer = Buffer.from(data.audio, "base64");
+            // PERBAIKAN: ElevenLabs mengirim audio di dalam audio_event.audio_base_64
+            const audioData = data.audio_event?.audio_base_64; 
+            if (audioData && ws.readyState === 1) { 
+                const audioBuffer = Buffer.from(audioData, "base64");
                 ws.send(audioBuffer);
             }
             break;
 
         case "user_transcript":
-            const transcript = data.user_transcript;
+            // PERBAIKAN: Ambil dari user_transcription_event
+            const transcript = data.user_transcription_event?.user_transcript;
+            if (!transcript) break;
+
             console.log(`🗣️ User said: ${transcript}`);
             
-            // LOGIKA SWITCHING: Cek jika user ingin order/sewa bin
+            // Kirim ke browser agar muncul di chat UI
+            ws.send(JSON.stringify({ type: "user-text", text: transcript }));
+
+            // LOGIKA SWITCHING
             if (shouldSwitchToSales(transcript)) {
                 const session = callSessions.get(ws.sessionId);
-                if (session && session.agent !== 'sales') {
+                if (session && session.agent !== 'sales' && !session.agentLocked) {
                     console.log("🔁 SWITCHING DETECTED: general → sales");
                     handleAgentSwitch(ws, 'sales');
                 }
@@ -490,31 +497,37 @@ async function handleElevenLabsMessage(ws, elMsg) {
             break;
 
         case "agent_response":
-            console.log(`🤖 Agent: ${data.agent_response}`);
-            // Kirim teks respon AI ke browser (untuk UI chat)
-            ws.send(JSON.stringify({
-                type: "ai-text",
-                text: data.agent_response
-            }));
+            // PERBAIKAN: Ambil dari agent_response_event
+            const aiText = data.agent_response_event?.agent_response;
+            if (!aiText) break;
+
+            console.log(`🤖 Agent: ${aiText}`);
+            ws.send(JSON.stringify({ type: "ai-text", text: aiText }));
             break;
 
         case "ping":
-            // ElevenLabs sering kirim ping, kita balas pong jika perlu (opsional)
-            ws.elWs.send(JSON.stringify({ type: "pong" }));
+            if (ws.elWs && ws.elWs.readyState === 1) {
+                ws.elWs.send(JSON.stringify({ 
+                    type: "pong", 
+                    event_id: data.ping_event?.event_id 
+                }));
+            }
             break;
     }
 }
 
 async function handleAgentSwitch(ws, newAgentType) {
-    console.log(`🔌 Switching to ${newAgentType} Agent...`);
+    const session = callSessions.get(ws.sessionId);
+    if (!session) return;
 
-    // 1. Tutup koneksi ElevenLabs yang sekarang
+    console.log(`🔌 Switching to ${newAgentType} Agent...`);
+    session.agentLocked = true; // Kunci proses switch agar tidak trigger berkali-kali
+
     if (ws.elWs) {
         ws.elWs.close();
         ws.elWs = null;
     }
 
-    // 2. Ambil prompt baru dari DB
     const rows = await queryAsync(
         `SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1`,
         [newAgentType]
@@ -524,16 +537,16 @@ async function handleAgentSwitch(ws, newAgentType) {
         const prompt = rows[0];
         const systemPrompt = `You are ${prompt.identity}. ${prompt.role_description}`;
         
-        // Update session info
-        const session = callSessions.get(ws.sessionId);
         session.agent = newAgentType;
         session.systemPrompt = systemPrompt;
+        session.context.agent_type = newAgentType;
 
-        // 3. Re-initiate ElevenLabs dengan Agent Baru
+        // Beri tahu browser kalau sedang loading/switching
+        ws.send(JSON.stringify({ type: "ai-text", text: "Connecting you to Sales..." }));
+
         await startElevenLabs(ws, systemPrompt, session.context);
     }
 }
-
 // ======================================================
 // WEBSOCKET SERVER
 // ======================================================
@@ -5678,6 +5691,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
