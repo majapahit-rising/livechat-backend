@@ -645,10 +645,17 @@ Always stay in this role.
         // const signedUrl = await getElevenLabsSignedUrl();
 
         // const elWs = new WebSocket(signedUrl);
+        console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
 
+        const session = callSessions.get(ws.sessionId);
+        
         await createElevenSession(ws, session);
+        
+        const elWs = ws.elWs;
+        
+        console.log("🔌 ElevenLabs WS instance created");
 
-        elWs.sessionId = ws.sessionId;
+        // elWs.sessionId = ws.sessionId;
 
         console.log("🔌 ElevenLabs WS instance created");
 
@@ -897,20 +904,7 @@ Always stay in this role.
                     session.agent === "general" &&
                     !session.agentLocked &&
                     shouldSwitchToSales(text)
-                  )
-
-                   if (ws.elWs) {
-                    try {
-                      ws.elWs.close();
-                    } catch {}
-                    ws.elWs = null;
-                  }
-                  
-                  await createElevenSession(ws, session);
-                  
-                  return;
-                   
-                 {
+                  ) {
                   
                     console.log("🔁 Switching agent: general → sales");
                   
@@ -967,6 +961,7 @@ Always stay in this role.
                   Always stay in this role.
                   `.trim();
                   
+                    // update session
                     session.agent = "sales";
                     session.promptId = salesPrompt.id;
                     session.systemPrompt = newSystemPrompt;
@@ -974,25 +969,19 @@ Always stay in this role.
                     session.history = [];
                     session.agentLocked = true;
                   
-                    if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
-                  
-                      ws.elWs.send(JSON.stringify({
-                        type: "conversation_update",
-                        conversation_reset: true,
-                        conversation_config_override: {
-                          agent: {
-                            prompt: {
-                              prompt: newSystemPrompt
-                            }
-                          }
-                        },
-                        dynamic_variables: session.context
-                      }));
-                  
-                      console.log("📡 ElevenLabs switched to SALES");
+                    // restart ElevenLabs session
+                    if (ws.elWs) {
+                      try {
+                        ws.elWs.close();
+                      } catch {}
+                      ws.elWs = null;
                     }
                   
-                    return; // VERY IMPORTANT
+                    await createElevenSession(ws, session);
+                  
+                    console.log("📡 ElevenLabs switched to SALES");
+                  
+                    return;
                   }
 
                   console.log("🗣️ User:", text);
@@ -5648,6 +5637,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
