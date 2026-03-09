@@ -431,7 +431,7 @@ wss.on("connection", (ws) => {
       ws.sessionReady = true;
 
       // const requestedAgent = data.agent || "sales";
-      const requestedAgent = data.agent || "general";
+      const requestedAgent = "general";
 
       const rows = await queryAsync(
         `
@@ -448,11 +448,12 @@ wss.on("connection", (ws) => {
           do_guidelines,
           dont_guidelines
         FROM chatbot_prompts
-        WHERE agent_type = 'general'
+        WHERE agent_type = ?
+        ORDER BY id DESC
         LIMIT 1
         `,
         [requestedAgent]
-      );
+        );
 
       let prompt = rows[0];
 
@@ -557,7 +558,8 @@ Always stay in this role.
         promptId: prompt.id,
         systemPrompt,
         history: [],
-        context: finalContext
+        context: finalContext,
+        agentLocked: false
       });
 
       await queryAsync(
@@ -839,6 +841,7 @@ Always stay in this role.
 
                   if (
                     session.agent === "general" &&
+                    !session.agentLocked &&
                     shouldSwitchToSales(text)
                   ) {
                   
@@ -902,11 +905,14 @@ Always stay in this role.
                     session.systemPrompt = newSystemPrompt;
                     session.context.agent_type = "sales";
                     session.history = [];
+                    // LOCK AGENT
+                    session.agentLocked = true;
                   
                     if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
                   
                      ws.elWs.send(JSON.stringify({
                       type: "conversation_update",
+                      conversation_reset: true,
                       conversation_config_override: {
                         agent: {
                           prompt: {
@@ -5574,6 +5580,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
