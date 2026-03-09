@@ -388,52 +388,66 @@ process.on("uncaughtException", (err) => {
   console.error("🔥 UNCAUGHT EXCEPTION:", err);
 });
 
-// ======================================================
-// HELPER FUNCTIONS
-// ======================================================
-
-async function createElevenSession(ws, session) {
-
-  const signedUrl = await getElevenLabsSignedUrl();
-
-  const elWs = new WebSocket(signedUrl);
-
-  ws.elWs = elWs;
-
-  elWs.on("open", () => {
-
-    elWs.send(JSON.stringify({
-      type: "conversation_initiation_client_data",
-      conversation_config_override: {
-        agent: {
-          prompt: {
-            prompt: session.systemPrompt
-          },
-          language: "en",
-          tools: [N8NAiResponseToolSchema]
-        }
-      },
-      dynamic_variables: session.context
-    }));
-
-    console.log("🟢 ElevenLabs started with", session.agent);
-  });
-
-  elWs.on("message", (msg) => {
-
+async function startElevenLabs(ws, systemPrompt, initialContext) {
     try {
-      ws.send(msg.toString());
-    } catch {}
+        // 1. Ambil Signed URL
+        const signedUrl = await getElevenLabsSignedUrl();
+        const elWs = new WebSocket(signedUrl);
+        
+        // Simpan referensi ke WebSocket utama
+        elWs.sessionId = ws.sessionId;
+        ws.elWs = elWs;
+        ws.elReady = false; // Reset status ready
 
-  });
+        elWs.on("open", () => {
+            console.log(`🟢 ElevenLabs Connected [${initialContext.agent_type}] for:`, ws.sessionId);
+            
+            // 2. Kirim Inisiasi dengan Prompt Baru
+            elWs.send(JSON.stringify({
+                type: "conversation_initiation_client_data",
+                conversation_config_override: {
+                    agent: {
+                        prompt: { prompt: systemPrompt },
+                        first_message: initialContext.agent_type === 'sales' ? "Sure, I can help with your skip bin order. What is your postcode?" : null,
+                        language: "en",
+                        tools: [
+                            {
+                                type: "webhook",
+                                name: "N8NAiResponse",
+                                url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                                method: "POST",
+                                description: "Mandatory tool to get any response. Call this with user_input and the full context object.",
+                                parameters: {
+                                    type: "object",
+                                    properties: {
+                                        user_input: { type: "string" },
+                                        conversation_history: { type: "array", items: { type: "object", properties: { role: { type: "string" }, content: { type: "string" } } } },
+                                        context: { type: "object", properties: { agent_type: { type: "string" }, postcode: { type: "string" }, waste_type_id: { type: "integer" }, selected_bin_size_id: { type: "integer" } /* ... sisanya ... */ } }
+                                    },
+                                    required: ["user_input", "conversation_history", "context"]
+                                }
+                            }
+                        ]
+                    }
+                },
+                dynamic_variables: initialContext
+            }));
+            
+            ws.elReady = true;
+        });
 
-  elWs.on("close", () => {
-    console.log("ElevenLabs session closed");
-  });
+        elWs.on("message", async (elMsg) => {
+            // Pindahkan semua logic "case user_transcript", "case audio", dll ke sini
+            // (Gunakan logic yang sudah Anda miliki di kode awal)
+            handleElevenLabsMessage(ws, elMsg); 
+        });
 
-  elWs.on("error", (err) => {
-    console.error("ElevenLabs error", err);
-  });
+        elWs.on("close", () => console.log("❌ ElevenLabs Close:", ws.sessionId));
+        elWs.on("error", (err) => console.error("❌ ElevenLabs Error:", err.message));
+
+    } catch (err) {
+        console.error("❌ Failed to start ElevenLabs:", err);
+    }
 }
 
 // ======================================================
@@ -642,20 +656,12 @@ Always stay in this role.
 
         console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
 
-        // const signedUrl = await getElevenLabsSignedUrl();
+        const signedUrl = await getElevenLabsSignedUrl();
 
-        // const elWs = new WebSocket(signedUrl);
-        console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
+        const elWs = new WebSocket(signedUrl);
 
-        const session = callSessions.get(ws.sessionId);
-        
-        await createElevenSession(ws, session);
-        
-        const elWs = ws.elWs;
-        
-        console.log("🔌 ElevenLabs WS instance created");
 
-        // elWs.sessionId = ws.sessionId;
+        elWs.sessionId = ws.sessionId;
 
         console.log("🔌 ElevenLabs WS instance created");
 
@@ -900,89 +906,40 @@ Always stay in this role.
                   // }
 
 
-                 if (
-                    session.agent === "general" &&
-                    !session.agentLocked &&
-                    shouldSwitchToSales(text)
-                  ) {
-                  
-                    console.log("🔁 Switching agent: general → sales");
-                  
-                    const rows = await queryAsync(`
-                      SELECT
-                        id,
-                        agent_type,
-                        identity,
-                        role_description,
-                        primary_goals,
-                        context_knowledge,
-                        language,
-                        tone,
-                        response_format,
-                        do_guidelines,
-                        dont_guidelines
-                      FROM chatbot_prompts
-                      WHERE agent_type = 'sales'
-                      ORDER BY id DESC
-                      LIMIT 1
-                    `);
-                  
-                    if (!rows.length) return;
-                  
-                    const salesPrompt = rows[0];
-                  
-                    const newSystemPrompt = `
-                  You are ${salesPrompt.identity}.
-                  
-                  Role:
-                  ${salesPrompt.role_description}
-                  
-                  Base Knowledge:
-                  ${salesPrompt.context_knowledge || ""}
-                  
-                  Goals:
-                  ${salesPrompt.primary_goals}
-                  
-                  Language:
-                  ${salesPrompt.language || "en"}
-                  
-                  Tone:
-                  ${salesPrompt.tone || "professional"}
-                  
-                  Response format:
-                  ${salesPrompt.response_format || "concise"}
-                  
-                  Do guidelines:
-                  ${salesPrompt.do_guidelines || ""}
-                  
-                  Don't guidelines:
-                  ${salesPrompt.dont_guidelines || ""}
-                  
-                  Always stay in this role.
-                  `.trim();
-                  
-                    // update session
-                    session.agent = "sales";
-                    session.promptId = salesPrompt.id;
-                    session.systemPrompt = newSystemPrompt;
-                    session.context.agent_type = "sales";
-                    session.history = [];
-                    session.agentLocked = true;
-                  
-                    // restart ElevenLabs session
-                    if (ws.elWs) {
-                      try {
-                        ws.elWs.close();
-                      } catch {}
+                if (session.agent === "general" && !session.agentLocked && shouldSwitchToSales(text)) {
+                  console.log("🔁 SWITCHING DETECTED: general → sales");
+              
+                  // 1. Ambil Prompt Sales dari DB
+                  const rows = await queryAsync(`SELECT * FROM chatbot_prompts WHERE agent_type = 'sales' ORDER BY id DESC LIMIT 1`);
+                  if (!rows.length) return;
+                  const salesPrompt = rows[0];
+              
+                  const newSystemPrompt = `You are ${salesPrompt.identity}. Role: ${salesPrompt.role_description}...`.trim();
+              
+                  // 2. Update Local Session
+                  session.agent = "sales";
+                  session.systemPrompt = newSystemPrompt;
+                  session.context.agent_type = "sales";
+                  session.agentLocked = true; // Kunci agar tidak switch balik-balik
+              
+                  // 3. Matikan Koneksi ElevenLabs General
+                  if (ws.elWs) {
+                      console.log("🔌 Closing General Connection...");
+                      ws.elWs.close();
                       ws.elWs = null;
-                    }
-                  
-                    await createElevenSession(ws, session);
-                  
-                    console.log("📡 ElevenLabs switched to SALES");
-                  
-                    return;
                   }
+              
+                  // 4. Beri Feedback ke User (Opsional tapi disarankan)
+                  ws.send(JSON.stringify({
+                      type: "ai-text",
+                      text: "Connecting you with our sales assistant..."
+                  }));
+              
+                  // 5. RE-START ElevenLabs dengan Prompt Sales
+                  await startElevenLabs(ws, newSystemPrompt, session.context);
+                  
+                  return; // Berhenti di sini agar transcript tidak diproses dua kali
+              }
 
                   console.log("🗣️ User:", text);
 
@@ -5637,6 +5594,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
