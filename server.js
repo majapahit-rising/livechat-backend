@@ -388,6 +388,43 @@ process.on("uncaughtException", (err) => {
   console.error("🔥 UNCAUGHT EXCEPTION:", err);
 });
 
+
+function buildFullSystemPrompt(prompt) {
+    return `
+You are ${prompt.identity}.
+
+Role:
+${prompt.role_description}
+
+Base Knowledge:
+${prompt.context_knowledge || ""}
+
+Goals & States:
+${prompt.primary_goals}
+
+Language:
+${prompt.language}
+
+Tone:
+${prompt.tone}
+
+Response format:
+${prompt.response_format}
+
+Guidelines:
+${prompt.do_guidelines || ""}
+
+Don't Guidelines:
+${prompt.dont_guidelines || ""}
+
+Absolute Rules:
+${prompt.routing_rule || ""}
+
+Always stay in this role and follow the states defined.
+`.trim();
+}
+
+
 async function startElevenLabs(ws, systemPrompt, initialContext) {
     try {
         // 1. Ambil Signed URL
@@ -416,7 +453,7 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
                                 name: "N8NAiResponse",
                                 url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
                                 method: "POST",
-                                description: "Mandatory tool to get any response. Call this with user_input and the full context object.",
+                                description: "Mandatory tool to get any response. Call this with message and the full context object.",
                                 parameters: {
                                     type: "object",
                                     properties: {
@@ -521,10 +558,10 @@ async function handleAgentSwitch(ws, newAgentType) {
     if (!session) return;
 
     console.log(`🔌 Switching to ${newAgentType} Agent...`);
-    session.agentLocked = true; // Kunci proses switch agar tidak trigger berkali-kali
+    session.agentLocked = true; 
 
     if (ws.elWs) {
-        ws.elWs.close();
+        try { ws.elWs.close(); } catch(e) {}
         ws.elWs = null;
     }
 
@@ -534,17 +571,19 @@ async function handleAgentSwitch(ws, newAgentType) {
     );
 
     if (rows.length > 0) {
-        const prompt = rows[0];
-        const systemPrompt = `You are ${prompt.identity}. ${prompt.role_description}`;
+        const promptData = rows[0];
+        
+        // PERBAIKAN: Gunakan fungsi helper agar semua aturan (State, Absolute Rule) terbawa
+        const fullSystemPrompt = buildFullSystemPrompt(promptData);
         
         session.agent = newAgentType;
-        session.systemPrompt = systemPrompt;
+        session.systemPrompt = fullSystemPrompt;
         session.context.agent_type = newAgentType;
 
-        // Beri tahu browser kalau sedang loading/switching
-        ws.send(JSON.stringify({ type: "ai-text", text: "Connecting you to Sales..." }));
+        ws.send(JSON.stringify({ type: "ai-text", text: "Connecting you with our sales team..." }));
 
-        await startElevenLabs(ws, systemPrompt, session.context);
+        // Mulai ulang ElevenLabs dengan prompt yang LENGKAP
+        await startElevenLabs(ws, fullSystemPrompt, session.context);
     }
 }
 // ======================================================
@@ -5691,6 +5730,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
