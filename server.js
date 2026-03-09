@@ -450,6 +450,90 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
     }
 }
 
+async function handleElevenLabsMessage(ws, elMsg) {
+    let data;
+    try {
+        data = JSON.parse(elMsg.toString());
+    } catch (e) { return; }
+
+    // Log event untuk memantau apa yang dikirim ElevenLabs
+    if (data.type !== "audio") {
+        console.log(`📩 EL EVENT: ${data.type}`, data.user_transcript || "");
+    }
+
+    switch (data.type) {
+        case "conversation_initiation_metadata":
+            console.log("EL READY (Metadata received)");
+            ws.elReady = true;
+            break;
+
+        case "audio":
+            // Kirim audio dari ElevenLabs langsung ke browser user
+            if (ws.readyState === 1) { // 1 = OPEN
+                const audioBuffer = Buffer.from(data.audio, "base64");
+                ws.send(audioBuffer);
+            }
+            break;
+
+        case "user_transcript":
+            const transcript = data.user_transcript;
+            console.log(`🗣️ User said: ${transcript}`);
+            
+            // LOGIKA SWITCHING: Cek jika user ingin order/sewa bin
+            if (shouldSwitchToSales(transcript)) {
+                const session = callSessions.get(ws.sessionId);
+                if (session && session.agent !== 'sales') {
+                    console.log("🔁 SWITCHING DETECTED: general → sales");
+                    handleAgentSwitch(ws, 'sales');
+                }
+            }
+            break;
+
+        case "agent_response":
+            console.log(`🤖 Agent: ${data.agent_response}`);
+            // Kirim teks respon AI ke browser (untuk UI chat)
+            ws.send(JSON.stringify({
+                type: "ai-text",
+                text: data.agent_response
+            }));
+            break;
+
+        case "ping":
+            // ElevenLabs sering kirim ping, kita balas pong jika perlu (opsional)
+            ws.elWs.send(JSON.stringify({ type: "pong" }));
+            break;
+    }
+}
+
+async function handleAgentSwitch(ws, newAgentType) {
+    console.log(`🔌 Switching to ${newAgentType} Agent...`);
+
+    // 1. Tutup koneksi ElevenLabs yang sekarang
+    if (ws.elWs) {
+        ws.elWs.close();
+        ws.elWs = null;
+    }
+
+    // 2. Ambil prompt baru dari DB
+    const rows = await queryAsync(
+        `SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1`,
+        [newAgentType]
+    );
+
+    if (rows.length > 0) {
+        const prompt = rows[0];
+        const systemPrompt = `You are ${prompt.identity}. ${prompt.role_description}`;
+        
+        // Update session info
+        const session = callSessions.get(ws.sessionId);
+        session.agent = newAgentType;
+        session.systemPrompt = systemPrompt;
+
+        // 3. Re-initiate ElevenLabs dengan Agent Baru
+        await startElevenLabs(ws, systemPrompt, session.context);
+    }
+}
+
 // ======================================================
 // WEBSOCKET SERVER
 // ======================================================
@@ -5594,6 +5678,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
