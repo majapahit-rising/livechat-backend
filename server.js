@@ -448,9 +448,7 @@ wss.on("connection", (ws) => {
           do_guidelines,
           dont_guidelines
         FROM chatbot_prompts
-        WHERE agent_type = ?
-        AND status = 'active'
-        AND is_active = 1
+        WHERE agent_type = 'general'
         LIMIT 1
         `,
         [requestedAgent]
@@ -476,8 +474,7 @@ wss.on("connection", (ws) => {
             dont_guidelines
           FROM chatbot_prompts
           WHERE agent_type = 'sales'
-          AND status = 'active'
-          AND is_active = 1
+          ORDER BY id DESC
           LIMIT 1
           `
         );
@@ -862,8 +859,7 @@ Always stay in this role.
                         dont_guidelines
                       FROM chatbot_prompts
                       WHERE agent_type = 'sales'
-                      AND status = 'active'
-                      AND is_active = 1
+                      ORDER BY id DESC
                       LIMIT 1
                     `);
                   
@@ -5578,6 +5574,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
