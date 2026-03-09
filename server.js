@@ -388,6 +388,58 @@ process.on("uncaughtException", (err) => {
   console.error("🔥 UNCAUGHT EXCEPTION:", err);
 });
 
+// ======================================================
+// HELPER FUNCTIONS
+// ======================================================
+
+async function createElevenSession(ws, session) {
+
+  const signedUrl = await getElevenLabsSignedUrl();
+
+  const elWs = new WebSocket(signedUrl);
+
+  ws.elWs = elWs;
+
+  elWs.on("open", () => {
+
+    elWs.send(JSON.stringify({
+      type: "conversation_initiation_client_data",
+      conversation_config_override: {
+        agent: {
+          prompt: {
+            prompt: session.systemPrompt
+          },
+          language: "en",
+          tools: [N8NAiResponseToolSchema]
+        }
+      },
+      dynamic_variables: session.context
+    }));
+
+    console.log("🟢 ElevenLabs started with", session.agent);
+  });
+
+  elWs.on("message", (msg) => {
+
+    try {
+      ws.send(msg.toString());
+    } catch {}
+
+  });
+
+  elWs.on("close", () => {
+    console.log("ElevenLabs session closed");
+  });
+
+  elWs.on("error", (err) => {
+    console.error("ElevenLabs error", err);
+  });
+}
+
+// ======================================================
+// WEBSOCKET SERVER
+// ======================================================
+
 wss.on("connection", (ws) => {
 
   ws.sessionId = null;
@@ -590,9 +642,11 @@ Always stay in this role.
 
         console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
 
-        const signedUrl = await getElevenLabsSignedUrl();
+        // const signedUrl = await getElevenLabsSignedUrl();
 
-        const elWs = new WebSocket(signedUrl);
+        // const elWs = new WebSocket(signedUrl);
+
+        await createElevenSession(ws, session);
 
         elWs.sessionId = ws.sessionId;
 
@@ -843,7 +897,20 @@ Always stay in this role.
                     session.agent === "general" &&
                     !session.agentLocked &&
                     shouldSwitchToSales(text)
-                  ) {
+                  )
+
+                   if (ws.elWs) {
+                    try {
+                      ws.elWs.close();
+                    } catch {}
+                    ws.elWs = null;
+                  }
+                  
+                  await createElevenSession(ws, session);
+                  
+                  return;
+                   
+                 {
                   
                     console.log("🔁 Switching agent: general → sales");
                   
@@ -5581,6 +5648,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
