@@ -839,7 +839,7 @@ Always stay in this role.
                   // }
 
 
-                  if (
+                 if (
                     session.agent === "general" &&
                     !session.agentLocked &&
                     shouldSwitchToSales(text)
@@ -905,26 +905,27 @@ Always stay in this role.
                     session.systemPrompt = newSystemPrompt;
                     session.context.agent_type = "sales";
                     session.history = [];
-                    // LOCK AGENT
                     session.agentLocked = true;
                   
                     if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
                   
-                     ws.elWs.send(JSON.stringify({
-                      type: "conversation_update",
-                      conversation_reset: true,
-                      conversation_config_override: {
-                        agent: {
-                          prompt: {
-                            prompt: newSystemPrompt
+                      ws.elWs.send(JSON.stringify({
+                        type: "conversation_update",
+                        conversation_reset: true,
+                        conversation_config_override: {
+                          agent: {
+                            prompt: {
+                              prompt: newSystemPrompt
+                            }
                           }
-                        }
-                      },
-                      dynamic_variables: session.context
-                    }));
+                        },
+                        dynamic_variables: session.context
+                      }));
                   
-                      console.log("📡 ElevenLabs prompt switched to SALES");
+                      console.log("📡 ElevenLabs switched to SALES");
                     }
+                  
+                    return; // VERY IMPORTANT
                   }
 
                   console.log("🗣️ User:", text);
@@ -5580,6 +5581,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
