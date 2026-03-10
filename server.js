@@ -529,7 +529,7 @@ wss.on("connection", (ws) => {
     // AUDIO RECEIVED
     // =====================================
 
-    if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
+    if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
 
       if (ws.callState !== "ACTIVE") return;
 
@@ -4941,7 +4941,10 @@ app.get('/admin/sessions', (req, res) => {
     res.json(activeSessions);
 });
 
-
+// ==============================
+// START VOICE WEBSOCKET SERVER
+// ==============================
+startVoiceServer(server);
 // -----------------------------------------------------
 // START SERVER
 // -----------------------------------------------------
@@ -4957,3 +4960,4 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
