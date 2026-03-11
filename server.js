@@ -358,42 +358,63 @@ async function askN8N(userInput, session) {
 // TTS
 // ======================================================
 
-async function generateTTS(text) {
+async function streamTTS(ws, text) {
 
   try {
 
-    console.log("🎤 GENERATE TTS:", text);
+    ws.aiSpeaking = true;
 
     const res = await axios.post(
       KOKORO_URL,
       {
-        text: text,
+        text,
         voice: "am_echo"
       },
       {
-        headers: {
-          "Content-Type": "application/json"
-        },
-        responseType: "arraybuffer"
+        responseType: "stream"
       }
     );
 
-    console.log("✅ TTS BYTES:", res.data.byteLength);
+    ws.ttsStream = res.data;
 
-    return Buffer.from(res.data);
+    res.data.on("data", chunk => {
+
+      if (!ws.aiSpeaking) return;
+
+      if (ws.readyState === 1) {
+        ws.send(chunk);
+      }
+
+    });
+
+    res.data.on("end", () => {
+
+      ws.aiSpeaking = false;
+      ws.ttsStream = null;
+
+    });
 
   } catch (err) {
 
-    console.error(
-      "❌ TTS ERROR:",
-      err.response?.status,
-      err.response?.data || err.message
-    );
-
-    return null;
+    console.error("❌ TTS stream error", err.message);
 
   }
 
+}
+
+
+function calculateEnergy(buffer) {
+
+  let sum = 0;
+
+  for (let i = 0; i < buffer.length; i += 2) {
+
+    const sample = buffer.readInt16LE(i) / 32768;
+
+    sum += sample * sample;
+  }
+
+  return Math.sqrt(sum / (buffer.length / 2));
 }
 
 // ======================================================
@@ -411,6 +432,12 @@ wss.on("connection", (ws) => {
 
   ws.sessionId = null;
   ws.callState = "WELCOME";
+  ws.audioBuffer = [];
+  
+  ws.silenceFrames = 0;
+
+  ws.aiSpeaking = false;
+  ws.ttsStream = null;
 
   console.log("📞 Client connected");
 
@@ -563,16 +590,52 @@ wss.on("connection", (ws) => {
 
         console.log("🎤 Audio received:", msg.length);
 
-        ws.audioBuffer.push(msg);
+        const energy = calculateEnergy(msg);
 
-        const totalSize = ws.audioBuffer.reduce((a,b)=>a+b.length,0);
+        ws.audioBuffer.push(msg);
         
-        if (totalSize < 32000) {
-          return;
+        if (energy < 0.02) {
+          ws.silenceFrames++;
+        } else {
+        
+          ws.silenceFrames = 0;
+        
+          // USER interrupt AI
+          if (ws.aiSpeaking) {
+        
+            console.log("⚡ BARGE IN");
+        
+            ws.aiSpeaking = false;
+        
+            if (ws.ttsStream) {
+              ws.ttsStream.destroy();
+            }
+
+            ws.audioBuffer = [];
+        
+            ws.send(JSON.stringify({
+              type: "stop-audio"
+            }));
+        
+          }
+        
         }
+
         
-        const audioData = Buffer.concat(ws.audioBuffer);
-        ws.audioBuffer = [];
+        
+        // jika user berhenti bicara
+        if (ws.silenceFrames > 25 && ws.audioBuffer.length > 10) {
+        
+          const audioData = Buffer.concat(ws.audioBuffer);
+        
+          ws.audioBuffer = [];
+          ws.silenceFrames = 0;
+        
+          const transcript = await transcribeAudio(audioData);
+        
+          if (!transcript) return;
+        
+          console.log("🗣️ User:", transcript);
         
         const transcript = await transcribeAudio(audioData);
 
@@ -627,15 +690,10 @@ wss.on("connection", (ws) => {
           ]
         );
 
-        const audio = await generateTTS(aiReply);
-
-        if (audio && ws.readyState === 1) {
-
+        await streamTTS(ws, aiReply);
+        
           console.log("🔊 Sending AI audio:", audio.length);
 
-          ws.send(audio);
-
-        }
 
       } catch (err) {
 
@@ -4975,6 +5033,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
