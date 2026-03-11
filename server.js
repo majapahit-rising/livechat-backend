@@ -362,8 +362,8 @@ async function generateTTS(text) {
       KOKORO_URL,
       {
         text: text,
-        voice: "af_bella",
-        format: "pcm",
+        voice: "am_echo",
+        format: "wav",
         sample_rate: 16000
       },
       {
@@ -4950,6 +4950,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
