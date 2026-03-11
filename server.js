@@ -106,7 +106,7 @@ import { WebSocketServer } from "ws";
 // ======================================================
 
 
-const WHISPER_URL = "https://your-whisper-endpoint.ngrok.dev/asr";
+const WHISPER_URL = "https://renata-wrongful-nontemporizingly.ngrok-free.dev/asr";
 const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
 const KOKORO_URL = "http://51.68.124.50:8000/tts";
 
@@ -4952,6 +4952,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
