@@ -515,6 +515,7 @@ export function startVoiceServer(server) {
       // =====================================
 
       if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
+        console.log("AUDIO CHUNK RECEIVED:", msg.length);
 
         if (ws.callState !== "ACTIVE") return;
 
@@ -529,7 +530,7 @@ export function startVoiceServer(server) {
             ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
           // tunggu audio cukup sebelum STT
-          if (totalSize < 96000) {
+          if (totalSize < 32000) {
             return;
           }
 
@@ -542,8 +543,18 @@ export function startVoiceServer(server) {
 
           ws.audioBuffer = [];
 
-          const transcript =
-            await transcribeAudio(audioData);
+          // const transcript =
+          //   await transcribeAudio(audioData);
+          const wavStream = pcmToWav(audioData, 16000);
+
+          const chunks = [];
+          for await (const chunk of wavStream) {
+            chunks.push(chunk);
+          }
+          
+          const wavBuffer = Buffer.concat(chunks);
+          
+          const transcript = await transcribeAudio(wavBuffer);
 
           if (!transcript) return;
 
@@ -4895,6 +4906,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
