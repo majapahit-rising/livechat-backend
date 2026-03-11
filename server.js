@@ -283,7 +283,7 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 }
 
 // ======================================================
-// STT
+// STT (WHISPER)
 // ======================================================
 
 async function transcribeAudio(buffer) {
@@ -295,10 +295,13 @@ async function transcribeAudio(buffer) {
       buffer,
       {
         headers: {
-          "Content-Type": "audio/wav"
-        }
+          "Content-Type": "application/octet-stream"
+        },
+        timeout: 20000
       }
     );
+
+    console.log("STT:", res.data);
 
     return res.data.text || null;
 
@@ -325,7 +328,8 @@ async function askN8N(userInput, session) {
         user_input: userInput,
         conversation_history: session.history.slice(-10),
         context: session.context
-      }
+      },
+      { timeout: 20000 }
     );
 
     const data = res.data;
@@ -351,7 +355,7 @@ async function askN8N(userInput, session) {
 }
 
 // ======================================================
-// TTS
+// TTS (KOKORO)
 // ======================================================
 
 async function generateTTS(text) {
@@ -361,14 +365,18 @@ async function generateTTS(text) {
     const res = await axios.post(
       KOKORO_URL,
       {
-        text: text,
+        text,
         voice: "af_bella",
-        format: "pcm"
+        format: "pcm",
+        sample_rate: 16000
       },
       {
-        responseType: "arraybuffer"
+        responseType: "arraybuffer",
+        timeout: 20000
       }
     );
+
+    console.log("TTS bytes:", res.data.byteLength);
 
     return Buffer.from(res.data);
 
@@ -381,300 +389,155 @@ async function generateTTS(text) {
 
 }
 
-
 // ======================================================
-// WEBSOCKET SERVER
+// VOICE SERVER
 // ======================================================
 
 export function startVoiceServer(server) {
 
-const wss = new WebSocketServer({
-  server,
-  path: "/ws/deepcall"
-});
+  const wss = new WebSocketServer({
+    server,
+    path: "/ws/deepcall"
+  });
 
-wss.on("connection", (ws) => {
+  wss.on("connection", (ws) => {
 
-  ws.sessionId = null;
-  ws.callState = "WELCOME";
+    ws.sessionId = null;
+    ws.callState = "WELCOME";
 
-  console.log("📞 Client connected");
+    console.log("📞 Client connected");
 
-  ws.on("message", async (msg) => {
+    ws.on("message", async (msg) => {
 
-    let data = null;
+      // =====================================
+      // JSON MESSAGE
+      // =====================================
 
-    try {
-      data = JSON.parse(msg.toString());
-    } catch {}
+      if (typeof msg === "string") {
 
-    // =====================================
-    // START CALL
-    // =====================================
+        let data;
 
-    if (data?.type === "start-call") {
-
-      ws.sessionId = data.session_id;
-
-      const session = {
-
-        agent: "general",
-        history: [],
-        agentLocked: false,
-        promptId: 1,
-
-        context: {
-          agent_type: "general",
-          postcode: null,
-          waste_type_id: null,
-          selected_bin_size_id: null,
-          delivery_date: null,
-          pickup_date: null
+        try {
+          data = JSON.parse(msg);
+        } catch {
+          return;
         }
 
-      };
+        if (data.type === "start-call") {
 
-      callSessions.set(ws.sessionId, session);
+          ws.sessionId = data.session_id;
 
-      await queryAsync(
-        `
-        INSERT INTO chatbot_conversation_sessions
-        (
-          session_id,
-          conversation_id,
-          agent_type,
-          user_name,
-          started_at
-        )
-        VALUES (?, ?, ?, ?, NOW())
-        `,
-        [
-          ws.sessionId,
-          ws.sessionId,
-          "general",
-          "Guest"
-        ]
-      );
+          const session = {
+            history: [],
+            context: data.context || {}
+          };
 
-      ws.callState = "ACTIVE";
+          callSessions.set(ws.sessionId, session);
 
-     // =====================================
-    // GET WELCOME MESSAGE FROM DATABASE
-    // =====================================
-    
-    let welcomeText = "Hello, how can I help you today?";
-    
-    try {
-    
-      const rows = await queryAsync(
-        `
-        SELECT message_text
-        FROM chatbot_welcome_messages
-        WHERE is_active = 1
-        ORDER BY id DESC
-        LIMIT 1
-        `
-      );
-    
-      if (rows && rows.length) {
-        welcomeText = rows[0].message_text.trim();
-      }
-    
-    } catch (err) {
-    
-      console.error("❌ Welcome message query failed:", err);
-    
-    }
-    
-    // =====================================
-    // SEND TEXT TO UI
-    // =====================================
-    
-    if (ws.readyState === 1) {
-      ws.send(JSON.stringify({
-        type: "ai-text",
-        text: welcomeText
-      }));
-    }
-    
-    // =====================================
-    // GENERATE TTS
-    // =====================================
-    
-    try {
-    
-      const welcomeAudio = await generateTTS(welcomeText);
-    
-      if (welcomeAudio && ws.readyState === 1) {
-    
-        // optional silence buffer agar audio tidak terpotong
-        const silence = Buffer.alloc(16000 * 2 * 0.25);
-    
-        ws.send(silence);
-        ws.send(welcomeAudio);
-    
-      }
-    
-    } catch (err) {
-    
-      console.error("❌ Welcome TTS failed:", err);
-    
-    }
-    
-    return;
+          ws.callState = "ACTIVE";
 
-    }
+          console.log("SESSION START:", ws.sessionId);
 
-    // =====================================
-    // AUDIO RECEIVED
-    // =====================================
-
-    if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
-
-      if (ws.callState !== "ACTIVE") return;
-
-      const session = callSessions.get(ws.sessionId);
-      if (!session) return;
-
-      try {
-
-        const transcript = await transcribeAudio(msg);
-
-        if (!transcript) return;
-
-        console.log("🗣️ User:", transcript);
-
-        ws.send(JSON.stringify({
-          type: "user-text",
-          text: transcript
-        }));
-
-        session.history.push({
-          role: "user",
-          content: transcript
-        });
-
-        const postcode = extractPostcode(transcript);
-        if (postcode) session.context.postcode = postcode;
-
-        const deliveryDate = extractDeliveryDate(transcript);
-        if (deliveryDate) session.context.delivery_date = deliveryDate;
-
-        const pickupDate = extractPickupDate(transcript);
-        if (pickupDate) session.context.pickup_date = pickupDate;
-
-        if (
-          session.agent === "general" &&
-          !session.agentLocked &&
-          shouldSwitchToSales(transcript)
-        ) {
-
-          session.agent = "sales";
-          session.context.agent_type = "sales";
-          session.agentLocked = true;
+          const welcomeText = "Hello, how can I help you today?";
 
           ws.send(JSON.stringify({
             type: "ai-text",
-            text: "Connecting you with our sales assistant..."
+            text: welcomeText
           }));
 
-        }
+          const audio = await generateTTS(welcomeText);
 
-        const aiReply = await askN8N(transcript, session);
+          if (audio && ws.readyState === 1) {
 
-        ws.send(JSON.stringify({
-          type: "ai-text",
-          text: aiReply
-        }));
+            ws.send(audio);
 
-        session.history.push({
-          role: "assistant",
-          content: aiReply
-        });
+          }
 
-        await queryAsync(
-          `
-          INSERT INTO chatbot_conversations
-          (
-            session_id,
-            agent_type,
-            prompt_id,
-            user_message,
-            ai_response,
-            confidence,
-            resolved,
-            created_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-          `,
-          [
-            ws.sessionId,
-            session.agent,
-            session.promptId,
-            transcript,
-            aiReply,
-            0.9
-          ]
-        );
-
-        const audio = await generateTTS(aiReply);
-
-        if (audio && ws.readyState === 1) {
-
-          ws.send(audio);
+          return;
 
         }
-
-      } catch (err) {
-
-        console.error("❌ AUDIO PIPELINE ERROR:", err);
 
       }
 
-    }
+      // =====================================
+      // AUDIO MESSAGE
+      // =====================================
+
+      if (Buffer.isBuffer(msg)) {
+
+        if (ws.callState !== "ACTIVE") return;
+
+        const session = callSessions.get(ws.sessionId);
+        if (!session) return;
+
+        try {
+
+          console.log("AUDIO BYTES:", msg.length);
+
+          const transcript = await transcribeAudio(msg);
+
+          if (!transcript) return;
+
+          console.log("🗣️ User:", transcript);
+
+          ws.send(JSON.stringify({
+            type: "user-text",
+            text: transcript
+          }));
+
+          session.history.push({
+            role: "user",
+            content: transcript
+          });
+
+          const aiReply = await askN8N(transcript, session);
+
+          ws.send(JSON.stringify({
+            type: "ai-text",
+            text: aiReply
+          }));
+
+          session.history.push({
+            role: "assistant",
+            content: aiReply
+          });
+
+          const audio = await generateTTS(aiReply);
+
+          if (audio && ws.readyState === 1) {
+
+            ws.send(audio);
+
+          }
+
+        } catch (err) {
+
+          console.error("❌ AUDIO PIPELINE ERROR:", err);
+
+        }
+
+      }
+
+    });
+
+    // =====================================
+    // CLOSE
+    // =====================================
+
+    ws.on("close", () => {
+
+      console.log("❌ Client disconnected", ws.sessionId);
+
+      callSessions.delete(ws.sessionId);
+
+    });
 
   });
-
-  ws.on("close", async () => {
-
-    const sessionId = ws.sessionId;
-
-    console.log("❌ Client disconnected", sessionId);
-
-    if (!sessionId) return;
-
-    try {
-
-      const summary = await summarizeConversation(sessionId);
-
-      await queryAsync(
-        `
-        UPDATE chatbot_conversation_sessions
-        SET
-          ended_at = NOW(),
-          session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
-          conversation_summary = ?
-        WHERE session_id = ?
-        `,
-        [
-          summary,
-          sessionId
-        ]
-      );
-
-    } catch (err) {
-
-      console.error("❌ Session close error:", err);
-
-    }
-
-    callSessions.delete(sessionId);
-
-  });
-
-});
 
 }
+
+
+
 
 app.post("/api/chat/ai-feedback", async (req, res) => {
 
@@ -4960,4 +4823,5 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
