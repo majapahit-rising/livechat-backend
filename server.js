@@ -968,6 +968,17 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
                         prompt: { prompt: systemPrompt },
                         first_message: initialContext.agent_type === 'sales' ? "Sure, I can help with your skip bin order. What is your postcode?" : null,
                         language: "en",
+                        voice: {
+                          voice_id: process.env.ELEVENLABS_VOICE_ID,
+                          settings: {
+                            stability: 0.82,
+                            similarity_boost: 0.78,
+                            speed: 1.15,
+                            style: 0.0
+                          }
+                        },
+            
+                        model_id: "eleven_turbo_v2_5",
                         tools: [
                             {
                                 type: "webhook",
@@ -6254,6 +6265,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
