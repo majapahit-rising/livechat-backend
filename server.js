@@ -98,30 +98,571 @@ const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 
 
-import wav from "wav";
-import { PassThrough } from "stream";
+// import wav from "wav";
+// import { PassThrough } from "stream";
+// import { WebSocketServer } from "ws";
+
+// // ======================================================
+// // CONFIG
+// // ======================================================
+
+
+// const WHISPER_URL = "https://renata-wrongful-nontemporizingly.ngrok-free.dev/asr";
+// const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
+// const KOKORO_URL = "http://51.68.124.50:8000/tts";
+
+
+
+// // ======================================================
+// // AI CALL SESSIONS
+// // ======================================================
+
+// const callSessions = new Map();
+
+// // ======================================================
+// // WEBSOCKET CONNECTION
+// // ======================================================
+
+// const extractPostcode = (text) => {
+//   if (!text) return null;
+
+//   const clean = text
+//     .toLowerCase()
+//     .replace(/[^a-z0-9\s]/g, " ");
+
+//   const numericMatch = clean.match(/\b\d{4}\b/);
+//   if (numericMatch) return numericMatch[0];
+
+//   const wordMap = {
+//     zero: "0",
+//     one: "1",
+//     two: "2",
+//     three: "3",
+//     four: "4",
+//     five: "5",
+//     six: "6",
+//     seven: "7",
+//     eight: "8",
+//     nine: "9"
+//   };
+
+//   const words = clean.split(/\s+/);
+
+//   let digits = "";
+
+//   for (let w of words) {
+//     if (wordMap[w]) {
+//       digits += wordMap[w];
+//     }
+//   }
+
+//   if (digits.length === 4) return digits;
+
+//   return null;
+// };
+
+// function shouldSwitchToSales(text) {
+
+//   if (!text) return false;
+
+//   const lower = text.toLowerCase();
+
+//   const triggers = [
+//     "order",
+//     "i want",
+//     "i need",
+//     "book",
+//     "hire",
+//     "get a bin"
+//   ];
+
+//   return triggers.some(t => lower.includes(t));
+// }
+
+// const extractDeliveryDate = (text) => {
+//   if (!text) return null;
+
+//   const match = text.match(
+//     /\b(\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i
+//   );
+
+//   return match ? match[1] : null;
+// };
+
+// const extractPickupDate = (text) => {
+//   if (!text) return null;
+
+//   const match = text.match(
+//     /\b(pickup|pick up|collection)\s+(on\s+)?(\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i
+//   );
+
+//   return match ? match[3] : null;
+// };
+
+// async function summarizeConversation(sessionId) {
+//   try {
+//     const rows = await queryAsync(
+//       `
+//       SELECT user_message, ai_response
+//       FROM chatbot_conversations
+//       WHERE session_id = ?
+//       ORDER BY created_at ASC
+//       `,
+//       [sessionId]
+//     );
+
+//     if (!rows.length) {
+//       return "Session ended with no recorded conversation.";
+//     }
+
+//     const conversationText = rows
+//       .map((r) => {
+//         let text = "";
+
+//         if (r.user_message) text += `User: ${r.user_message}\n`;
+//         if (r.ai_response) text += `AI: ${r.ai_response}\n`;
+
+//         return text;
+//       })
+//       .join("\n");
+
+//     if (!conversationText.trim()) {
+//       return "Session had empty messages.";
+//     }
+
+//     const aiResp = await openai.responses.create({
+//       model: "gpt-4.1-mini",
+//       input: `
+// Summarize this support call in 3 concise sentences.
+// Focus on:
+// - Main intent
+// - Key data mentioned
+// - Outcome
+
+// Conversation:
+// ${conversationText}
+// `
+//     });
+
+//     return aiResp.output?.[0]?.content?.[0]?.text || null;
+//   } catch (err) {
+//     console.error("❌ SUMMARY ERROR:", err.message);
+//     return "Summary generation failed.";
+//   }
+// }
+
+// async function insertLearningQueue({ sessionId, question, answer }) {
+//   try {
+//     await queryAsync(
+//       `
+//       INSERT INTO chatbot_learning_queue
+//       (
+//         source_type,
+//         source_id,
+//         proposed_question,
+//         proposed_answer,
+//         confidence_score,
+//         status,
+//         created_at,
+//         updated_at
+//       )
+//       VALUES (?, ?, ?, ?, ?, 'pending_review', NOW(), NOW())
+//       `,
+//       [
+//         "conversation",
+//         sessionId,
+//         question,
+//         answer,
+//         0.8
+//       ]
+//     );
+
+//     console.log("🧠 Learning queue inserted");
+//   } catch (err) {
+//     console.error("❌ Learning queue insert failed:", err);
+//   }
+// }
+
+// // ======================================================
+// // STT
+// // ======================================================
+
+// async function transcribeAudio(buffer) {
+
+//   try {
+
+//     const res = await axios.post(
+//       WHISPER_URL,
+//       buffer,
+//       {
+//         headers: {
+//           "Content-Type": "application/octet-stream"
+//         },
+//         timeout: 15000
+//       }
+//     );
+
+//     if (typeof res.data !== "object") {
+//       console.log("⚠️ STT returned non JSON");
+//       return null;
+//     }
+
+//     return res.data.text || null;
+
+//   } catch (err) {
+
+//     console.error(
+//       "❌ STT ERROR:",
+//       err.response?.status,
+//       err.response?.data || err.message
+//     );
+
+//     return null;
+
+//   }
+
+// }
+
+// // ======================================================
+// // AI (N8N)
+// // ======================================================
+
+// async function askN8N(userInput, session) {
+
+//   try {
+
+//     const res = await axios.post(
+//       N8N_WEBHOOK,
+//       {
+//         agent_type: 'sales',
+//         message: userInput,
+//         conversation_history: session.history.slice(-10),
+//         context: session.context
+//       }
+//     );
+
+//     const data = res.data;
+
+//     if (data.context) {
+//       session.context = {
+//         ...session.context,
+//         ...data.context
+//       };
+//     }
+
+//     return data.reply || "Sorry, I couldn't process that.";
+
+//   } catch (err) {
+
+//     console.error("❌ N8N ERROR:", err.message);
+//     return "Sorry, something went wrong.";
+
+//   }
+
+// }
+
+// // ======================================================
+// // TTS
+// // ======================================================
+
+// function pcmToWav(pcmBuffer, sampleRate = 24000) {
+
+//   const stream = new PassThrough();
+
+//   const writer = new wav.Writer({
+//     channels: 1,
+//     sampleRate: sampleRate,
+//     bitDepth: 16
+//   });
+
+//   writer.pipe(stream);
+
+//   writer.write(pcmBuffer);
+//   writer.end();
+
+//   return stream;
+// }
+
+// async function generateTTS(text) {
+
+//   try {
+
+//     console.log("🎤 GENERATE TTS:", text);
+
+//     const res = await axios.post(
+//       KOKORO_URL,
+//       {
+//         text: text,
+//         voice: "am_echo"
+//       },
+//       {
+//         headers: {
+//           "Content-Type": "application/json"
+//         },
+//         responseType: "arraybuffer"
+//       }
+//     );
+
+//     console.log("✅ TTS BYTES:", res.data.byteLength);
+
+//     const pcmBuffer = Buffer.from(res.data);
+
+//     const wavStream = pcmToWav(pcmBuffer, 24000);
+    
+//     const chunks = [];
+    
+//     for await (const chunk of wavStream) {
+//       chunks.push(chunk);
+//     }
+    
+//     return Buffer.concat(chunks);
+
+//   } catch (err) {
+
+//     console.error(
+//       "❌ TTS ERROR:",
+//       err.response?.status,
+//       err.response?.data || err.message
+//     );
+
+//     return null;
+
+//   }
+
+// }
+
+// // ======================================================
+// // WEBSOCKET SERVER
+// // ======================================================
+
+// export function startVoiceServer(server) {
+
+//   const wss = new WebSocketServer({
+//     server,
+//     path: "/ws/deepcall"
+//   });
+
+//   wss.on("connection", (ws) => {
+
+//     ws.sessionId = null;
+//     ws.callState = "WELCOME";
+//     ws.audioBuffer = [];
+
+//     console.log("📞 Client connected");
+
+//     ws.on("message", async (msg) => {
+
+//       let data = null;
+
+//       try {
+//         data = JSON.parse(msg.toString());
+//       } catch {}
+
+//       // =====================================
+//       // START CALL
+//       // =====================================
+
+//       if (data?.type === "start-call") {
+
+//         console.log("🚀 START CALL RECEIVED");
+
+//         ws.sessionId = data.session_id;
+
+//         const session = {
+
+//           agent: "general",
+
+//           history: [],
+
+//           context: {
+//             agent_type: "general",
+//             postcode: null,
+//             waste_type_id: null,
+//             selected_bin_size_id: null,
+//             delivery_date: null,
+//             pickup_date: null
+//           }
+
+//         };
+
+//         callSessions.set(ws.sessionId, session);
+
+//         ws.callState = "ACTIVE";
+
+//         const welcomeText = "Hello, how can I help you today?";
+
+//         ws.send(JSON.stringify({
+//           type: "ai-text",
+//           text: welcomeText
+//         }));
+
+//         const welcomeAudio = await generateTTS(welcomeText);
+
+//         if (welcomeAudio && ws.readyState === 1) {
+
+//           console.log("🔊 Sending welcome audio");
+
+//           ws.send(welcomeAudio);
+
+//         }
+
+//         return;
+
+//       }
+
+//       // =====================================
+//       // AUDIO RECEIVED
+//       // =====================================
+
+//       if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
+//         console.log("AUDIO CHUNK RECEIVED:", msg.length);
+
+//         if (ws.callState !== "ACTIVE") return;
+
+//         const session = callSessions.get(ws.sessionId);
+//         if (!session) return;
+
+//         try {
+
+//           ws.audioBuffer.push(msg);
+
+//           const totalSize =
+//             ws.audioBuffer.reduce((a,b)=>a+b.length,0);
+
+//           // tunggu audio cukup sebelum STT
+//           if (totalSize < 32000) {
+//             return;
+//           }
+
+//           const audioData = Buffer.concat(ws.audioBuffer);
+//           if (!audioData || audioData.length < 16000) {
+//             console.log("⚠️ Audio too small, skipping STT");
+//             ws.audioBuffer = [];
+//             return;
+//           }
+
+//           ws.audioBuffer = [];
+
+//           // const transcript =
+//           //   await transcribeAudio(audioData);
+//           const wavStream = pcmToWav(audioData, 16000);
+
+//           const chunks = [];
+//           for await (const chunk of wavStream) {
+//             chunks.push(chunk);
+//           }
+          
+//           const wavBuffer = Buffer.concat(chunks);
+          
+//           const transcript = await transcribeAudio(wavBuffer);
+
+//           if (!transcript) return;
+
+//           console.log("🗣️ User:", transcript);
+
+//           ws.send(JSON.stringify({
+//             type: "user-text",
+//             text: transcript
+//           }));
+
+//           session.history.push({
+//             role: "user",
+//             content: transcript
+//           });
+
+//           const aiReply =
+//             await askN8N(transcript, session);
+
+//           ws.send(JSON.stringify({
+//             type: "ai-text",
+//             text: aiReply
+//           }));
+
+//           session.history.push({
+//             role: "assistant",
+//             content: aiReply
+//           });
+
+//           const audio =
+//             await generateTTS(aiReply);
+
+//           if (audio && ws.readyState === 1) {
+
+//             console.log("🔊 Sending AI audio:", audio.length);
+
+//             ws.send(audio);
+
+//           }
+
+//         } catch (err) {
+
+//           console.error(
+//             "❌ AUDIO PIPELINE ERROR:",
+//             err
+//           );
+
+//         }
+
+//       }
+
+//     });
+
+//     ws.on("close", () => {
+
+//       console.log("❌ Client disconnected", ws.sessionId);
+
+//       callSessions.delete(ws.sessionId);
+
+//     });
+
+//   });
+
+// }
+
+
 import { WebSocketServer } from "ws";
+
+// import { createClient } from "@deepgram/sdk";
+// import crypto from "crypto";
 
 // ======================================================
 // CONFIG
 // ======================================================
 
+// const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+// console.log("DG KEY:", DEEPGRAM_API_KEY);
 
-const WHISPER_URL = "https://renata-wrongful-nontemporizingly.ngrok-free.dev/asr";
+// if (!DEEPGRAM_API_KEY) throw new Error("Missing Deepgram API key");
+
 const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
-const KOKORO_URL = "http://51.68.124.50:8000/tts";
-
-
 
 // ======================================================
-// AI CALL SESSIONS
+// ELEVENLABS CONFIG
 // ======================================================
 
-const callSessions = new Map();
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
+const ELEVENLABS_VOICE_ID =
+  process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
 
-// ======================================================
-// WEBSOCKET CONNECTION
-// ======================================================
+if (!ELEVENLABS_API_KEY) throw new Error("Missing ELEVENLABS_API_KEY");
+if (!ELEVENLABS_AGENT_ID) throw new Error("Missing ELEVENLABS_AGENT_ID");
+
+async function getElevenLabsSignedUrl() {
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${ELEVENLABS_AGENT_ID}`,
+    {
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY
+      }
+    }
+  );
+
+  if (!res.ok) throw new Error(`Signed URL failed: ${res.status}`);
+
+  const body = await res.json();
+  return body.signed_url;
+}
 
 const extractPostcode = (text) => {
   if (!text) return null;
@@ -198,6 +739,35 @@ const extractPickupDate = (text) => {
 
   return match ? match[3] : null;
 };
+
+const wss = new WebSocketServer({
+  server,
+  path: "/ws/deepcall"
+});
+
+// ======================================================
+// AI CALL SESSIONS
+// ======================================================
+
+const callSessions = new Map();
+
+// ======================================================
+// WEBSOCKET CONNECTION
+// ======================================================
+
+// const conversation = await fetch(
+//   'https://api.elevenlabs.io/v1/convai/conversation',
+//   {
+//     method: 'POST',
+//     headers: {
+//       'xi-api-key': 'sk_xxxxx',
+//       'Content-Type': 'application/json'
+//     },
+//     body: JSON.stringify({
+//       agent_id: 'agent_4601kh08xk3rebm9naf9x8zvf5fa'
+//     })
+//   }
+// ).then(r => r.json());
 
 async function summarizeConversation(sessionId) {
   try {
@@ -283,343 +853,1121 @@ async function insertLearningQueue({ sessionId, question, answer }) {
   }
 }
 
-// ======================================================
-// STT
-// ======================================================
+async function speakWelcome(text) {
+  const format = "pcm_16000";
 
-async function transcribeAudio(buffer) {
-
-  try {
-
-    const res = await axios.post(
-      WHISPER_URL,
-      buffer,
-      {
-        headers: {
-          "Content-Type": "application/octet-stream"
-        },
-        timeout: 15000
-      }
-    );
-
-    if (typeof res.data !== "object") {
-      console.log("⚠️ STT returned non JSON");
-      return null;
-    }
-
-    return res.data.text || null;
-
-  } catch (err) {
-
-    console.error(
-      "❌ STT ERROR:",
-      err.response?.status,
-      err.response?.data || err.message
-    );
-
-    return null;
-
-  }
-
-}
-
-// ======================================================
-// AI (N8N)
-// ======================================================
-
-async function askN8N(userInput, session) {
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream?output_format=${format}`;
 
   try {
-
-    const res = await axios.post(
-      N8N_WEBHOOK,
-      {
-        agent_type: 'sales',
-        message: userInput,
-        conversation_history: session.history.slice(-10),
-        context: session.context
-      }
-    );
-
-    const data = res.data;
-
-    if (data.context) {
-      session.context = {
-        ...session.context,
-        ...data.context
-      };
-    }
-
-    return data.reply || "Sorry, I couldn't process that.";
-
-  } catch (err) {
-
-    console.error("❌ N8N ERROR:", err.message);
-    return "Sorry, something went wrong.";
-
-  }
-
-}
-
-// ======================================================
-// TTS
-// ======================================================
-
-function pcmToWav(pcmBuffer, sampleRate = 24000) {
-
-  const stream = new PassThrough();
-
-  const writer = new wav.Writer({
-    channels: 1,
-    sampleRate: sampleRate,
-    bitDepth: 16
-  });
-
-  writer.pipe(stream);
-
-  writer.write(pcmBuffer);
-  writer.end();
-
-  return stream;
-}
-
-async function generateTTS(text) {
-
-  try {
-
-    console.log("🎤 GENERATE TTS:", text);
-
-    const res = await axios.post(
-      KOKORO_URL,
-      {
-        text: text,
-        voice: "am_echo"
+    const res = await axios({
+      method: "POST",
+      url: url,
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/lpcm"
       },
-      {
-        headers: {
-          "Content-Type": "application/json"
-        },
-        responseType: "arraybuffer"
-      }
-    );
+      data: {
+        text,
+        model_id: "eleven_turbo_v2_5",
+        voice_settings: {
+          stability: 0.82,
+          similarity_boost: 0.78,
+          speed: 1.15,
+          style: 0.0
+        }
+      },
+      responseType: "arraybuffer"
+    });
 
-    console.log("✅ TTS BYTES:", res.data.byteLength);
+    let buffer = Buffer.from(res.data);
 
-    const pcmBuffer = Buffer.from(res.data);
+    const firstBytesText = buffer.slice(0, 4).toString();
 
-    const wavStream = pcmToWav(pcmBuffer, 24000);
-    
-    const chunks = [];
-    
-    for await (const chunk of wavStream) {
-      chunks.push(chunk);
+    if (firstBytesText.startsWith("ID3")) {
+      throw new Error(
+        "API tetap mengirim MP3, periksa konfigurasi ElevenLabs!"
+      );
     }
-    
-    return Buffer.concat(chunks);
 
+    if (buffer.length % 2 !== 0) {
+      buffer = buffer.slice(0, buffer.length - 1);
+    }
+
+    return buffer;
   } catch (err) {
-
-    console.error(
-      "❌ TTS ERROR:",
-      err.response?.status,
-      err.response?.data || err.message
-    );
-
-    return null;
-
+    console.error("❌ TTS ERROR:", err.message);
+    throw err;
   }
-
 }
 
+process.on("unhandledRejection", (err) => {
+  console.error("🔥 UNHANDLED REJECTION:", err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err);
+});
+
+
+function buildFullSystemPrompt(prompt) {
+    return `
+You are ${prompt.identity}.
+
+Role:
+${prompt.role_description}
+
+Base Knowledge:
+${prompt.context_knowledge || ""}
+
+Goals & States:
+${prompt.primary_goals}
+
+Language:
+${prompt.language}
+
+Tone:
+${prompt.tone}
+
+Response format:
+${prompt.response_format}
+
+Guidelines:
+${prompt.do_guidelines || ""}
+
+Don't Guidelines:
+${prompt.dont_guidelines || ""}
+
+Absolute Rules:
+${prompt.routing_rule || ""}
+
+Always stay in this role and follow the states defined.
+`.trim();
+}
+
+
+async function startElevenLabs(ws, systemPrompt, initialContext) {
+    try {
+        // 1. Ambil Signed URL
+        const signedUrl = await getElevenLabsSignedUrl();
+        const elWs = new WebSocket(signedUrl);
+        
+        // Simpan referensi ke WebSocket utama
+        elWs.sessionId = ws.sessionId;
+        ws.elWs = elWs;
+        ws.elReady = false; // Reset status ready
+
+        elWs.on("open", () => {
+            console.log(`🟢 ElevenLabs Connected [${initialContext.agent_type}] for:`, ws.sessionId);
+            
+            // 2. Kirim Inisiasi dengan Prompt Baru
+            elWs.send(JSON.stringify({
+                type: "conversation_initiation_client_data",
+                conversation_config_override: {
+                    agent: {
+                        prompt: { prompt: systemPrompt },
+                        first_message: initialContext.agent_type === 'sales' ? "Sure, I can help with your skip bin order. What is your postcode?" : null,
+                        language: "en",
+                        tools: [
+                            {
+                                type: "webhook",
+                                name: "N8NAiResponse",
+                                url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                                method: "POST",
+                                description: "Mandatory tool to get any response. Call this with message and the full context object.",
+                                parameters: {
+                                    type: "object",
+                                    properties: {
+                                        user_input: { type: "string" },
+                                        conversation_history: { type: "array", items: { type: "object", properties: { role: { type: "string" }, content: { type: "string" } } } },
+                                        context: { type: "object", properties: { agent_type: { type: "string" }, postcode: { type: "string" }, waste_type_id: { type: "integer" }, selected_bin_size_id: { type: "integer" } /* ... sisanya ... */ } }
+                                    },
+                                    required: ["user_input", "conversation_history", "context"]
+                                }
+                            }
+                        ]
+                    }
+                },
+                dynamic_variables: initialContext
+            }));
+            
+            ws.elReady = true;
+        });
+
+        elWs.on("message", async (elMsg) => {
+            // Pindahkan semua logic "case user_transcript", "case audio", dll ke sini
+            // (Gunakan logic yang sudah Anda miliki di kode awal)
+            handleElevenLabsMessage(ws, elMsg); 
+        });
+
+        elWs.on("close", () => console.log("❌ ElevenLabs Close:", ws.sessionId));
+        elWs.on("error", (err) => console.error("❌ ElevenLabs Error:", err.message));
+
+    } catch (err) {
+        console.error("❌ Failed to start ElevenLabs:", err);
+    }
+}
+
+async function handleElevenLabsMessage(ws, elMsg) {
+    let data;
+    try {
+        data = JSON.parse(elMsg.toString());
+    } catch (e) { return; }
+
+    // Log event untuk memantau apa yang dikirim ElevenLabs
+    if (data.type !== "audio") {
+        console.log(`📩 EL EVENT: ${data.type}`);
+    }
+
+    switch (data.type) {
+        case "conversation_initiation_metadata":
+            console.log("EL READY (Metadata received)");
+            ws.elReady = true;
+            break;
+
+        case "audio":
+            // PERBAIKAN: ElevenLabs mengirim audio di dalam audio_event.audio_base_64
+            const audioData = data.audio_event?.audio_base_64; 
+            if (audioData && ws.readyState === 1) { 
+                const audioBuffer = Buffer.from(audioData, "base64");
+                ws.send(audioBuffer);
+            }
+            break;
+
+        case "user_transcript":
+            // PERBAIKAN: Ambil dari user_transcription_event
+            const transcript = data.user_transcription_event?.user_transcript;
+            if (!transcript) break;
+
+            console.log(`🗣️ User said: ${transcript}`);
+            
+            // Kirim ke browser agar muncul di chat UI
+            ws.send(JSON.stringify({ type: "user-text", text: transcript }));
+
+            // LOGIKA SWITCHING
+            if (shouldSwitchToSales(transcript)) {
+                const session = callSessions.get(ws.sessionId);
+                if (session && session.agent !== 'sales' && !session.agentLocked) {
+                    console.log("🔁 SWITCHING DETECTED: general → sales");
+                    handleAgentSwitch(ws, 'sales');
+                }
+            }
+            break;
+
+        case "agent_response":
+            // PERBAIKAN: Ambil dari agent_response_event
+            const aiText = data.agent_response_event?.agent_response;
+            if (!aiText) break;
+
+            console.log(`🤖 Agent: ${aiText}`);
+            ws.send(JSON.stringify({ type: "ai-text", text: aiText }));
+            break;
+
+        case "ping":
+            if (ws.elWs && ws.elWs.readyState === 1) {
+                ws.elWs.send(JSON.stringify({ 
+                    type: "pong", 
+                    event_id: data.ping_event?.event_id 
+                }));
+            }
+            break;
+    }
+}
+
+async function handleAgentSwitch(ws, newAgentType) {
+    const session = callSessions.get(ws.sessionId);
+    if (!session) return;
+
+    console.log(`🔌 Switching to ${newAgentType} Agent...`);
+    session.agentLocked = true; 
+
+    if (ws.elWs) {
+        try { ws.elWs.close(); } catch(e) {}
+        ws.elWs = null;
+    }
+
+    const rows = await queryAsync(
+        `SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1`,
+        [newAgentType]
+    );
+
+    if (rows.length > 0) {
+        const promptData = rows[0];
+        
+        // PERBAIKAN: Gunakan fungsi helper agar semua aturan (State, Absolute Rule) terbawa
+        const fullSystemPrompt = buildFullSystemPrompt(promptData);
+        
+        session.agent = newAgentType;
+        session.systemPrompt = fullSystemPrompt;
+        session.context.agent_type = newAgentType;
+
+        ws.send(JSON.stringify({ type: "ai-text", text: "Connecting you with our sales team..." }));
+
+        // Mulai ulang ElevenLabs dengan prompt yang LENGKAP
+        await startElevenLabs(ws, fullSystemPrompt, session.context);
+    }
+}
 // ======================================================
 // WEBSOCKET SERVER
 // ======================================================
 
-export function startVoiceServer(server) {
+wss.on("connection", (ws) => {
 
-  const wss = new WebSocketServer({
-    server,
-    path: "/ws/deepcall"
-  });
+  ws.sessionId = null;
+  ws.sessionReady = false;
+  ws.elWs = null;
+  ws.callState = "WELCOME";
 
-  wss.on("connection", (ws) => {
+  console.log("📞 Client connected", ws.sessionId);
 
-    ws.sessionId = null;
-    ws.callState = "WELCOME";
-    ws.audioBuffer = [];
+  ws.on("message", async (msg) => {
 
-    console.log("📞 Client connected");
+    let data = null;
 
-    ws.on("message", async (msg) => {
+    try {
+      data = JSON.parse(
+        typeof msg === "string" ? msg : msg.toString()
+      );
+    } catch {
+      data = null;
+    }
 
-      let data = null;
+    if (data?.type === "start-call") {
+      console.log("🚀 START CALL RECEIVED:", data.session_id);
+    }
 
-      try {
-        data = JSON.parse(msg.toString());
-      } catch {}
 
-      // =====================================
-      // START CALL
-      // =====================================
+    if (data?.type === "start-call") {
 
-      if (data?.type === "start-call") {
+      ws.sessionId = data.session_id;
+      ws.welcomeAudioSent = false;
+      ws.callState = "WELCOME";
+      ws.elReady = false;
 
-        console.log("🚀 START CALL RECEIVED");
-
-        ws.sessionId = data.session_id;
-
-        const session = {
-
-          agent: "general",
-
-          history: [],
-
-          context: {
-            agent_type: "general",
-            postcode: null,
-            waste_type_id: null,
-            selected_bin_size_id: null,
-            delivery_date: null,
-            pickup_date: null
-          }
-
-        };
-
-        callSessions.set(ws.sessionId, session);
-
-        ws.callState = "ACTIVE";
-
-        const welcomeText = "Hello, how can I help you today?";
-
-        ws.send(JSON.stringify({
-          type: "ai-text",
-          text: welcomeText
-        }));
-
-        const welcomeAudio = await generateTTS(welcomeText);
-
-        if (welcomeAudio && ws.readyState === 1) {
-
-          console.log("🔊 Sending welcome audio");
-
-          ws.send(welcomeAudio);
-
-        }
-
-        return;
-
+      if (ws.elWs) {
+        try {
+          ws.elWs.close();
+        } catch {}
+        ws.elWs = null;
       }
 
-      // =====================================
-      // AUDIO RECEIVED
-      // =====================================
+      ws.sessionReady = true;
 
-      if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
-        console.log("AUDIO CHUNK RECEIVED:", msg.length);
+      // const requestedAgent = data.agent || "sales";
+      const requestedAgent = "general";
 
-        if (ws.callState !== "ACTIVE") return;
+      const rows = await queryAsync(
+        `
+        SELECT
+          id,
+          agent_type,
+          identity,
+          role_description,
+          primary_goals,
+          context_knowledge,
+          language,
+          tone,
+          response_format,
+          do_guidelines,
+          dont_guidelines
+        FROM chatbot_prompts
+        WHERE agent_type = ?
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+        [requestedAgent]
+        );
 
-        const session = callSessions.get(ws.sessionId);
-        if (!session) return;
+      let prompt = rows[0];
 
-        try {
+      if (!prompt) {
 
-          ws.audioBuffer.push(msg);
+        const fallback = await queryAsync(
+          `
+          SELECT
+            id,
+            agent_type,
+            identity,
+            role_description,
+            primary_goals,
+            context_knowledge,
+            language,
+            tone,
+            response_format,
+            do_guidelines,
+            dont_guidelines
+          FROM chatbot_prompts
+          WHERE agent_type = 'sales'
+          ORDER BY id DESC
+          LIMIT 1
+          `
+        );
 
-          const totalSize =
-            ws.audioBuffer.reduce((a,b)=>a+b.length,0);
+        if (!fallback.length) {
+          console.error("❌ No active prompt found");
 
-          // tunggu audio cukup sebelum STT
-          if (totalSize < 32000) {
-            return;
-          }
-
-          const audioData = Buffer.concat(ws.audioBuffer);
-          if (!audioData || audioData.length < 16000) {
-            console.log("⚠️ Audio too small, skipping STT");
-            ws.audioBuffer = [];
-            return;
-          }
-
-          ws.audioBuffer = [];
-
-          // const transcript =
-          //   await transcribeAudio(audioData);
-          const wavStream = pcmToWav(audioData, 16000);
-
-          const chunks = [];
-          for await (const chunk of wavStream) {
-            chunks.push(chunk);
-          }
-          
-          const wavBuffer = Buffer.concat(chunks);
-          
-          const transcript = await transcribeAudio(wavBuffer);
-
-          if (!transcript) return;
-
-          console.log("🗣️ User:", transcript);
-
-          ws.send(JSON.stringify({
-            type: "user-text",
-            text: transcript
-          }));
-
-          session.history.push({
-            role: "user",
-            content: transcript
-          });
-
-          const aiReply =
-            await askN8N(transcript, session);
-
-          ws.send(JSON.stringify({
-            type: "ai-text",
-            text: aiReply
-          }));
-
-          session.history.push({
-            role: "assistant",
-            content: aiReply
-          });
-
-          const audio =
-            await generateTTS(aiReply);
-
-          if (audio && ws.readyState === 1) {
-
-            console.log("🔊 Sending AI audio:", audio.length);
-
-            ws.send(audio);
-
-          }
-
-        } catch (err) {
-
-          console.error(
-            "❌ AUDIO PIPELINE ERROR:",
-            err
+          ws.send(
+            JSON.stringify({
+              type: "ai-text",
+              text: "Sorry, no agent available."
+            })
           );
 
+          return;
         }
 
+        prompt = fallback[0];
       }
 
-    });
+      const systemPrompt = `
+You are ${prompt.identity}.
 
-    ws.on("close", () => {
+Role:
+${prompt.role_description}
 
-      console.log("❌ Client disconnected", ws.sessionId);
+Base Knowledge:
+${prompt.context_knowledge || ""}
 
-      callSessions.delete(ws.sessionId);
+Goals:
+${prompt.primary_goals}
 
-    });
+Language:
+${prompt.language || "en"}
 
+Tone:
+${prompt.tone || "professional"}
+
+Response format:
+${prompt.response_format || "concise"}
+
+Do guidelines:
+${prompt.do_guidelines || ""}
+
+Don't guidelines:
+${prompt.dont_guidelines || ""}
+
+Always stay in this role.
+`.trim();
+
+      const incomingContext = data.context || {};
+
+      const finalContext = {
+
+        agent_type: prompt.agent_type,
+        postcode: incomingContext.postcode || null,
+        waste_type_id: incomingContext.waste_type_id || null,
+        selected_bin_size_id: incomingContext.selected_bin_size_id || null,
+        leadId: incomingContext.leadId || null,
+
+        delivery_date: incomingContext.delivery_date || null,
+        hire_days: incomingContext.hire_days || null,
+        pickup_date: incomingContext.pickup_date || null,
+
+        streetNumber: incomingContext.streetNumber || null,
+        streetName: incomingContext.streetName || null,
+        suburb: incomingContext.suburb || null,
+        state: incomingContext.state || null,
+        country: incomingContext.country || null,
+        fullAddress: incomingContext.fullAddress || null,
+
+        name: incomingContext.name || "Guest",
+        email: incomingContext.email || null,
+        phoneNumber: incomingContext.phoneNumber || null,
+        note: incomingContext.note || "none"
+      };
+
+      callSessions.set(ws.sessionId, {
+        agent: prompt.agent_type,
+        promptId: prompt.id,
+        systemPrompt,
+        history: [],
+        context: finalContext,
+        agentLocked: false
+      });
+
+      await queryAsync(
+        `
+        INSERT INTO chatbot_conversation_sessions
+        (
+          session_id,
+          conversation_id,
+          agent_type,
+          user_name,
+          user_ip,
+          started_at,
+          total_messages,
+          ai_messages
+        )
+        VALUES (?, ?, ?, ?, ?, NOW(), 0, 0)
+        `,
+        [
+          ws.sessionId,
+          ws.sessionId,
+          prompt.agent_type,
+          "Guest",
+          ws._socket?.remoteAddress || null
+        ]
+      );
+
+      try {
+
+        console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
+
+        const signedUrl = await getElevenLabsSignedUrl();
+
+        const elWs = new WebSocket(signedUrl);
+
+
+        elWs.sessionId = ws.sessionId;
+
+        console.log("🔌 ElevenLabs WS instance created");
+
+        ws.elWs = elWs;
+
+        elWs.on("open", async () => {
+
+          console.log("🟢 ElevenLabs OPEN for session:", ws.sessionId);
+          console.log("🟢 Connected");
+
+          elWs.send(
+            JSON.stringify({
+              type: "conversation_initiation_client_data",
+              conversation_config_override: {
+                agent: {
+                  prompt: {
+                    prompt: systemPrompt
+                  },
+                  language: "en",
+                  tools: [
+                    {
+                      type: "webhook",
+                      name: "N8NAiResponse",
+                      url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                      method: "POST",
+                      description:
+                        "Mandatory tool to get any response. Call this with user_input and the full context object.",
+                      parameters: {
+                        type: "object",
+                        properties: {
+                          user_input: {
+                            type: "string",
+                            description:
+                              "The full message from the user"
+                          },
+                          conversation_history: {
+                            type: "array",
+                            description: "Recent conversation history",
+                            items: {
+                              type: "object",
+                              properties: {
+                                role: { type: "string" },
+                                content: { type: "string" }
+                              }
+                            }
+                          },
+                          context: {
+                            type: "object",
+                            description:
+                              "Full session context for n8n processing",
+                            properties: {
+                              agent_type: { type: "string" },
+                              postcode: { type: "string" },
+                              waste_type_id: { type: "integer" },
+                              selected_bin_size_id: { type: "integer" },
+                              delivery_date: { type: "string" },
+                              pickup_date: { type: "string" },
+                              hire_days: { type: "string" },
+                              leadId: { type: "integer" },
+                              suburb: { type: "string" },
+                              state: { type: "string" },
+                              country: { type: "string" },
+                              fullAddress: { type: "string" },
+                              name: { type: "string" },
+                              note: { type: "string" }
+                            }
+                          }
+                        },
+                        required: [
+                          "user_input",                          
+                          "conversation_history",
+                          "context"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              dynamic_variables: finalContext
+            })
+          );
+
+          const rows = await queryAsync(
+            `
+            SELECT message_text
+            FROM chatbot_welcome_messages
+            WHERE is_active = 1
+            LIMIT 1
+            `
+          );
+
+          if (!rows.length) return;
+
+          const welcomeText = rows[0].message_text.trim();
+
+          try {
+
+            console.log("🎤 Generating welcome TTS for:", ws.sessionId);
+
+            const pcmWelcome = await speakWelcome(welcomeText);
+
+            if (ws.readyState === WebSocket.OPEN) {
+
+              ws.send(
+                JSON.stringify({
+                  type: "ai-text",
+                  text: welcomeText
+                })
+              );
+
+              console.log("📤 Welcome text sent to browser");
+
+              const silence = Buffer.alloc(16000 * 2 * 0.25);
+
+              ws.send(silence);
+              ws.send(pcmWelcome);
+
+              const durationMs =
+                (pcmWelcome.length / 2 / 16000) * 1000;
+
+              setTimeout(() => {
+
+                ws.callState = "ACTIVE";
+                ws.welcomeAudioSent = true;
+
+                console.log("✅ Welcome selesai, mic dibuka");
+
+              }, durationMs + 100);
+            }
+
+          } catch (err) {
+            console.error("Error REST TTS:", err);
+          }
+        });
+
+        elWs.on("message", async (elMsg) => {
+
+          if (!ws.sessionId || ws.callState === "ENDED") {
+            return;
+          }
+
+          try {
+
+            const event = JSON.parse(elMsg.toString());
+
+            console.log("📩 EL EVENT:", event.type);
+
+            const session = callSessions.get(ws.sessionId);
+
+            if (!session) {
+              console.warn("⚠️ Session missing in Map. Ignoring EL event.");
+              return;
+            }
+
+            switch (event.type) {
+
+              case "conversation_initiation_metadata": {
+                ws.elReady = true;
+                console.log("EL READY (Metadata received)");
+                break;
+              }
+
+              case "tool_call_result": {
+
+                try {
+              
+                  const toolOutput =
+                    event.tool_call_result_event?.output;
+              
+                  if (!toolOutput) break;
+              
+                  // ==============================
+                  // UPDATE CONTEXT
+                  // ==============================
+              
+                  if (toolOutput.context) {
+                    session.context = {
+                      ...session.context,
+                      ...toolOutput.context
+                    };
+              
+                    console.log("🔄 Context synced:", session.context);
+                  }
+              
+                  // ==============================
+                  // SEND N8N RESPONSE
+                  // ==============================
+              
+                  if (toolOutput.reply) {
+              
+                    const text = toolOutput.reply;
+              
+                    console.log("📦 N8N Response:", text);
+              
+                    if (ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify({
+                        type: "ai-text",
+                        text
+                      }));
+                    }
+              
+                    session.history.push({
+                      role: "assistant",
+                      content: text
+                    });
+              
+                    if (session.history.length > 20) {
+                      session.history.shift();
+                    }
+              
+                  }
+              
+                } catch (err) {
+                  console.error("Tool result parse error:", err);
+                }
+              
+                break;
+              }
+
+              case "user_transcript": {
+
+                try {
+
+                  const text =
+                    event.user_transcription_event.user_transcript;
+                  // ==============================
+                  // SWITCH GENERAL → SALES
+                  // ==============================
+                  
+                  // if (
+                  //   session.agent === "general" &&
+                  //   shouldSwitchToSales(text)
+                  // ) {
+                  
+                  //   console.log(
+                  //     "🔁 Switching agent: general → sales"
+                  //   );
+                  
+                  //   session.agent = "sales";
+                  
+                  //   session.context.agent_type = "sales";
+                  // }
+
+
+                if (session.agent === "general" && !session.agentLocked && shouldSwitchToSales(text)) {
+                  console.log("🔁 SWITCHING DETECTED: general → sales");
+              
+                  // 1. Ambil Prompt Sales dari DB
+                  const rows = await queryAsync(`SELECT * FROM chatbot_prompts WHERE agent_type = 'sales' ORDER BY id DESC LIMIT 1`);
+                  if (!rows.length) return;
+                  const salesPrompt = rows[0];
+              
+                  const newSystemPrompt = `You are ${salesPrompt.identity}. Role: ${salesPrompt.role_description}...`.trim();
+              
+                  // 2. Update Local Session
+                  session.agent = "sales";
+                  session.systemPrompt = newSystemPrompt;
+                  session.context.agent_type = "sales";
+                  session.agentLocked = true; // Kunci agar tidak switch balik-balik
+              
+                  // 3. Matikan Koneksi ElevenLabs General
+                  if (ws.elWs) {
+                      console.log("🔌 Closing General Connection...");
+                      ws.elWs.close();
+                      ws.elWs = null;
+                  }
+              
+                  // 4. Beri Feedback ke User (Opsional tapi disarankan)
+                  ws.send(JSON.stringify({
+                      type: "ai-text",
+                      text: "Connecting you with our sales assistant..."
+                  }));
+              
+                  // 5. RE-START ElevenLabs dengan Prompt Sales
+                  await startElevenLabs(ws, newSystemPrompt, session.context);
+                  
+                  return; // Berhenti di sini agar transcript tidak diproses dua kali
+              }
+
+                  console.log("🗣️ User:", text);
+
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(
+                      JSON.stringify({
+                        type: "user-text",
+                        text
+                      })
+                    );
+                  }
+
+                  if (!session) {
+                    console.warn("⚠ No session found");
+                    break;
+                  }
+
+                  session.history.push({
+                    role: "user",
+                    content: text
+                  });
+
+                  if (session.history.length > 20) {
+                    session.history.shift();
+                  }
+
+                  session.lastUserMessage = text;
+
+                  session.context = session.context || {};
+
+                  const extractedPostcode =
+                    extractPostcode(text);
+
+                  if (extractedPostcode) {
+                    session.context.postcode = extractedPostcode;
+                    console.log(
+                      "✅ Postcode extracted:",
+                      extractedPostcode
+                    );
+                  }
+
+                  const deliveryDate =
+                    extractDeliveryDate(text);
+
+                  if (deliveryDate) {
+                    session.context.delivery_date =
+                      deliveryDate;
+
+                    console.log(
+                      "📦 Delivery date extracted:",
+                      deliveryDate
+                    );
+                  }
+
+                  const pickupDate =
+                    extractPickupDate(text);
+
+                  if (pickupDate) {
+                    session.context.pickup_date =
+                      pickupDate;
+
+                    console.log(
+                      "🚛 Pickup date extracted:",
+                      pickupDate
+                    );
+                  }
+
+                  console.log(
+                    "📦 Final Context updated in Node:",
+                    session.context
+                  );
+
+                  // if (
+                  //   extractedPostcode ||
+                  //   deliveryDate ||
+                  //   pickupDate
+                  // ) {
+
+                    console.log(
+                      "🔄 Syncing updated context to ElevenLabs..."
+                    );
+
+                    elWs.send(
+                      JSON.stringify({
+                        type: "client_tool_outputs",
+                        dynamic_variables: {
+                          conversation_history: session.history.slice(-10),
+                          ...session.context
+                        }
+                      })
+                    );
+                  // }
+
+                } catch (err) {
+                  console.error(
+                    "❌ user_transcript error:",
+                    err
+                  );
+                }
+
+                break;
+              }
+
+              case "agent_response": {
+
+                const text =
+                  event.agent_response_event.agent_response;
+
+                console.log("🤖 Agent:", text);
+
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "ai-text",
+                      text
+                    })
+                  );
+                }
+
+                if (!session) break;
+
+                session.history.push({
+                  role: "assistant",
+                  content: text
+                });
+
+                if (session.history.length > 20) {
+                  session.history.shift();
+                }
+
+                const userMessage =
+                  session.lastUserMessage || null;
+
+                await queryAsync(
+                  `
+                  INSERT INTO chatbot_conversations
+                  (
+                    session_id,
+                    agent_type,
+                    prompt_id,
+                    user_message,
+                    ai_response,
+                    confidence,
+                    resolved,
+                    created_at
+                  )
+                  VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+                  `,
+                  [
+                    ws.sessionId,
+                    session.agent,
+                    session.promptId,
+                    userMessage,
+                    text,
+                    0.9
+                  ]
+                );
+
+                await queryAsync(
+                  `
+                  UPDATE chatbot_conversation_sessions
+                  SET
+                    total_messages = total_messages + 1,
+                    ai_messages = ai_messages + 1
+                  WHERE session_id = ?
+                  `,
+                  [ws.sessionId]
+                );
+
+                if (userMessage) {
+                  await insertLearningQueue({
+                    sessionId: ws.sessionId,
+                    question: userMessage,
+                    answer: text
+                  });
+                }
+
+                session.lastUserMessage = null;
+
+                break;
+              }
+
+              case "audio": {
+
+                const pcm = Buffer.from(
+                  event.audio_event.audio_base_64,
+                  "base64"
+                );
+
+                if (!ws.welcomeAudioSent) {
+                  console.warn(
+                    "⛔ ConvAI mencoba bicara tapi REST belum selesai. Skipping..."
+                  );
+                  break;
+                }
+
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(pcm);
+
+                  console.log(
+                    "🔊 ConvAI Audio sent to browser:",
+                    pcm.length,
+                    "bytes"
+                  );
+                }
+
+                break;
+              }
+
+              case "interruption": {
+
+                console.log("⚡ Interruption detected");
+
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "interruption"
+                    })
+                  );
+                }
+
+                break;
+              }
+
+              case "ping": {
+
+                if (elWs.readyState === WebSocket.OPEN) {
+                  elWs.send(
+                    JSON.stringify({
+                      type: "pong",
+                      event_id: event.ping_event.event_id
+                    })
+                  );
+                }
+
+                break;
+              }
+
+              case "vad_score":
+              case "internal_tentative_agent_response":
+                break;
+
+              default:
+                console.log(
+                  "📩 ElevenLabs event:",
+                  event.type
+                );
+            }
+
+          } catch (err) {
+            console.error(
+              "❌ ElevenLabs parse error:",
+              err
+            );
+          }
+        });
+
+        elWs.on("close", () => {
+          console.log(
+            "❌ ElevenLabs disconnected for session",
+            elWs.sessionId
+          );
+        });
+
+        elWs.on("error", (err) => {
+          console.error(
+            "❌ ElevenLabs error:",
+            err.message
+          );
+        });
+
+      } catch (err) {
+
+        console.error(
+          "❌ ElevenLabs connection failed:",
+          err
+        );
+
+        ws.send(
+          JSON.stringify({
+            type: "ai-text",
+            text:
+              "Sorry, I'm having trouble connecting. Please try again."
+          })
+        );
+      }
+
+      console.log("🎯 Active agent:", prompt.agent_type);
+
+      return;
+    }
+
+    if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
+
+      if (ws.callState !== "ACTIVE") {
+        return;
+      }
+
+      if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
+
+      if (ws.elWs.readyState === WebSocket.OPEN) {
+        ws.elWs.send(
+          JSON.stringify({
+            user_audio_chunk: Buffer.from(msg).toString("base64")
+          })
+        );
+      }
+
+      return;
+    }
   });
 
-}
+  ws.on("close", async () => {
 
+    const sessionId = ws.sessionId;
 
+    console.log("❌ Client disconnected", sessionId);
+
+    if (!sessionId) {
+      console.log(
+        "⚠️ No sessionId on close, skipping cleanup"
+      );
+      return;
+    }
+
+    try {
+
+      console.log(
+        "🧹 Cleaning up ElevenLabs for:",
+        sessionId
+      );
+
+      const summary =
+        await summarizeConversation(sessionId);
+
+      await queryAsync(
+        `
+        UPDATE chatbot_conversation_sessions
+        SET
+          ended_at = NOW(),
+          session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
+          conversation_summary = ?
+        WHERE session_id = ?
+        `,
+        [
+          summary,
+          sessionId
+        ]
+      );
+
+    } catch (err) {
+      console.error("❌ Session close error:", err);
+    }
+
+    if (ws.elWs) {
+      try {
+        ws.elWs.close();
+      } catch {}
+
+      ws.elWs = null;
+    }
+
+    callSessions.delete(sessionId);
+
+    ws.sessionId = null;
+    ws.sessionReady = false;
+    ws.callState = "ENDED";
+    ws.welcomeAudioSent = false;
+    ws.elReady = false;
+  });
+});
 
 
 app.post("/api/chat/ai-feedback", async (req, res) => {
@@ -4890,7 +6238,7 @@ app.get('/admin/sessions', (req, res) => {
 // ==============================
 // START VOICE WEBSOCKET SERVER
 // ==============================
-startVoiceServer(server);
+// startVoiceServer(server);
 // -----------------------------------------------------
 // START SERVER
 // -----------------------------------------------------
@@ -4906,6 +6254,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
