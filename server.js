@@ -362,10 +362,10 @@ async function generateTTS(text) {
     const res = await axios.post(
       KOKORO_URL,
       {
-        text: text,
-        voice: "am_echo",
-        format: "wav",
-        sample_rate: 48000
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text: text }),
+        voice: "am_echo"
       },
       {
         responseType: "arraybuffer"
@@ -4952,6 +4952,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
