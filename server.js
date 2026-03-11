@@ -297,9 +297,15 @@ async function transcribeAudio(buffer) {
       {
         headers: {
           "Content-Type": "application/octet-stream"
-        }
+        },
+        timeout: 15000
       }
     );
+
+    if (typeof res.data !== "object") {
+      console.log("⚠️ STT returned non JSON");
+      return null;
+    }
 
     return res.data.text || null;
 
@@ -523,7 +529,7 @@ export function startVoiceServer(server) {
             ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
           // tunggu audio cukup sebelum STT
-          if (totalSize < 32000) {
+          if (totalSize < 96000) {
             return;
           }
 
@@ -4889,6 +4895,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
