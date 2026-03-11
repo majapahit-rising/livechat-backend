@@ -357,6 +357,7 @@ async function askN8N(userInput, session) {
 async function generateTTS(text) {
 
   try {
+    console.log("🎤 GENERATE TTS:", text);
 
     const res = await axios.post(
       KOKORO_URL,
@@ -370,6 +371,7 @@ async function generateTTS(text) {
         responseType: "arraybuffer"
       }
     );
+    console.log("✅ TTS BYTES:", res.data.byteLength);
 
     return Buffer.from(res.data);
 
@@ -4950,6 +4952,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
