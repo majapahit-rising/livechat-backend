@@ -625,7 +625,7 @@ wss.on("connection", (ws) => {
         
         // jika user berhenti bicara
         if (ws.silenceFrames > 25 && ws.audioBuffer.length > 10) {
-        
+
           const audioData = Buffer.concat(ws.audioBuffer);
         
           ws.audioBuffer = [];
@@ -637,60 +637,54 @@ wss.on("connection", (ws) => {
         
           console.log("🗣️ User:", transcript);
         
-        const transcript = await transcribeAudio(audioData);
-
-        if (!transcript) return;
-
-        console.log("🗣️ User:", transcript);
-
-        ws.send(JSON.stringify({
-          type: "user-text",
-          text: transcript
-        }));
-
-        session.history.push({
-          role: "user",
-          content: transcript
-        });
-
-        const aiReply = await askN8N(transcript, session);
-
-        ws.send(JSON.stringify({
-          type: "ai-text",
-          text: aiReply
-        }));
-
-        session.history.push({
-          role: "assistant",
-          content: aiReply
-        });
-
-        await queryAsync(
-          `
-          INSERT INTO chatbot_conversations
-          (
-            session_id,
-            agent_type,
-            prompt_id,
-            user_message,
-            ai_response,
-            confidence,
-            resolved,
-            created_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-          `,
-          [
-            ws.sessionId,
-            session.agent,
-            session.promptId,
-            transcript,
-            aiReply,
-            0.9
-          ]
-        );
-
-        await streamTTS(ws, aiReply);
+          ws.send(JSON.stringify({
+            type: "user-text",
+            text: transcript
+          }));
+        
+          session.history.push({
+            role: "user",
+            content: transcript
+          });
+        
+          const aiReply = await askN8N(transcript, session);
+        
+          ws.send(JSON.stringify({
+            type: "ai-text",
+            text: aiReply
+          }));
+        
+          session.history.push({
+            role: "assistant",
+            content: aiReply
+          });
+        
+          await queryAsync(
+            `
+            INSERT INTO chatbot_conversations
+            (
+              session_id,
+              agent_type,
+              prompt_id,
+              user_message,
+              ai_response,
+              confidence,
+              resolved,
+              created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+            `,
+            [
+              ws.sessionId,
+              session.agent,
+              session.promptId,
+              transcript,
+              aiReply,
+              0.9
+            ]
+          );
+        
+          await streamTTS(ws, aiReply);
         
           console.log("🔊 Sending AI audio:", audio.length);
 
@@ -5033,6 +5027,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
