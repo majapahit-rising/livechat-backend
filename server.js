@@ -98,7 +98,8 @@ const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 
 
-
+import wav from "wav";
+import { PassThrough } from "stream";
 import { WebSocketServer } from "ws";
 
 // ======================================================
@@ -357,6 +358,24 @@ async function askN8N(userInput, session) {
 // TTS
 // ======================================================
 
+function pcmToWav(pcmBuffer, sampleRate = 24000) {
+
+  const stream = new PassThrough();
+
+  const writer = new wav.Writer({
+    channels: 1,
+    sampleRate: sampleRate,
+    bitDepth: 16
+  });
+
+  writer.pipe(stream);
+
+  writer.write(pcmBuffer);
+  writer.end();
+
+  return stream;
+}
+
 async function generateTTS(text) {
 
   try {
@@ -379,7 +398,17 @@ async function generateTTS(text) {
 
     console.log("✅ TTS BYTES:", res.data.byteLength);
 
-    return Buffer.from(res.data);
+    const pcmBuffer = Buffer.from(res.data);
+
+    const wavStream = pcmToWav(pcmBuffer, 24000);
+    
+    const chunks = [];
+    
+    for await (const chunk of wavStream) {
+      chunks.push(chunk);
+    }
+    
+    return Buffer.concat(chunks);
 
   } catch (err) {
 
@@ -4854,6 +4883,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
