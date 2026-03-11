@@ -514,7 +514,7 @@ export function startVoiceServer(server) {
       // AUDIO RECEIVED
       // =====================================
 
-      if (Buffer.isBuffer(msg)) {
+      if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
 
         if (ws.callState !== "ACTIVE") return;
 
@@ -4895,6 +4895,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
