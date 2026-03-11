@@ -304,7 +304,11 @@ async function transcribeAudio(buffer) {
 
   } catch (err) {
 
-    console.error("❌ STT ERROR:", err.message);
+    console.error(
+  "❌ STT ERROR:",
+  err.response?.status,
+  err.response?.data || err.message
+);
     return null;
 
   }
@@ -357,27 +361,35 @@ async function askN8N(userInput, session) {
 async function generateTTS(text) {
 
   try {
+
     console.log("🎤 GENERATE TTS:", text);
 
     const res = await axios.post(
       KOKORO_URL,
       {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ text: text }),
+        text: text,
         voice: "am_echo"
       },
       {
+        headers: {
+          "Content-Type": "application/json"
+        },
         responseType: "arraybuffer"
       }
     );
+
     console.log("✅ TTS BYTES:", res.data.byteLength);
 
     return Buffer.from(res.data);
 
   } catch (err) {
 
-    console.error("❌ TTS ERROR:", err.message);
+    console.error(
+      "❌ TTS ERROR:",
+      err.response?.status,
+      err.response?.data || err.message
+    );
+
     return null;
 
   }
@@ -416,7 +428,7 @@ wss.on("connection", (ws) => {
       // bukan JSON (audio)
     }
 
-    // console.log("📨 WS message:", msg.length || msg.toString().slice(0,50));
+    console.log("📨 WS message:", msg.length || msg.toString().slice(0,50));
 
     // =====================================
     // START CALL
@@ -549,9 +561,20 @@ wss.on("connection", (ws) => {
 
       try {
 
-        // console.log("🎤 Audio received:", msg.length);
+        console.log("🎤 Audio received:", msg.length);
 
-        const transcript = await transcribeAudio(msg);
+        ws.audioBuffer.push(msg);
+
+        const totalSize = ws.audioBuffer.reduce((a,b)=>a+b.length,0);
+        
+        if (totalSize < 32000) {
+          return;
+        }
+        
+        const audioData = Buffer.concat(ws.audioBuffer);
+        ws.audioBuffer = [];
+        
+        const transcript = await transcribeAudio(audioData);
 
         if (!transcript) return;
 
@@ -4952,6 +4975,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
