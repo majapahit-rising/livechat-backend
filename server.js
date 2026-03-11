@@ -687,7 +687,7 @@ wss.on("connection", (ws) => {
           await streamTTS(ws, aiReply);
         
           console.log("🔊 Sending AI audio:", audio.length);
-
+        }
 
       } catch (err) {
 
@@ -5027,6 +5027,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
