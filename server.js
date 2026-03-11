@@ -408,12 +408,10 @@ wss.on("connection", (ws) => {
     // JSON MESSAGE
     // =====================================
 
-    if (typeof msg === "string") {
-
+    if (!Buffer.isBuffer(msg)) {
       try {
-        data = JSON.parse(msg);
+        data = JSON.parse(msg.toString());
       } catch {}
-
     }
 
     // =====================================
@@ -4949,6 +4947,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
