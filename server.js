@@ -328,7 +328,7 @@ async function askN8N(userInput, session) {
     const res = await axios.post(
       N8N_WEBHOOK,
       {
-        user_input: userInput,
+        message: userInput,
         conversation_history: session.history.slice(-10),
         context: session.context
       }
@@ -4883,6 +4883,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
