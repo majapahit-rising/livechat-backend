@@ -408,17 +408,20 @@ wss.on("connection", (ws) => {
     // JSON MESSAGE
     // =====================================
 
-    if (!Buffer.isBuffer(msg)) {
-      try {
-        data = JSON.parse(msg.toString());
-      } catch {}
+   try {
+      data = JSON.parse(msg.toString());
+    } catch {
+      // bukan JSON (audio)
     }
+
+    console.log("📨 WS message:", msg.length || msg.toString().slice(0,50));
 
     // =====================================
     // START CALL
     // =====================================
 
     if (data?.type === "start-call") {
+      console.log("🚀 START CALL RECEIVED:", data);
 
       ws.sessionId = data.session_id;
 
@@ -4947,6 +4950,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
