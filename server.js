@@ -416,7 +416,7 @@ wss.on("connection", (ws) => {
       // bukan JSON (audio)
     }
 
-    console.log("📨 WS message:", msg.length || msg.toString().slice(0,50));
+    // console.log("📨 WS message:", msg.length || msg.toString().slice(0,50));
 
     // =====================================
     // START CALL
@@ -549,7 +549,7 @@ wss.on("connection", (ws) => {
 
       try {
 
-        console.log("🎤 Audio received:", msg.length);
+        // console.log("🎤 Audio received:", msg.length);
 
         const transcript = await transcribeAudio(msg);
 
@@ -4952,6 +4952,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
