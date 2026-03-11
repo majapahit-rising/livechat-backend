@@ -328,6 +328,7 @@ async function askN8N(userInput, session) {
     const res = await axios.post(
       N8N_WEBHOOK,
       {
+        agent_type: 'sales',
         message: userInput,
         conversation_history: session.history.slice(-10),
         context: session.context
@@ -527,6 +528,11 @@ export function startVoiceServer(server) {
           }
 
           const audioData = Buffer.concat(ws.audioBuffer);
+          if (!audioData || audioData.length < 16000) {
+            console.log("⚠️ Audio too small, skipping STT");
+            ws.audioBuffer = [];
+            return;
+          }
 
           ws.audioBuffer = [];
 
@@ -4883,6 +4889,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
