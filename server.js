@@ -365,7 +365,7 @@ async function generateTTS(text) {
         text: text,
         voice: "am_echo",
         format: "wav",
-        sample_rate: 16000
+        sample_rate: 48000
       },
       {
         responseType: "arraybuffer"
@@ -4952,6 +4952,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
