@@ -283,7 +283,7 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 }
 
 // ======================================================
-// STT (WHISPER)
+// STT
 // ======================================================
 
 async function transcribeAudio(buffer) {
@@ -296,12 +296,9 @@ async function transcribeAudio(buffer) {
       {
         headers: {
           "Content-Type": "application/octet-stream"
-        },
-        timeout: 20000
+        }
       }
     );
-
-    console.log("STT:", res.data);
 
     return res.data.text || null;
 
@@ -328,8 +325,7 @@ async function askN8N(userInput, session) {
         user_input: userInput,
         conversation_history: session.history.slice(-10),
         context: session.context
-      },
-      { timeout: 20000 }
+      }
     );
 
     const data = res.data;
@@ -355,7 +351,7 @@ async function askN8N(userInput, session) {
 }
 
 // ======================================================
-// TTS (KOKORO)
+// TTS
 // ======================================================
 
 async function generateTTS(text) {
@@ -365,18 +361,15 @@ async function generateTTS(text) {
     const res = await axios.post(
       KOKORO_URL,
       {
-        text,
+        text: text,
         voice: "af_bella",
         format: "pcm",
         sample_rate: 16000
       },
       {
-        responseType: "arraybuffer",
-        timeout: 20000
+        responseType: "arraybuffer"
       }
     );
-
-    console.log("TTS bytes:", res.data.byteLength);
 
     return Buffer.from(res.data);
 
@@ -390,149 +383,282 @@ async function generateTTS(text) {
 }
 
 // ======================================================
-// VOICE SERVER
+// WEBSOCKET SERVER
 // ======================================================
 
 export function startVoiceServer(server) {
 
-  const wss = new WebSocketServer({
-    server,
-    path: "/ws/deepcall"
-  });
+const wss = new WebSocketServer({
+  server,
+  path: "/ws/deepcall"
+});
 
-  wss.on("connection", (ws) => {
+wss.on("connection", (ws) => {
 
-    ws.sessionId = null;
-    ws.callState = "WELCOME";
+  ws.sessionId = null;
+  ws.callState = "WELCOME";
 
-    console.log("📞 Client connected");
+  console.log("📞 Client connected");
 
-    ws.on("message", async (msg) => {
+  ws.on("message", async (msg) => {
 
-      // =====================================
-      // JSON MESSAGE
-      // =====================================
+    let data = null;
 
-      if (typeof msg === "string") {
+    // =====================================
+    // JSON MESSAGE
+    // =====================================
 
-        let data;
+    if (typeof msg === "string") {
 
-        try {
-          data = JSON.parse(msg);
-        } catch {
-          return;
+      try {
+        data = JSON.parse(msg);
+      } catch {}
+
+    }
+
+    // =====================================
+    // START CALL
+    // =====================================
+
+    if (data?.type === "start-call") {
+
+      ws.sessionId = data.session_id;
+
+      const session = {
+
+        agent: "general",
+        history: [],
+        agentLocked: false,
+        promptId: 1,
+
+        context: {
+          agent_type: "general",
+          postcode: null,
+          waste_type_id: null,
+          selected_bin_size_id: null,
+          delivery_date: null,
+          pickup_date: null
         }
 
-        if (data.type === "start-call") {
+      };
 
-          ws.sessionId = data.session_id;
+      callSessions.set(ws.sessionId, session);
 
-          const session = {
-            history: [],
-            context: data.context || {}
-          };
+      await queryAsync(
+        `
+        INSERT INTO chatbot_conversation_sessions
+        (
+          session_id,
+          conversation_id,
+          agent_type,
+          user_name,
+          started_at
+        )
+        VALUES (?, ?, ?, ?, NOW())
+        `,
+        [
+          ws.sessionId,
+          ws.sessionId,
+          "general",
+          "Guest"
+        ]
+      );
 
-          callSessions.set(ws.sessionId, session);
+      ws.callState = "ACTIVE";
 
-          ws.callState = "ACTIVE";
+      // =====================================
+      // GET WELCOME MESSAGE FROM DATABASE
+      // =====================================
 
-          console.log("SESSION START:", ws.sessionId);
+      let welcomeText = "Hello, how can I help you today?";
 
-          const welcomeText = "Hello, how can I help you today?";
+      try {
 
-          ws.send(JSON.stringify({
-            type: "ai-text",
-            text: welcomeText
-          }));
+        const rows = await queryAsync(
+          `
+          SELECT message_text
+          FROM chatbot_welcome_messages
+          WHERE is_active = 1
+          ORDER BY id DESC
+          LIMIT 1
+          `
+        );
 
-          const audio = await generateTTS(welcomeText);
-
-          if (audio && ws.readyState === 1) {
-
-            ws.send(audio);
-
-          }
-
-          return;
-
+        if (rows && rows.length) {
+          welcomeText = rows[0].message_text.trim();
         }
+
+      } catch (err) {
+
+        console.error("❌ Welcome message query failed:", err);
 
       }
 
       // =====================================
-      // AUDIO MESSAGE
+      // SEND TEXT
       // =====================================
 
-      if (Buffer.isBuffer(msg)) {
+      if (ws.readyState === 1) {
 
-        if (ws.callState !== "ACTIVE") return;
-
-        const session = callSessions.get(ws.sessionId);
-        if (!session) return;
-
-        try {
-
-          console.log("AUDIO BYTES:", msg.length);
-
-          const transcript = await transcribeAudio(msg);
-
-          if (!transcript) return;
-
-          console.log("🗣️ User:", transcript);
-
-          ws.send(JSON.stringify({
-            type: "user-text",
-            text: transcript
-          }));
-
-          session.history.push({
-            role: "user",
-            content: transcript
-          });
-
-          const aiReply = await askN8N(transcript, session);
-
-          ws.send(JSON.stringify({
-            type: "ai-text",
-            text: aiReply
-          }));
-
-          session.history.push({
-            role: "assistant",
-            content: aiReply
-          });
-
-          const audio = await generateTTS(aiReply);
-
-          if (audio && ws.readyState === 1) {
-
-            ws.send(audio);
-
-          }
-
-        } catch (err) {
-
-          console.error("❌ AUDIO PIPELINE ERROR:", err);
-
-        }
+        ws.send(JSON.stringify({
+          type: "ai-text",
+          text: welcomeText
+        }));
 
       }
 
-    });
+      // =====================================
+      // GENERATE WELCOME AUDIO
+      // =====================================
+
+      try {
+
+        const welcomeAudio = await generateTTS(welcomeText);
+
+        if (welcomeAudio && ws.readyState === 1) {
+
+          console.log("🔊 Sending welcome audio:", welcomeAudio.length);
+
+          ws.send(welcomeAudio);
+
+        }
+
+      } catch (err) {
+
+        console.error("❌ Welcome TTS failed:", err);
+
+      }
+
+      return;
+
+    }
 
     // =====================================
-    // CLOSE
+    // AUDIO RECEIVED
     // =====================================
 
-    ws.on("close", () => {
+    if (Buffer.isBuffer(msg)) {
 
-      console.log("❌ Client disconnected", ws.sessionId);
+      if (ws.callState !== "ACTIVE") return;
 
-      callSessions.delete(ws.sessionId);
+      const session = callSessions.get(ws.sessionId);
+      if (!session) return;
 
-    });
+      try {
+
+        console.log("🎤 Audio received:", msg.length);
+
+        const transcript = await transcribeAudio(msg);
+
+        if (!transcript) return;
+
+        console.log("🗣️ User:", transcript);
+
+        ws.send(JSON.stringify({
+          type: "user-text",
+          text: transcript
+        }));
+
+        session.history.push({
+          role: "user",
+          content: transcript
+        });
+
+        const aiReply = await askN8N(transcript, session);
+
+        ws.send(JSON.stringify({
+          type: "ai-text",
+          text: aiReply
+        }));
+
+        session.history.push({
+          role: "assistant",
+          content: aiReply
+        });
+
+        await queryAsync(
+          `
+          INSERT INTO chatbot_conversations
+          (
+            session_id,
+            agent_type,
+            prompt_id,
+            user_message,
+            ai_response,
+            confidence,
+            resolved,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+          `,
+          [
+            ws.sessionId,
+            session.agent,
+            session.promptId,
+            transcript,
+            aiReply,
+            0.9
+          ]
+        );
+
+        const audio = await generateTTS(aiReply);
+
+        if (audio && ws.readyState === 1) {
+
+          console.log("🔊 Sending AI audio:", audio.length);
+
+          ws.send(audio);
+
+        }
+
+      } catch (err) {
+
+        console.error("❌ AUDIO PIPELINE ERROR:", err);
+
+      }
+
+    }
 
   });
+
+  ws.on("close", async () => {
+
+    const sessionId = ws.sessionId;
+
+    console.log("❌ Client disconnected", sessionId);
+
+    if (!sessionId) return;
+
+    try {
+
+      const summary = await summarizeConversation(sessionId);
+
+      await queryAsync(
+        `
+        UPDATE chatbot_conversation_sessions
+        SET
+          ended_at = NOW(),
+          session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
+          conversation_summary = ?
+        WHERE session_id = ?
+        `,
+        [
+          summary,
+          sessionId
+        ]
+      );
+
+    } catch (err) {
+
+      console.error("❌ Session close error:", err);
+
+    }
+
+    callSessions.delete(sessionId);
+
+  });
+
+});
 
 }
 
@@ -4823,5 +4949,6 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
