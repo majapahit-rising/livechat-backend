@@ -1111,39 +1111,47 @@ async function handleElevenLabsMessage(ws, elMsg) {
     }
 }
 
-// async function handleAgentSwitch(ws, newAgentType) {
-//     const session = callSessions.get(ws.sessionId);
-//     if (!session) return;
+async function handleAgentSwitch(ws, newAgentType) {
 
-//     console.log(`🔌 Switching to ${newAgentType} Agent...`);
-//     session.agentLocked = true; 
+  const session = callSessions.get(ws.sessionId);
+  if (!session) return;
 
-//     if (ws.elWs) {
-//         try { ws.elWs.close(); } catch(e) {}
-//         ws.elWs = null;
-//     }
+  console.log(`🔌 Switching to ${newAgentType} Agent...`);
 
-//     const rows = await queryAsync(
-//         `SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1`,
-//         [newAgentType]
-//     );
+  session.agentLocked = true;
 
-//     if (rows.length > 0) {
-//         const promptData = rows[0];
-        
-//         // PERBAIKAN: Gunakan fungsi helper agar semua aturan (State, Absolute Rule) terbawa
-//         const fullSystemPrompt = buildFullSystemPrompt(promptData);
-        
-//         session.agent = newAgentType;
-//         session.systemPrompt = fullSystemPrompt;
-//         session.context.agent_type = newAgentType;
+  if (ws.elWs) {
+    try { ws.elWs.close(); } catch(e) {}
+    ws.elWs = null;
+  }
 
-//         ws.send(JSON.stringify({ type: "ai-text", text: "Connecting you with our sales team..." }));
+  const rows = await queryAsync(
+    `SELECT * FROM chatbot_prompts
+     WHERE agent_type = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [newAgentType]
+  );
 
-//         // Mulai ulang ElevenLabs dengan prompt yang LENGKAP
-//         await startElevenLabs(ws, fullSystemPrompt, session.context);
-//     }
-// }
+  if (!rows.length) return;
+
+  const promptData = rows[0];
+
+  const fullSystemPrompt = buildFullSystemPrompt(promptData);
+
+  session.agent = newAgentType;
+  session.systemPrompt = fullSystemPrompt;
+  session.context.agent_type = newAgentType;
+
+  ws.send(JSON.stringify({
+    type: "ai-text",
+    text: "Connecting you with our sales assistant Max..."
+  }));
+
+  await startElevenLabs(ws, fullSystemPrompt, session.context);
+}
+
+
 // ======================================================
 // WEBSOCKET SERVER
 // ======================================================
@@ -1584,22 +1592,29 @@ wss.on("connection", (ws) => {
                     event.user_transcription_event.user_transcript;
                   
 
-                    if (session.agent === "general" && shouldSwitchToSales(text)) {
+                    // if (session.agent === "general" && shouldSwitchToSales(text)) {
     
-                        console.log("🔁 SWITCHING MODE: general → sales");
+                    //     console.log("🔁 SWITCHING MODE: general → sales");
                       
-                        session.agent = "sales";
-                        session.context.agent_type = "sales";
+                    //     session.agent = "sales";
+                    //     session.context.agent_type = "sales";
                       
-                        if (ws.elWs && ws.elWs.readyState === 1) {
-                          ws.elWs.send(JSON.stringify({
-                            // type: "client_tool_outputs",
-                            type: "dynamic_variables",
-                            dynamic_variables: {
-                              ...session.context,
-                              conversation_history: session.history.slice(-10)
-                            }
-                          }));
+                    //     if (ws.elWs && ws.elWs.readyState === 1) {
+                    //       ws.elWs.send(JSON.stringify({
+                    //         // type: "client_tool_outputs",
+                    //         type: "dynamic_variables",
+                    //         dynamic_variables: {
+                    //           ...session.context,
+                    //           conversation_history: session.history.slice(-10)
+                    //         }
+                    //       }));
+                    //     }
+                        if (session.agent === "general" && shouldSwitchToSales(text)) {
+
+                          console.log("🔁 SWITCHING MODE: general → sales");
+                        
+                          await handleAgentSwitch(ws, "sales");
+                          return;
                         }
                       
                       }
@@ -6254,6 +6269,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
