@@ -1593,7 +1593,8 @@ wss.on("connection", (ws) => {
                       
                         if (ws.elWs && ws.elWs.readyState === 1) {
                           ws.elWs.send(JSON.stringify({
-                            type: "client_tool_outputs",
+                            // type: "client_tool_outputs",
+                            type: "dynamic_variables",
                             dynamic_variables: {
                               ...session.context,
                               conversation_history: session.history.slice(-10)
@@ -1680,7 +1681,8 @@ wss.on("connection", (ws) => {
   
                       ws.elWs.send(
                         JSON.stringify({
-                          type: "client_tool_outputs",
+                          // type: "client_tool_outputs",
+                          type: "dynamic_variables",
                           dynamic_variables: {
                             conversation_history: session.history.slice(-10),
                             ...session.context
@@ -6252,6 +6254,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
