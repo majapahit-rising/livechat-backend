@@ -1011,7 +1011,7 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
                                 name: "N8NAiResponse",
                                 url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
                                 method: "POST",
-                                description: "Optional webhook tool for CRM operations such as nearest delivery date, price lookup, order creation, or user survey rating and feedback.",
+                                description: "Use this tool ONLY when backend data is required. DO NOT call this tool during early conversation. Collect the following information first: 1. Postcode, 2. Waste type, 3. Bin size. Only after ALL THREE are confirmed you may call this tool to check availability, pricing, or create orders. If the user only gives postcode: ask for waste type instead of calling the tool.",
                                 parameters: {
                                     type: "object",
                                     properties: {
@@ -6251,6 +6251,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
