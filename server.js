@@ -643,7 +643,7 @@ const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-ch
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
 const ELEVENLABS_VOICE_ID =
-  process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
+  process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ";
 
 if (!ELEVENLABS_API_KEY) throw new Error("Missing ELEVENLABS_API_KEY");
 if (!ELEVENLABS_AGENT_ID) throw new Error("Missing ELEVENLABS_AGENT_ID");
@@ -856,7 +856,7 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 async function speakWelcome(text) {
   const format = "pcm_16000";
 
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/s0XGIcqmceN2l7kjsqoZ/stream?output_format=${format}`;
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/TX3LPaxmHKxFdv7VOQHJ/stream?output_format=${format}`;
 
   try {
     const res = await axios({
@@ -6251,6 +6251,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
