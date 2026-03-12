@@ -1011,13 +1011,13 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
                                 name: "N8NAiResponse",
                                 url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
                                 method: "POST",
-                                description: "Mandatory tool to get any response. Call this with user_input and the full context object.",
+                                // description: "Mandatory tool to get any response. Call this with user_input and the full context object.",
                                 parameters: {
                                     type: "object",
                                     properties: {
                                         user_input: { type: "string" },
                                         conversation_history: { type: "array", items: { type: "object", properties: { role: { type: "string" }, content: { type: "string" } } } },
-                                        context: { type: "object", properties: { agent_type: { type: "string" }, postcode: { type: "string" }, waste_type_id: { type: "integer" }, selected_bin_size_id: { type: "integer" } /* ... sisanya ... */ } }
+                                        context: { type: "object", properties: { agent_type: { type: "string" }, postcode: { type: "string" }, waste_type_id: { type: "integer" }, selected_bin_size_id: { type: "integer" } } }
                                     },
                                     required: ["user_input", "conversation_history", "context"]
                                 }
@@ -1381,8 +1381,8 @@ Always stay in this role.
                       name: "N8NAiResponse",
                       url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
                       method: "POST",
-                      description:
-                        "Mandatory tool to get any response. Call this with user_input and the full context object.",
+                      // description:
+                      //   "Mandatory tool to get any response. Call this with user_input and the full context object.",
                       parameters: {
                         type: "object",
                         properties: {
@@ -6251,6 +6251,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
