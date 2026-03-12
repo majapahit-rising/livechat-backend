@@ -1256,35 +1256,36 @@ wss.on("connection", (ws) => {
         prompt = fallback[0];
       }
 
-      const systemPrompt = `
-You are ${prompt.identity}.
+//       const systemPrompt = `
+// You are ${prompt.identity}.
 
-Role:
-${prompt.role_description}
+// Role:
+// ${prompt.role_description}
 
-Base Knowledge:
-${prompt.context_knowledge || ""}
+// Base Knowledge:
+// ${prompt.context_knowledge || ""}
 
-Goals:
-${prompt.primary_goals}
+// Goals:
+// ${prompt.primary_goals}
 
-Language:
-${prompt.language || "en"}
+// Language:
+// ${prompt.language || "en"}
 
-Tone:
-${prompt.tone || "professional"}
+// Tone:
+// ${prompt.tone || "professional"}
 
-Response format:
-${prompt.response_format || "concise"}
+// Response format:
+// ${prompt.response_format || "concise"}
 
-Do guidelines:
-${prompt.do_guidelines || ""}
+// Do guidelines:
+// ${prompt.do_guidelines || ""}
 
-Don't guidelines:
-${prompt.dont_guidelines || ""}
+// Don't guidelines:
+// ${prompt.dont_guidelines || ""}
 
-Always stay in this role.
-`.trim();
+// Always stay in this role.
+// `.trim();
+      const systemPrompt = buildFullSystemPrompt(prompt);
 
       const incomingContext = data.context || {};
 
@@ -6251,6 +6252,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
