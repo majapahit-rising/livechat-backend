@@ -911,37 +911,63 @@ process.on("uncaughtException", (err) => {
 
 
 function buildFullSystemPrompt(prompt) {
-    return `
+  return `
 You are ${prompt.identity}.
 
-Role:
+ROLE
 ${prompt.role_description}
 
-Base Knowledge:
+SYSTEM STATES
+
+STATE: GENERAL
+- Answer general questions about waste bins
+- Provide information
+- Be helpful
+
+STATE: SALES
+- Collect order information
+- postcode
+- bin size
+- delivery date
+- pickup date
+- customer details
+
+STATE TRANSITION
+Switch to SALES when the user wants to:
+- order
+- hire
+- book
+- get a bin
+- rent a bin
+
+IMPORTANT RULE
+The current state is defined by context.agent_type.
+
+If context.agent_type = general → operate in GENERAL mode
+If context.agent_type = sales → operate in SALES mode
+
+BASE KNOWLEDGE
 ${prompt.context_knowledge || ""}
 
-Goals & States:
+GOALS
 ${prompt.primary_goals}
 
-Language:
+LANGUAGE
 ${prompt.language}
 
-Tone:
+TONE
 ${prompt.tone}
 
-Response format:
+RESPONSE FORMAT
 ${prompt.response_format}
 
-Guidelines:
+GUIDELINES
 ${prompt.do_guidelines || ""}
 
-Don't Guidelines:
+RESTRICTIONS
 ${prompt.dont_guidelines || ""}
 
-Absolute Rules:
-${prompt.routing_rule || ""}
-
-Always stay in this role and follow the states defined.
+Always follow the current state.
 `.trim();
 }
 
@@ -1060,7 +1086,7 @@ async function handleElevenLabsMessage(ws, elMsg) {
                 const session = callSessions.get(ws.sessionId);
                 if (session && session.agent !== 'sales' && !session.agentLocked) {
                     console.log("🔁 SWITCHING DETECTED: general → sales");
-                    handleAgentSwitch(ws, 'sales');
+                    // handleAgentSwitch(ws, 'sales');
                 }
             }
             break;
@@ -1085,39 +1111,39 @@ async function handleElevenLabsMessage(ws, elMsg) {
     }
 }
 
-async function handleAgentSwitch(ws, newAgentType) {
-    const session = callSessions.get(ws.sessionId);
-    if (!session) return;
+// async function handleAgentSwitch(ws, newAgentType) {
+//     const session = callSessions.get(ws.sessionId);
+//     if (!session) return;
 
-    console.log(`🔌 Switching to ${newAgentType} Agent...`);
-    session.agentLocked = true; 
+//     console.log(`🔌 Switching to ${newAgentType} Agent...`);
+//     session.agentLocked = true; 
 
-    if (ws.elWs) {
-        try { ws.elWs.close(); } catch(e) {}
-        ws.elWs = null;
-    }
+//     if (ws.elWs) {
+//         try { ws.elWs.close(); } catch(e) {}
+//         ws.elWs = null;
+//     }
 
-    const rows = await queryAsync(
-        `SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1`,
-        [newAgentType]
-    );
+//     const rows = await queryAsync(
+//         `SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1`,
+//         [newAgentType]
+//     );
 
-    if (rows.length > 0) {
-        const promptData = rows[0];
+//     if (rows.length > 0) {
+//         const promptData = rows[0];
         
-        // PERBAIKAN: Gunakan fungsi helper agar semua aturan (State, Absolute Rule) terbawa
-        const fullSystemPrompt = buildFullSystemPrompt(promptData);
+//         // PERBAIKAN: Gunakan fungsi helper agar semua aturan (State, Absolute Rule) terbawa
+//         const fullSystemPrompt = buildFullSystemPrompt(promptData);
         
-        session.agent = newAgentType;
-        session.systemPrompt = fullSystemPrompt;
-        session.context.agent_type = newAgentType;
+//         session.agent = newAgentType;
+//         session.systemPrompt = fullSystemPrompt;
+//         session.context.agent_type = newAgentType;
 
-        ws.send(JSON.stringify({ type: "ai-text", text: "Connecting you with our sales team..." }));
+//         ws.send(JSON.stringify({ type: "ai-text", text: "Connecting you with our sales team..." }));
 
-        // Mulai ulang ElevenLabs dengan prompt yang LENGKAP
-        await startElevenLabs(ws, fullSystemPrompt, session.context);
-    }
-}
+//         // Mulai ulang ElevenLabs dengan prompt yang LENGKAP
+//         await startElevenLabs(ws, fullSystemPrompt, session.context);
+//     }
+// }
 // ======================================================
 // WEBSOCKET SERVER
 // ======================================================
@@ -1574,39 +1600,35 @@ Always stay in this role.
                   // }
 
 
-                if (session.agent === "general" && !session.agentLocked && shouldSwitchToSales(text)) {
-                  console.log("🔁 SWITCHING DETECTED: general → sales");
-              
-                  // 1. Ambil Prompt Sales dari DB
-                  const rows = await queryAsync(`SELECT * FROM chatbot_prompts WHERE agent_type = 'sales' ORDER BY id DESC LIMIT 1`);
-                  if (!rows.length) return;
-                  const salesPrompt = rows[0];
-              
-                  const newSystemPrompt = `You are ${salesPrompt.identity}. Role: ${salesPrompt.role_description}...`.trim();
-              
-                  // 2. Update Local Session
-                  session.agent = "sales";
-                  session.systemPrompt = newSystemPrompt;
-                  session.context.agent_type = "sales";
-                  session.agentLocked = true; // Kunci agar tidak switch balik-balik
-              
-                  // 3. Matikan Koneksi ElevenLabs General
-                  if (ws.elWs) {
-                      console.log("🔌 Closing General Connection...");
-                      ws.elWs.close();
-                      ws.elWs = null;
+                if (session.agent === "general" && shouldSwitchToSales(text)) {
+
+                    console.log("🔁 SWITCHING MODE: general → sales");
+                  
+                    session.agent = "sales";
+                    session.context.agent_type = "sales";
+                  
+                    if (ws.elWs && ws.elWs.readyState === 1) {
+                      ws.elWs.send(JSON.stringify({
+                        type: "client_tool_outputs",
+                        dynamic_variables: {
+                          ...session.context,
+                          conversation_history: session.history.slice(-10)
+                        }
+                      }));
+                    }
+                  
                   }
               
                   // 4. Beri Feedback ke User (Opsional tapi disarankan)
-                  ws.send(JSON.stringify({
-                      type: "ai-text",
-                      text: "Connecting you with our sales assistant..."
-                  }));
+                  // ws.send(JSON.stringify({
+                  //     type: "ai-text",
+                  //     text: "Connecting you with our sales assistant..."
+                  // }));
               
-                  // 5. RE-START ElevenLabs dengan Prompt Sales
-                  await startElevenLabs(ws, newSystemPrompt, session.context);
+                  // // 5. RE-START ElevenLabs dengan Prompt Sales
+                  // await startElevenLabs(ws, newSystemPrompt, session.context);
                   
-                  return; // Berhenti di sini agar transcript tidak diproses dua kali
+                  // return; // Berhenti di sini agar transcript tidak diproses dua kali
               }
 
                   console.log("🗣️ User:", text);
@@ -1690,7 +1712,7 @@ Always stay in this role.
                       "🔄 Syncing updated context to ElevenLabs..."
                     );
 
-                    elWs.send(
+                    ws.elWs.send(
                       JSON.stringify({
                         type: "client_tool_outputs",
                         dynamic_variables: {
@@ -1835,7 +1857,7 @@ Always stay in this role.
               case "ping": {
 
                 if (elWs.readyState === WebSocket.OPEN) {
-                  elWs.send(
+                  ws.elWs.send(
                     JSON.stringify({
                       type: "pong",
                       event_id: event.ping_event.event_id
@@ -6265,6 +6287,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
