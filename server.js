@@ -1617,7 +1617,7 @@ wss.on("connection", (ws) => {
                           return;
                         }
                       
-                      }
+                      // }
 
                       console.log("🗣️ User:", text);
     
@@ -6269,6 +6269,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
