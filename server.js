@@ -1592,7 +1592,7 @@ Always stay in this role.
                       
                         if (ws.elWs && ws.elWs.readyState === 1) {
                           ws.elWs.send(JSON.stringify({
-                            type: "dynamic_variables",
+                            type: "client_tool_outputs",
                             dynamic_variables: {
                               ...session.context,
                               conversation_history: session.history.slice(-10)
@@ -6251,6 +6251,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
