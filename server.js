@@ -1581,157 +1581,121 @@ Always stay in this role.
 
                   const text =
                     event.user_transcription_event.user_transcript;
-                  // ==============================
-                  // SWITCH GENERAL → SALES
-                  // ==============================
                   
-                  // if (
-                  //   session.agent === "general" &&
-                  //   shouldSwitchToSales(text)
-                  // ) {
-                  
-                  //   console.log(
-                  //     "🔁 Switching agent: general → sales"
-                  //   );
-                  
-                  //   session.agent = "sales";
-                  
-                  //   session.context.agent_type = "sales";
-                  // }
 
-
-                if (session.agent === "general" && shouldSwitchToSales(text)) {
-
-                    console.log("🔁 SWITCHING MODE: general → sales");
-                  
-                    session.agent = "sales";
-                    session.context.agent_type = "sales";
-                  
-                    if (ws.elWs && ws.elWs.readyState === 1) {
-                      ws.elWs.send(JSON.stringify({
-                        type: "client_tool_outputs",
-                        dynamic_variables: {
-                          ...session.context,
-                          conversation_history: session.history.slice(-10)
+                    if (session.agent === "general" && shouldSwitchToSales(text)) {
+    
+                        console.log("🔁 SWITCHING MODE: general → sales");
+                      
+                        session.agent = "sales";
+                        session.context.agent_type = "sales";
+                      
+                        if (ws.elWs && ws.elWs.readyState === 1) {
+                          ws.elWs.send(JSON.stringify({
+                            type: "client_tool_outputs",
+                            dynamic_variables: {
+                              ...session.context,
+                              conversation_history: session.history.slice(-10)
+                            }
+                          }));
                         }
-                      }));
+                      
+                      }
+
+                      console.log("🗣️ User:", text);
+    
+                      if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(
+                          JSON.stringify({
+                            type: "user-text",
+                            text
+                          })
+                        );
+                      }
+    
+                      if (!session) {
+                        console.warn("⚠ No session found");
+                        break;
+                      }
+    
+                      session.history.push({
+                        role: "user",
+                        content: text
+                      });
+    
+                      if (session.history.length > 20) {
+                        session.history.shift();
+                      }
+    
+                      session.lastUserMessage = text;
+    
+                      session.context = session.context || {};
+    
+                      const extractedPostcode =
+                        extractPostcode(text);
+    
+                      if (extractedPostcode) {
+                        session.context.postcode = extractedPostcode;
+                        console.log(
+                          "✅ Postcode extracted:",
+                          extractedPostcode
+                        );
+                      }
+    
+                      const deliveryDate =
+                        extractDeliveryDate(text);
+    
+                      if (deliveryDate) {
+                        session.context.delivery_date =
+                          deliveryDate;
+    
+                        console.log(
+                          "📦 Delivery date extracted:",
+                          deliveryDate
+                        );
+                      }
+    
+                      const pickupDate =
+                        extractPickupDate(text);
+    
+                      if (pickupDate) {
+                        session.context.pickup_date =
+                          pickupDate;
+    
+                        console.log(
+                          "🚛 Pickup date extracted:",
+                          pickupDate
+                        );
+                      }
+    
+                      console.log(
+                        "📦 Final Context updated in Node:",
+                        session.context
+                      );
+
+                      console.log(
+                        "🔄 Syncing updated context to ElevenLabs..."
+                      );
+  
+                      ws.elWs.send(
+                        JSON.stringify({
+                          type: "client_tool_outputs",
+                          dynamic_variables: {
+                            conversation_history: session.history.slice(-10),
+                            ...session.context
+                          }
+                        })
+                      );
+
+                      } catch (err) {
+                        console.error(
+                          "❌ user_transcript error:",
+                          err
+                        );
+                      }
+      
+                      break;
                     }
-                  
-                  }
-              
-                  // 4. Beri Feedback ke User (Opsional tapi disarankan)
-                  // ws.send(JSON.stringify({
-                  //     type: "ai-text",
-                  //     text: "Connecting you with our sales assistant..."
-                  // }));
-              
-                  // // 5. RE-START ElevenLabs dengan Prompt Sales
-                  // await startElevenLabs(ws, newSystemPrompt, session.context);
-                  
-                  // return; // Berhenti di sini agar transcript tidak diproses dua kali
-              }
-
-                  console.log("🗣️ User:", text);
-
-                  if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(
-                      JSON.stringify({
-                        type: "user-text",
-                        text
-                      })
-                    );
-                  }
-
-                  if (!session) {
-                    console.warn("⚠ No session found");
-                    break;
-                  }
-
-                  session.history.push({
-                    role: "user",
-                    content: text
-                  });
-
-                  if (session.history.length > 20) {
-                    session.history.shift();
-                  }
-
-                  session.lastUserMessage = text;
-
-                  session.context = session.context || {};
-
-                  const extractedPostcode =
-                    extractPostcode(text);
-
-                  if (extractedPostcode) {
-                    session.context.postcode = extractedPostcode;
-                    console.log(
-                      "✅ Postcode extracted:",
-                      extractedPostcode
-                    );
-                  }
-
-                  const deliveryDate =
-                    extractDeliveryDate(text);
-
-                  if (deliveryDate) {
-                    session.context.delivery_date =
-                      deliveryDate;
-
-                    console.log(
-                      "📦 Delivery date extracted:",
-                      deliveryDate
-                    );
-                  }
-
-                  const pickupDate =
-                    extractPickupDate(text);
-
-                  if (pickupDate) {
-                    session.context.pickup_date =
-                      pickupDate;
-
-                    console.log(
-                      "🚛 Pickup date extracted:",
-                      pickupDate
-                    );
-                  }
-
-                  console.log(
-                    "📦 Final Context updated in Node:",
-                    session.context
-                  );
-
-                  // if (
-                  //   extractedPostcode ||
-                  //   deliveryDate ||
-                  //   pickupDate
-                  // ) {
-
-                    console.log(
-                      "🔄 Syncing updated context to ElevenLabs..."
-                    );
-
-                    ws.elWs.send(
-                      JSON.stringify({
-                        type: "client_tool_outputs",
-                        dynamic_variables: {
-                          conversation_history: session.history.slice(-10),
-                          ...session.context
-                        }
-                      })
-                    );
-                  // }
-
-                } catch (err) {
-                  console.error(
-                    "❌ user_transcript error:",
-                    err
-                  );
-                }
-
-                break;
-              }
 
               case "agent_response": {
 
@@ -6287,6 +6251,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
