@@ -1130,33 +1130,74 @@ async function handleElevenLabsMessage(ws, elMsg) {
 //   await startElevenLabs(ws, fullSystemPrompt, session.context);
 // }
 
+// async function handleAgentSwitch(ws, newAgentType) {
+
+//   const session = callSessions.get(ws.sessionId);
+//   if (!session) return;
+
+//   console.log(`🔁 Switching to ${newAgentType} agent`);
+
+//   session.agent = newAgentType;
+//   session.context.agent_type = newAgentType;
+
+//   // kirim update ke ElevenLabs TANPA restart
+//   if (ws.elWs && ws.elWs.readyState === 1) {
+
+//     ws.elWs.send(JSON.stringify({
+//       type: "dynamic_variables",
+//       dynamic_variables: {
+//         ...session.context
+//       }
+//     }));
+
+//     console.log("✅ Agent switched via dynamic variables");
+//   }
+
+//   ws.send(JSON.stringify({
+//     type: "ai-text",
+//     text: "Hi, I'm Max. I'll help your request"
+//   }));
+// }
+
 async function handleAgentSwitch(ws, newAgentType) {
 
   const session = callSessions.get(ws.sessionId);
   if (!session) return;
 
-  console.log(`🔁 Switching to ${newAgentType} agent`);
+  console.log(`🔁 Switching agent → ${newAgentType}`);
+
+  const rows = await queryAsync(
+    `
+    SELECT *
+    FROM chatbot_prompts
+    WHERE agent_type = ?
+    ORDER BY id DESC
+    LIMIT 1
+    `,
+    [newAgentType]
+  );
+
+  if (!rows.length) return;
+
+  const promptData = rows[0];
+
+  const newPrompt = buildFullSystemPrompt(promptData);
 
   session.agent = newAgentType;
+  session.promptId = promptData.id;
+  session.activePrompt = newPrompt;
   session.context.agent_type = newAgentType;
 
-  // kirim update ke ElevenLabs TANPA restart
-  if (ws.elWs && ws.elWs.readyState === 1) {
-
-    ws.elWs.send(JSON.stringify({
-      type: "dynamic_variables",
-      dynamic_variables: {
-        ...session.context
-      }
-    }));
-
-    console.log("✅ Agent switched via dynamic variables");
-  }
-
-  ws.send(JSON.stringify({
-    type: "ai-text",
-    text: "Hi, I'm Max. I'll help your request"
+  ws.elWs.send(JSON.stringify({
+    type: "dynamic_variables",
+    dynamic_variables: {
+      ...session.context,
+      system_prompt: newPrompt
+    }
   }));
+
+  console.log("✅ Prompt updated dynamically");
+
 }
 
 
@@ -1306,6 +1347,7 @@ wss.on("connection", (ws) => {
         agent: prompt.agent_type,
         promptId: prompt.id,
         systemPrompt,
+        activePrompt: systemPrompt,
         history: [],
         context: finalContext,
         agentLocked: false
@@ -1423,7 +1465,11 @@ wss.on("connection", (ws) => {
                   ]
                 }
               },
-              dynamic_variables: finalContext
+              // dynamic_variables: finalContext
+              dynamic_variables: {
+                ...finalContext,
+                system_prompt: systemPrompt
+              }
             })
           );
 
@@ -1663,6 +1709,7 @@ wss.on("connection", (ws) => {
                           type: "dynamic_variables",
                           dynamic_variables: {
                             conversation_history: session.history.slice(-10),
+                            system_prompt: session.activePrompt,
                             ...session.context
                           }
                         })
@@ -6233,6 +6280,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
