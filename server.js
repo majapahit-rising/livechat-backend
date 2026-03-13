@@ -622,17 +622,9 @@ const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 import { WebSocketServer } from "ws";
 
-// import { createClient } from "@deepgram/sdk";
-// import crypto from "crypto";
-
 // ======================================================
 // CONFIG
 // ======================================================
-
-// const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-// console.log("DG KEY:", DEEPGRAM_API_KEY);
-
-// if (!DEEPGRAM_API_KEY) throw new Error("Missing Deepgram API key");
 
 const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
 
@@ -754,20 +746,6 @@ const callSessions = new Map();
 // ======================================================
 // WEBSOCKET CONNECTION
 // ======================================================
-
-// const conversation = await fetch(
-//   'https://api.elevenlabs.io/v1/convai/conversation',
-//   {
-//     method: 'POST',
-//     headers: {
-//       'xi-api-key': 'sk_xxxxx',
-//       'Content-Type': 'application/json'
-//     },
-//     body: JSON.stringify({
-//       agent_id: 'agent_4601kh08xk3rebm9naf9x8zvf5fa'
-//     })
-//   }
-// ).then(r => r.json());
 
 async function summarizeConversation(sessionId) {
   try {
@@ -985,15 +963,6 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
 
         elWs.on("open", () => {
             console.log(`🟢 ElevenLabs Connected [${initialContext.agent_type}] for:`, ws.sessionId);
-
-            // ✅ AMBIL SESSION
-            const session = callSessions.get(ws.sessionId);
-        
-            // ✅ UNLOCK AGENT SETELAH CONNECT
-            if (session) {
-                session.agentLocked = false;
-                console.log("🔓 Agent unlocked");
-            }
             
             // 2. Kirim Inisiasi dengan Prompt Baru
             elWs.send(JSON.stringify({
@@ -1002,7 +971,6 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
                     agent: {
                         prompt: { prompt: systemPrompt },
                         first_message: initialContext.agent_type === 'sales' ? "Sure, I can help with your skip bin order. What is your postcode?" : null,
-                        // first_message: null,
                         language: "en",
                         voice: {
                           voice_id: process.env.ELEVENLABS_VOICE_ID,
@@ -1121,67 +1089,44 @@ async function handleElevenLabsMessage(ws, elMsg) {
     }
 }
 
-// async function handleAgentSwitch(ws, newAgentType) {
-
-//   const session = callSessions.get(ws.sessionId);
-//   if (!session) return;
-
-//   console.log(`🔌 Switching to ${newAgentType} Agent...`);
-
-//   // session.agentLocked = true;
-
-//   // if (ws.elWs) {
-//   //   try { ws.elWs.close(); } catch(e) {}
-//   //   ws.elWs = null;
-//   // }
-
-//   const rows = await queryAsync(
-//     `SELECT * FROM chatbot_prompts
-//      WHERE agent_type = ?
-//      ORDER BY id DESC
-//      LIMIT 1`,
-//     [newAgentType]
-//   );
-
-//   if (!rows.length) return;
-
-//   const promptData = rows[0];
-
-//   const fullSystemPrompt = buildFullSystemPrompt(promptData);
-
-//   session.agent = newAgentType;
-//   session.systemPrompt = fullSystemPrompt;
-//   session.context.agent_type = newAgentType;
-
-//   // ws.send(JSON.stringify({
-//   //   type: "ai-text",
-//   //   text: "Connecting you with our sales assistant Max..."
-//   // }));
-
-//   // await startElevenLabs(ws, fullSystemPrompt, session.context);
-// }
-
-
 async function handleAgentSwitch(ws, newAgentType) {
 
   const session = callSessions.get(ws.sessionId);
   if (!session) return;
 
-  console.log(`🔁 Switching state to ${newAgentType}`);
+  console.log(`🔌 Switching to ${newAgentType} Agent...`);
+
+  session.agentLocked = true;
+
+  if (ws.elWs) {
+    try { ws.elWs.close(); } catch(e) {}
+    ws.elWs = null;
+  }
+
+  const rows = await queryAsync(
+    `SELECT * FROM chatbot_prompts
+     WHERE agent_type = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [newAgentType]
+  );
+
+  if (!rows.length) return;
+
+  const promptData = rows[0];
+
+  const fullSystemPrompt = buildFullSystemPrompt(promptData);
 
   session.agent = newAgentType;
+  session.systemPrompt = fullSystemPrompt;
   session.context.agent_type = newAgentType;
 
-  if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
+  ws.send(JSON.stringify({
+    type: "ai-text",
+    text: "Connecting you with our sales assistant Max..."
+  }));
 
-    ws.elWs.send(JSON.stringify({
-      type: "dynamic_variables",
-      dynamic_variables: {
-        ...session.context
-      }
-    }));
-
-  }
+  await startElevenLabs(ws, fullSystemPrompt, session.context);
 }
 
 
@@ -1297,35 +1242,7 @@ wss.on("connection", (ws) => {
         prompt = fallback[0];
       }
 
-//       const systemPrompt = `
-// You are ${prompt.identity}.
 
-// Role:
-// ${prompt.role_description}
-
-// Base Knowledge:
-// ${prompt.context_knowledge || ""}
-
-// Goals:
-// ${prompt.primary_goals}
-
-// Language:
-// ${prompt.language || "en"}
-
-// Tone:
-// ${prompt.tone || "professional"}
-
-// Response format:
-// ${prompt.response_format || "concise"}
-
-// Do guidelines:
-// ${prompt.do_guidelines || ""}
-
-// Don't guidelines:
-// ${prompt.dont_guidelines || ""}
-
-// Always stay in this role.
-// `.trim();
       const systemPrompt = buildFullSystemPrompt(prompt);
 
       const incomingContext = data.context || {};
@@ -1625,28 +1542,9 @@ wss.on("connection", (ws) => {
                     event.user_transcription_event.user_transcript;
                   
 
-                    // if (session.agent === "general" && shouldSwitchToSales(text)) {
-    
-                    //     console.log("🔁 SWITCHING MODE: general → sales");
-                      
-                    //     session.agent = "sales";
-                    //     session.context.agent_type = "sales";
-                      
-                    //     if (ws.elWs && ws.elWs.readyState === 1) {
-                    //       ws.elWs.send(JSON.stringify({
-                    //         // type: "client_tool_outputs",
-                    //         type: "dynamic_variables",
-                    //         dynamic_variables: {
-                    //           ...session.context,
-                    //           conversation_history: session.history.slice(-10)
-                    //         }
-                    //       }));
-                    //     }
                         if (session.agent === "general" && shouldSwitchToSales(text)) {
 
                           console.log("🔁 SWITCHING MODE: general → sales");
-
-                          session.agentLocked = true;
                         
                           await handleAgentSwitch(ws, "sales");
                           return;
@@ -1751,14 +1649,6 @@ wss.on("connection", (ws) => {
                     }
 
               case "agent_response": {
-                console.log("LOCK STATE:", session.agentLocked);
-                if (!session) break;
-
-                // ⛔ CEGAH RESPONSE DARI AGENT LAMA
-                if (session.agentLocked) {
-                  console.log("⛔ Ignoring old agent response");
-                  break;
-                }
 
                 const text =
                   event.agent_response_event.agent_response;
@@ -2026,6 +1916,7 @@ wss.on("connection", (ws) => {
     ws.elReady = false;
   });
 });
+
 
 
 app.post("/api/chat/ai-feedback", async (req, res) => {
@@ -6312,6 +6203,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
