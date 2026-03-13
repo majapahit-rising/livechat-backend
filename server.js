@@ -1121,44 +1121,67 @@ async function handleElevenLabsMessage(ws, elMsg) {
     }
 }
 
+// async function handleAgentSwitch(ws, newAgentType) {
+
+//   const session = callSessions.get(ws.sessionId);
+//   if (!session) return;
+
+//   console.log(`🔌 Switching to ${newAgentType} Agent...`);
+
+//   // session.agentLocked = true;
+
+//   // if (ws.elWs) {
+//   //   try { ws.elWs.close(); } catch(e) {}
+//   //   ws.elWs = null;
+//   // }
+
+//   const rows = await queryAsync(
+//     `SELECT * FROM chatbot_prompts
+//      WHERE agent_type = ?
+//      ORDER BY id DESC
+//      LIMIT 1`,
+//     [newAgentType]
+//   );
+
+//   if (!rows.length) return;
+
+//   const promptData = rows[0];
+
+//   const fullSystemPrompt = buildFullSystemPrompt(promptData);
+
+//   session.agent = newAgentType;
+//   session.systemPrompt = fullSystemPrompt;
+//   session.context.agent_type = newAgentType;
+
+//   // ws.send(JSON.stringify({
+//   //   type: "ai-text",
+//   //   text: "Connecting you with our sales assistant Max..."
+//   // }));
+
+//   // await startElevenLabs(ws, fullSystemPrompt, session.context);
+// }
+
+
 async function handleAgentSwitch(ws, newAgentType) {
 
   const session = callSessions.get(ws.sessionId);
   if (!session) return;
 
-  console.log(`🔌 Switching to ${newAgentType} Agent...`);
-
-  // session.agentLocked = true;
-
-  // if (ws.elWs) {
-  //   try { ws.elWs.close(); } catch(e) {}
-  //   ws.elWs = null;
-  // }
-
-  const rows = await queryAsync(
-    `SELECT * FROM chatbot_prompts
-     WHERE agent_type = ?
-     ORDER BY id DESC
-     LIMIT 1`,
-    [newAgentType]
-  );
-
-  if (!rows.length) return;
-
-  const promptData = rows[0];
-
-  const fullSystemPrompt = buildFullSystemPrompt(promptData);
+  console.log(`🔁 Switching state to ${newAgentType}`);
 
   session.agent = newAgentType;
-  session.systemPrompt = fullSystemPrompt;
   session.context.agent_type = newAgentType;
 
-  // ws.send(JSON.stringify({
-  //   type: "ai-text",
-  //   text: "Connecting you with our sales assistant Max..."
-  // }));
+  if (ws.elWs && ws.elWs.readyState === WebSocket.OPEN) {
 
-  // await startElevenLabs(ws, fullSystemPrompt, session.context);
+    ws.elWs.send(JSON.stringify({
+      type: "dynamic_variables",
+      dynamic_variables: {
+        ...session.context
+      }
+    }));
+
+  }
 }
 
 
@@ -6289,6 +6312,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
