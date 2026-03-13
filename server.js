@@ -970,7 +970,8 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
                 conversation_config_override: {
                     agent: {
                         prompt: { prompt: systemPrompt },
-                        first_message: initialContext.agent_type === 'sales' ? "Sure, I can help with your skip bin order. What is your postcode?" : null,
+                        // first_message: initialContext.agent_type === 'sales' ? "Sure, I can help with your skip bin order. What is your postcode?" : null,
+                        first_message: null,
                         language: "en",
                         voice: {
                           voice_id: process.env.ELEVENLABS_VOICE_ID,
@@ -6203,6 +6204,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
