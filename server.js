@@ -985,6 +985,15 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
 
         elWs.on("open", () => {
             console.log(`🟢 ElevenLabs Connected [${initialContext.agent_type}] for:`, ws.sessionId);
+
+            // ✅ AMBIL SESSION
+            const session = callSessions.get(ws.sessionId);
+        
+            // ✅ UNLOCK AGENT SETELAH CONNECT
+            if (session) {
+                session.agentLocked = false;
+                console.log("🔓 Agent unlocked");
+            }
             
             // 2. Kirim Inisiasi dengan Prompt Baru
             elWs.send(JSON.stringify({
@@ -992,7 +1001,8 @@ async function startElevenLabs(ws, systemPrompt, initialContext) {
                 conversation_config_override: {
                     agent: {
                         prompt: { prompt: systemPrompt },
-                        first_message: initialContext.agent_type === 'sales' ? "Sure, I can help with your skip bin order. What is your postcode?" : null,
+                        // first_message: initialContext.agent_type === 'sales' ? "Sure, I can help with your skip bin order. What is your postcode?" : null,
+                        first_message: null,
                         language: "en",
                         voice: {
                           voice_id: process.env.ELEVENLABS_VOICE_ID,
@@ -1143,10 +1153,10 @@ async function handleAgentSwitch(ws, newAgentType) {
   session.systemPrompt = fullSystemPrompt;
   session.context.agent_type = newAgentType;
 
-  ws.send(JSON.stringify({
-    type: "ai-text",
-    text: "Connecting you with our sales assistant Max..."
-  }));
+  // ws.send(JSON.stringify({
+  //   type: "ai-text",
+  //   text: "Connecting you with our sales assistant Max..."
+  // }));
 
   await startElevenLabs(ws, fullSystemPrompt, session.context);
 }
@@ -1612,6 +1622,8 @@ wss.on("connection", (ws) => {
                         if (session.agent === "general" && shouldSwitchToSales(text)) {
 
                           console.log("🔁 SWITCHING MODE: general → sales");
+
+                          session.agentLocked = true;
                         
                           await handleAgentSwitch(ws, "sales");
                           return;
@@ -1716,6 +1728,14 @@ wss.on("connection", (ws) => {
                     }
 
               case "agent_response": {
+                console.log("LOCK STATE:", session.agentLocked);
+                if (!session) break;
+
+                // ⛔ CEGAH RESPONSE DARI AGENT LAMA
+                if (session.agentLocked) {
+                  console.log("⛔ Ignoring old agent response");
+                  break;
+                }
 
                 const text =
                   event.agent_response_event.agent_response;
@@ -6269,6 +6289,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
