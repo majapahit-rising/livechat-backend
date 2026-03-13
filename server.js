@@ -1128,12 +1128,12 @@ async function handleAgentSwitch(ws, newAgentType) {
 
   console.log(`🔌 Switching to ${newAgentType} Agent...`);
 
-  session.agentLocked = true;
+  // session.agentLocked = true;
 
-  if (ws.elWs) {
-    try { ws.elWs.close(); } catch(e) {}
-    ws.elWs = null;
-  }
+  // if (ws.elWs) {
+  //   try { ws.elWs.close(); } catch(e) {}
+  //   ws.elWs = null;
+  // }
 
   const rows = await queryAsync(
     `SELECT * FROM chatbot_prompts
@@ -1158,7 +1158,7 @@ async function handleAgentSwitch(ws, newAgentType) {
   //   text: "Connecting you with our sales assistant Max..."
   // }));
 
-  await startElevenLabs(ws, fullSystemPrompt, session.context);
+  // await startElevenLabs(ws, fullSystemPrompt, session.context);
 }
 
 
@@ -6289,6 +6289,7 @@ server.listen(PORT, () => {
     console.log(`✅ All endpoints preserved and functional`);
     console.log("=============================");
 });
+
 
 
 
