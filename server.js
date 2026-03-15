@@ -397,20 +397,16 @@ function pcmToWav(pcmBuffer, sampleRate = 24000) {
   return stream;
 }
 
-// Strip WAV header and return raw PCM bytes.
-// The client expects raw PCM at 16000Hz (same format ElevenLabs used).
-// Kokoro returns a WAV file — playing WAV bytes as raw PCM causes the
-// wrong sample rate to be used, making the voice sound slow.
-function wavToPcm(wavBuffer) {
-  // Find the "data" sub-chunk which immediately precedes the raw PCM samples
-  const dataMarker = Buffer.from("data");
-  const dataOffset = wavBuffer.indexOf(dataMarker);
-  if (dataOffset === -1) {
-    console.warn("⚠️ [TTS] Could not find WAV data chunk — sending buffer as-is");
-    return wavBuffer;
+// Read the sample rate Kokoro actually used from the WAV fmt chunk.
+// WAV format: "RIFF"(4) + fileSize(4) + "WAVE"(4) + "fmt "(4) + chunkSize(4)
+// + audioFormat(2) + numChannels(2) + sampleRate(4) + ...
+function readWavSampleRate(wavBuffer) {
+  try {
+    // fmt chunk starts at byte 20, sample rate is at byte 24
+    return wavBuffer.readUInt32LE(24);
+  } catch {
+    return null;
   }
-  // "data" (4 bytes) + chunk size (4 bytes) = 8 bytes before PCM starts
-  return wavBuffer.slice(dataOffset + 8);
 }
 
 async function generateTTS(text) {
@@ -419,13 +415,16 @@ async function generateTTS(text) {
 
     console.log("[DEBUG] Attempting to generate TTS audio...");
 
+    // No sample_rate override — let Kokoro use its native rate.
+    // We send the full WAV (header intact) so the client's audio decoder
+    // reads the correct sample rate from the file itself, preventing the
+    // slow-playback caused by a rate mismatch.
     const res = await axios.post(
       KOKORO_URL,
       {
         text: text,
         voice: "am_echo",
-        speed: 1.1,
-        sample_rate: 16000  // request 16kHz so it matches what the client plays
+        speed: 1.1
       },
       {
         headers: {
@@ -436,11 +435,12 @@ async function generateTTS(text) {
     );
 
     const wavBuffer = Buffer.from(res.data);
-    const pcmBuffer = wavToPcm(wavBuffer);
+    const detectedRate = readWavSampleRate(wavBuffer);
 
-    console.log("[DEBUG] Successfully generated TTS audio. WAV bytes:", wavBuffer.length, "PCM bytes:", pcmBuffer.length);
+    console.log(`[DEBUG] TTS audio ready. Bytes: ${wavBuffer.length}, Sample rate: ${detectedRate ?? "unknown"}Hz`);
 
-    return pcmBuffer;
+    // Return full WAV — header tells the client the exact sample rate
+    return wavBuffer;
 
   } catch (err) {
 
@@ -485,7 +485,7 @@ async function runGeminiTurn(session, userText) {
   // Previously the system prompt was incorrectly jammed into geminiHistory
   // as a bare user message with no model reply, which caused API errors.
   const sessionModel = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
     systemInstruction: session.geminiSystemPrompt || "You are a helpful assistant."
   });
 
