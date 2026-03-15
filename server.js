@@ -375,14 +375,19 @@ async function askN8N(userInput, session) {
 
 async function getAgentFromDB(agentType) { 
   try {
+    console.log(`[DEBUG] Attempting to get agent '${agentType}' from DB...`);
     const rows = await queryAsync(
       `SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1`,
       [agentType]
     );
-    if (rows.length) return rows[0];
+    if (rows.length) {
+        console.log(`[DEBUG] Found agent data for '${agentType}'.`);
+        return rows[0];
+    }
+    console.log(`[DEBUG] No agent data found for '${agentType}'.`);
     return null;
   } catch (err) {
-    console.error("DB Error:", err);
+    console.error("[DEBUG] DB Error getting agent:", err);
     return null;
   }
 }
@@ -443,7 +448,7 @@ async function generateTTS(text) {
 
   try {
 
-    console.log("🎤 GENERATE TTS:", text);
+    console.log("[DEBUG] Attempting to generate TTS audio...");
 
     // Kyle Local STT&TTS UPDATE: Pointing to local Kokoro
     const res = await axios.post(
@@ -461,7 +466,7 @@ async function generateTTS(text) {
       }
     );
 
-    console.log("✅ TTS BYTES:", res.data.byteLength);
+    console.log("[DEBUG] Successfully generated TTS audio. Bytes:", res.data.byteLength);
 
     // Kyle Local STT&TTS UPDATE: Kokoro returns WAV/PCM directly
     return Buffer.from(res.data);
@@ -469,9 +474,9 @@ async function generateTTS(text) {
   } catch (err) {
 
     console.error(
-      "❌ TTS ERROR:",
+      "❌ [DEBUG] TTS GENERATION FAILED:",
       err.response?.status,
-      err.response?.data || err.message
+      err.response?.data ? new TextDecoder().decode(err.response.data) : err.message
     );
 
     return null;
@@ -482,7 +487,11 @@ async function generateTTS(text) {
 
 // Kyle Local STT&TTS UPDATE: Added buildFullSystemPrompt back
 function buildFullSystemPrompt(prompt) {
-  if (!prompt) return "You are a helpful assistant.";
+  if (!prompt) {
+      console.log("[DEBUG] No prompt data provided, using default prompt.");
+      return "You are a helpful assistant.";
+  }
+  console.log("[DEBUG] Building full system prompt from DB data.");
   return `
 You are ${prompt.identity || 'a helpful assistant'}.
 
@@ -578,7 +587,7 @@ export function startVoiceServer(server) {
 
         if (data?.type === "start-call") {
 
-          console.log("🚀 START CALL RECEIVED");
+          console.log("🚀 [DEBUG] START-CALL event received. Beginning setup...");
 
           ws.sessionId = data.session_id;
 
@@ -597,26 +606,32 @@ export function startVoiceServer(server) {
           };
 
           callSessions.set(ws.sessionId, session);
+          console.log("[DEBUG] Session created and stored.");
 
           ws.callState = "ACTIVE";
 
-          const welcomeText = "Hi! I'm listening. How can I help you today?"; // Kyle Local STT&TTS UPDATE
+          const welcomeText = "Hi! I'm listening. How can I help you today?";
 
+          console.log("[DEBUG] Sending welcome text to client...");
           ws.send(JSON.stringify({
             type: "ai-text",
             text: welcomeText
           }));
+          console.log("[DEBUG] Welcome text sent.");
 
           const welcomeAudio = await generateTTS(welcomeText);
 
           if (welcomeAudio && ws.readyState === 1) {
 
-            console.log("🔊 Sending welcome audio");
-
+            console.log("[DEBUG] Sending welcome audio to client...");
             ws.send(welcomeAudio);
+            console.log("[DEBUG] Welcome audio sent.");
 
+          } else {
+             console.log("❌ [DEBUG] Failed to send welcome audio. TTS might have failed or WebSocket closed.");
           }
 
+          console.log("✅ [DEBUG] START-CALL setup complete.");
           return;
 
         }
@@ -626,7 +641,7 @@ export function startVoiceServer(server) {
         // =====================================
 
         if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
-          console.log("AUDIO CHUNK RECEIVED:", msg.length);
+          // console.log("AUDIO CHUNK RECEIVED:", msg.length); // Too noisy, commented out
 
           if (ws.callState !== "ACTIVE") return;
 
@@ -654,8 +669,6 @@ export function startVoiceServer(server) {
 
             ws.audioBuffer = [];
 
-            // const transcript =
-            //   await transcribeAudio(audioData);
             const wavStream = pcmToWav(audioData, 16000);
 
             const chunks = [];
@@ -681,8 +694,6 @@ export function startVoiceServer(server) {
               content: transcript
             });
 
-            // Kyle Local STT&TTS UPDATE: Use Gemini instead of direct N8N for logic
-            // const aiReply = await askN8N(transcript, session);
             const aiReply = await runGeminiTurn(session, transcript);
 
             ws.send(JSON.stringify({
@@ -716,14 +727,14 @@ export function startVoiceServer(server) {
 
         }
       } catch (err) {
-          console.error("❌ FATAL WEBSOCKET ERROR:", err);
+          console.error("❌ [DEBUG] FATAL WEBSOCKET ERROR:", err.message, err.stack);
           ws.close(1011, "Internal Server Error");
       }
     });
 
-    ws.on("close", () => {
+    ws.on("close", (code, reason) => {
 
-      console.log("❌ Client disconnected", ws.sessionId);
+      console.log(`❌ Client disconnected (code: ${code}, reason: ${reason ? reason.toString() : 'No reason given'})`, ws.sessionId);
 
       callSessions.delete(ws.sessionId);
 
