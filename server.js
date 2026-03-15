@@ -572,6 +572,15 @@ export function startVoiceServer(server) {
 
     console.log("📞 Client connected (Local Mode)");
 
+    // Kyle Local STT&TTS UPDATE: Diagnostic Test
+    try {
+        console.log("[DIAGNOSTIC] Sending 'server-ready' message immediately upon connection.");
+        ws.send(JSON.stringify({ type: "server-ready" }));
+    } catch (e) {
+        console.error("[DIAGNOSTIC] Failed to send 'server-ready' message:", e);
+    }
+
+
     ws.on("message", async (msg) => {
 
       try { // Kyle Local STT&TTS UPDATE: Added top-level try/catch
@@ -579,6 +588,7 @@ export function startVoiceServer(server) {
 
         try {
           data = JSON.parse(msg.toString());
+          console.log("[DIAGNOSTIC] Received message from client:", data.type); // Log message type
         } catch {}
 
         // =====================================
