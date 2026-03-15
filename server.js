@@ -101,6 +101,7 @@ const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 import wav from "wav"; // Kyle Local STT&TTS UPDATE: Uncommented
 import { PassThrough } from "stream"; // Kyle Local STT&TTS UPDATE: Uncommented
 import { WebSocketServer } from "ws"; // Kyle Local STT&TTS UPDATE: Uncommented
+import FormData from "form-data"; // Kyle STT FIX: needed for multipart/form-data upload to Whisper
 
 // Kyle Local STT&TTS UPDATE: Google Gemini Imports
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -298,13 +299,19 @@ async function transcribeAudio(buffer) {
 
   try {
 
+    // Kyle STT FIX: Whisper expects multipart/form-data with a 'file' field,
+    // not raw binary with Content-Type: audio/wav.
+    const form = new FormData();
+    form.append("file", buffer, {
+      filename: "audio.wav",
+      contentType: "audio/wav"
+    });
+
     const res = await axios.post(
       WHISPER_URL,
-      buffer,
+      form,
       {
-        headers: {
-          "Content-Type": "audio/wav" // Kyle Local STT&TTS UPDATE: Changed for local server
-        },
+        headers: form.getHeaders(),
         timeout: 15000
       }
     );
@@ -455,25 +462,34 @@ async function getAgentFromDB(agentType) {
 }
 
 async function runGeminiTurn(session, userText) {
-  const chat = geminiModel.startChat({
+  // Kyle Gemini FIX: Create a model instance per-turn that includes the
+  // system prompt via systemInstruction (the correct Gemini API approach).
+  // Previously the system prompt was incorrectly jammed into geminiHistory
+  // as a bare user message with no model reply, which caused API errors.
+  const sessionModel = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    systemInstruction: session.geminiSystemPrompt || "You are a helpful assistant."
+  });
+
+  const chat = sessionModel.startChat({
     history: session.geminiHistory || [],
     generationConfig: {
       maxOutputTokens: 200,
     },
   });
-  
+
   try {
     const result = await chat.sendMessage(userText);
     const response = await result.response;
     const text = response.text();
-    
-    // Update history
+
+    // Update history (only real user/model turns — NOT the system prompt)
     session.geminiHistory = [
       ...(session.geminiHistory || []),
       { role: "user", parts: [{ text: userText }] },
       { role: "model", parts: [{ text: text }] },
     ];
-    
+
     return text;
   } catch (e) {
     console.error("Gemini Error:", e);
@@ -604,7 +620,8 @@ export function startVoiceServer(server) {
           const session = {
             agent: "general",
             history: [],
-            geminiHistory: [{ role: 'user', parts: [{ text: systemPrompt }] }],
+            geminiHistory: [],           // Kyle Gemini FIX: start with empty history
+            geminiSystemPrompt: systemPrompt, // system prompt passed via systemInstruction, not history
             context: {
               agent_type: "general",
               ...data.context
