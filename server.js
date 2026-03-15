@@ -397,19 +397,35 @@ function pcmToWav(pcmBuffer, sampleRate = 24000) {
   return stream;
 }
 
+// Strip WAV header and return raw PCM bytes.
+// The client expects raw PCM at 16000Hz (same format ElevenLabs used).
+// Kokoro returns a WAV file — playing WAV bytes as raw PCM causes the
+// wrong sample rate to be used, making the voice sound slow.
+function wavToPcm(wavBuffer) {
+  // Find the "data" sub-chunk which immediately precedes the raw PCM samples
+  const dataMarker = Buffer.from("data");
+  const dataOffset = wavBuffer.indexOf(dataMarker);
+  if (dataOffset === -1) {
+    console.warn("⚠️ [TTS] Could not find WAV data chunk — sending buffer as-is");
+    return wavBuffer;
+  }
+  // "data" (4 bytes) + chunk size (4 bytes) = 8 bytes before PCM starts
+  return wavBuffer.slice(dataOffset + 8);
+}
+
 async function generateTTS(text) {
 
   try {
 
     console.log("[DEBUG] Attempting to generate TTS audio...");
 
-    // Kyle Local STT&TTS UPDATE: Pointing to local Kokoro
     const res = await axios.post(
       KOKORO_URL,
       {
         text: text,
         voice: "am_echo",
-        speed: 1.1 // Kyle Local STT&TTS UPDATE: Added speed
+        speed: 1.1,
+        sample_rate: 16000  // request 16kHz so it matches what the client plays
       },
       {
         headers: {
@@ -419,10 +435,12 @@ async function generateTTS(text) {
       }
     );
 
-    console.log("[DEBUG] Successfully generated TTS audio. Bytes:", res.data.byteLength);
+    const wavBuffer = Buffer.from(res.data);
+    const pcmBuffer = wavToPcm(wavBuffer);
 
-    // Kyle Local STT&TTS UPDATE: Kokoro returns WAV directly
-    return Buffer.from(res.data);
+    console.log("[DEBUG] Successfully generated TTS audio. WAV bytes:", wavBuffer.length, "PCM bytes:", pcmBuffer.length);
+
+    return pcmBuffer;
 
   } catch (err) {
 
@@ -581,6 +599,7 @@ export function startVoiceServer(server) {
     ws.sessionId = null;
     ws.callState = "WELCOME";
     ws.audioBuffer = [];
+    ws.isProcessing = false; // lock to prevent concurrent STT→Gemini→TTS pipelines
 
     console.log("📞 Client connected (Local Mode)");
 
@@ -677,8 +696,14 @@ export function startVoiceServer(server) {
             const totalSize =
               ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
-            // tunggu audio cukup sebelum STT
+            // wait until enough audio has accumulated before sending to STT
             if (totalSize < 32000) {
+              return;
+            }
+
+            // drop chunk if a pipeline is already running — prevents duplicate TTS
+            if (ws.isProcessing) {
+              ws.audioBuffer = [];
               return;
             }
 
@@ -690,6 +715,7 @@ export function startVoiceServer(server) {
             }
 
             ws.audioBuffer = [];
+            ws.isProcessing = true;
 
             const wavStream = pcmToWav(audioData, 16000);
 
@@ -744,6 +770,10 @@ export function startVoiceServer(server) {
               "❌ AUDIO PIPELINE ERROR:",
               err
             );
+
+          } finally {
+
+            ws.isProcessing = false; // always release lock so next turn can proceed
 
           }
 
