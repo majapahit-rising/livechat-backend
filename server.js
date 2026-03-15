@@ -115,7 +115,7 @@ const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-ch
 const KOKORO_URL = "https://voice.skendern8n.com/tts"; // Kyle Local STT&TTS UPDATE: Updated URL
 
 // Kyle Local STT&TTS UPDATE: Gemini Config
-const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY; 
+const GEMINI_API_KEY = "AIzaSyCj4JUMusqvsqYaPTBigR7UHJ-urWjImb8"; 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -702,43 +702,7 @@ export function startVoiceServer(server) {
 //   return body.signed_url;
 // }
 
-const extractPostcode = (text) => { // Kyle Local STT&TTS UPDATE: Duplicated in local block, keeping here for N8N compatibility
-  if (!text) return null;
-
-  const clean = text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ");
-
-  const numericMatch = clean.match(/\b\d{4}\b/);
-  if (numericMatch) return numericMatch[0];
-
-  const wordMap = {
-    zero: "0",
-    one: "1",
-    two: "2",
-    three: "3",
-    four: "4",
-    five: "5",
-    six: "6",
-    seven: "7",
-    eight: "8",
-    nine: "9"
-  };
-
-  const words = clean.split(/\s+/);
-
-  let digits = "";
-
-  for (let w of words) {
-    if (wordMap[w]) {
-      digits += wordMap[w];
-    }
-  }
-
-  if (digits.length === 4) return digits;
-
-  return null;
-};
+// Kyle Local STT&TTS UPDATE: Removed duplicate extractPostcode - already declared above
 
 // ... (Rest of the ElevenLabs helper functions commented out for brevity, but exist in file) ...
 
