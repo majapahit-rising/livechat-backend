@@ -115,7 +115,7 @@ const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-ch
 const KOKORO_URL = "https://voice.skendern8n.com/tts"; // Kyle Local STT&TTS UPDATE: Updated URL
 
 // Kyle Local STT&TTS UPDATE: Gemini Config
-const GEMINI_API_KEY = "AIzaSyCj4JUMusqvsqYaPTBigR7UHJ-urWjImb8"; 
+const GEMINI_API_KEY = "AIzaSyCj4JUMusqvsqYaPTBigR7UHJ-urWjImb8"; // Hardcoded as requested
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -480,6 +480,70 @@ async function generateTTS(text) {
 
 }
 
+// Kyle Local STT&TTS UPDATE: Added buildFullSystemPrompt back
+function buildFullSystemPrompt(prompt) {
+  if (!prompt) return "You are a helpful assistant.";
+  return `
+You are ${prompt.identity || 'a helpful assistant'}.
+
+ROLE
+${prompt.role_description || ''}
+
+SYSTEM STATES
+
+STATE: GENERAL
+- Answer general questions about waste bins
+- Provide information
+- Be helpful
+
+STATE: SALES
+- Collect order information
+- postcode
+- bin size
+- delivery date
+- pickup date
+- customer details
+
+STATE TRANSITION
+Switch to SALES when the user wants to:
+- order
+- hire
+- book
+- get a bin
+- rent a bin
+
+IMPORTANT RULE
+The current state is defined by context.agent_type.
+
+If context.agent_type = general → operate in GENERAL mode
+If context.agent_type = sales → operate in SALES mode
+
+BASE KNOWLEDGE
+${prompt.context_knowledge || ""}
+
+GOALS
+${prompt.primary_goals || ''}
+
+LANGUAGE
+${prompt.language || 'English'}
+
+TONE
+${prompt.tone || 'friendly'}
+
+RESPONSE FORMAT
+${prompt.response_format || 'Clear and concise.'}
+
+GUIDELINES
+${prompt.do_guidelines || ""}
+
+RESTRICTIONS
+${prompt.dont_guidelines || ""}
+
+Always follow the current state.
+`.trim();
+}
+
+
 // // ======================================================
 // // WEBSOCKET SERVER (Kyle Local STT&TTS UPDATE: Main Logic)
 // // ======================================================
@@ -501,156 +565,160 @@ export function startVoiceServer(server) {
 
     ws.on("message", async (msg) => {
 
-      let data = null;
-
-      try {
-        data = JSON.parse(msg.toString());
-      } catch {}
-
-      // =====================================
-      // START CALL
-      // =====================================
-
-      if (data?.type === "start-call") {
-
-        console.log("🚀 START CALL RECEIVED");
-
-        ws.sessionId = data.session_id;
-
-        // Kyle Local STT&TTS UPDATE: Load General Agent
-        const promptData = await getAgentFromDB('general');
-        const systemPrompt = promptData ? buildFullSystemPrompt(promptData) : "You are a helpful assistant.";
-
-        const session = {
-          agent: "general",
-          history: [],
-          geminiHistory: [], // Kyle Local STT&TTS UPDATE
-          context: {
-            agent_type: "general",
-            ...data.context
-          }
-        };
-
-        callSessions.set(ws.sessionId, session);
-
-        ws.callState = "ACTIVE";
-
-        const welcomeText = "Hi! I'm listening. How can I help you today?"; // Kyle Local STT&TTS UPDATE
-
-        ws.send(JSON.stringify({
-          type: "ai-text",
-          text: welcomeText
-        }));
-
-        const welcomeAudio = await generateTTS(welcomeText);
-
-        if (welcomeAudio && ws.readyState === 1) {
-
-          console.log("🔊 Sending welcome audio");
-
-          ws.send(welcomeAudio);
-
-        }
-
-        return;
-
-      }
-
-      // =====================================
-      // AUDIO RECEIVED
-      // =====================================
-
-      if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
-        console.log("AUDIO CHUNK RECEIVED:", msg.length);
-
-        if (ws.callState !== "ACTIVE") return;
-
-        const session = callSessions.get(ws.sessionId);
-        if (!session) return;
+      try { // Kyle Local STT&TTS UPDATE: Added top-level try/catch
+        let data = null;
 
         try {
+          data = JSON.parse(msg.toString());
+        } catch {}
 
-          ws.audioBuffer.push(msg);
+        // =====================================
+        // START CALL
+        // =====================================
 
-          const totalSize =
-            ws.audioBuffer.reduce((a,b)=>a+b.length,0);
+        if (data?.type === "start-call") {
 
-          // tunggu audio cukup sebelum STT
-          if (totalSize < 32000) {
-            return;
-          }
+          console.log("🚀 START CALL RECEIVED");
 
-          const audioData = Buffer.concat(ws.audioBuffer);
-          if (!audioData || audioData.length < 16000) {
-            console.log("⚠️ Audio too small, skipping STT");
-            ws.audioBuffer = [];
-            return;
-          }
+          ws.sessionId = data.session_id;
 
-          ws.audioBuffer = [];
+          // Kyle Local STT&TTS UPDATE: Load General Agent
+          const promptData = await getAgentFromDB('general');
+          const systemPrompt = buildFullSystemPrompt(promptData);
 
-          // const transcript =
-          //   await transcribeAudio(audioData);
-          const wavStream = pcmToWav(audioData, 16000);
+          const session = {
+            agent: "general",
+            history: [],
+            geminiHistory: [{ role: 'user', parts: [{ text: systemPrompt }] }], // Kyle Local STT&TTS UPDATE: prime with system prompt
+            context: {
+              agent_type: "general",
+              ...data.context
+            }
+          };
 
-          const chunks = [];
-          for await (const chunk of wavStream) {
-            chunks.push(chunk);
-          }
-          
-          const wavBuffer = Buffer.concat(chunks);
-          
-          const transcript = await transcribeAudio(wavBuffer);
+          callSessions.set(ws.sessionId, session);
 
-          if (!transcript) return;
+          ws.callState = "ACTIVE";
 
-          console.log("🗣️ User:", transcript);
-
-          ws.send(JSON.stringify({
-            type: "user-text",
-            text: transcript
-          }));
-
-          session.history.push({
-            role: "user",
-            content: transcript
-          });
-
-          // Kyle Local STT&TTS UPDATE: Use Gemini instead of direct N8N for logic
-          // const aiReply = await askN8N(transcript, session);
-          const aiReply = await runGeminiTurn(session, transcript);
+          const welcomeText = "Hi! I'm listening. How can I help you today?"; // Kyle Local STT&TTS UPDATE
 
           ws.send(JSON.stringify({
             type: "ai-text",
-            text: aiReply
+            text: welcomeText
           }));
 
-          session.history.push({
-            role: "assistant",
-            content: aiReply
-          });
+          const welcomeAudio = await generateTTS(welcomeText);
 
-          const audio = await generateTTS(aiReply);
+          if (welcomeAudio && ws.readyState === 1) {
 
-          if (audio && ws.readyState === 1) {
+            console.log("🔊 Sending welcome audio");
 
-            console.log("🔊 Sending AI audio:", audio.length);
-
-            ws.send(audio);
+            ws.send(welcomeAudio);
 
           }
 
-        } catch (err) {
-
-          console.error(
-            "❌ AUDIO PIPELINE ERROR:",
-            err
-          );
+          return;
 
         }
 
-      }
+        // =====================================
+        // AUDIO RECEIVED
+        // =====================================
 
+        if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
+          console.log("AUDIO CHUNK RECEIVED:", msg.length);
+
+          if (ws.callState !== "ACTIVE") return;
+
+          const session = callSessions.get(ws.sessionId);
+          if (!session) return;
+
+          try {
+
+            ws.audioBuffer.push(msg);
+
+            const totalSize =
+              ws.audioBuffer.reduce((a,b)=>a+b.length,0);
+
+            // tunggu audio cukup sebelum STT
+            if (totalSize < 32000) {
+              return;
+            }
+
+            const audioData = Buffer.concat(ws.audioBuffer);
+            if (!audioData || audioData.length < 16000) {
+              console.log("⚠️ Audio too small, skipping STT");
+              ws.audioBuffer = [];
+              return;
+            }
+
+            ws.audioBuffer = [];
+
+            // const transcript =
+            //   await transcribeAudio(audioData);
+            const wavStream = pcmToWav(audioData, 16000);
+
+            const chunks = [];
+            for await (const chunk of wavStream) {
+              chunks.push(chunk);
+            }
+            
+            const wavBuffer = Buffer.concat(chunks);
+            
+            const transcript = await transcribeAudio(wavBuffer);
+
+            if (!transcript) return;
+
+            console.log("🗣️ User:", transcript);
+
+            ws.send(JSON.stringify({
+              type: "user-text",
+              text: transcript
+            }));
+
+            session.history.push({
+              role: "user",
+              content: transcript
+            });
+
+            // Kyle Local STT&TTS UPDATE: Use Gemini instead of direct N8N for logic
+            // const aiReply = await askN8N(transcript, session);
+            const aiReply = await runGeminiTurn(session, transcript);
+
+            ws.send(JSON.stringify({
+              type: "ai-text",
+              text: aiReply
+            }));
+
+            session.history.push({
+              role: "assistant",
+              content: aiReply
+            });
+
+            const audio = await generateTTS(aiReply);
+
+            if (audio && ws.readyState === 1) {
+
+              console.log("🔊 Sending AI audio:", audio.length);
+
+              ws.send(audio);
+
+            }
+
+          } catch (err) {
+
+            console.error(
+              "❌ AUDIO PIPELINE ERROR:",
+              err
+            );
+
+          }
+
+        }
+      } catch (err) {
+          console.error("❌ FATAL WEBSOCKET ERROR:", err);
+          ws.close(1011, "Internal Server Error");
+      }
     });
 
     ws.on("close", () => {
@@ -701,71 +769,8 @@ export function startVoiceServer(server) {
 //   const body = await res.json();
 //   return body.signed_url;
 // }
-
 // Kyle Local STT&TTS UPDATE: Removed duplicate extractPostcode - already declared above
-
 // ... (Rest of the ElevenLabs helper functions commented out for brevity, but exist in file) ...
-
-function buildFullSystemPrompt(prompt) {
-  return `
-You are ${prompt.identity}.
-
-ROLE
-${prompt.role_description}
-
-SYSTEM STATES
-
-STATE: GENERAL
-- Answer general questions about waste bins
-- Provide information
-- Be helpful
-
-STATE: SALES
-- Collect order information
-- postcode
-- bin size
-- delivery date
-- pickup date
-- customer details
-
-STATE TRANSITION
-Switch to SALES when the user wants to:
-- order
-- hire
-- book
-- get a bin
-- rent a bin
-
-IMPORTANT RULE
-The current state is defined by context.agent_type.
-
-If context.agent_type = general → operate in GENERAL mode
-If context.agent_type = sales → operate in SALES mode
-
-BASE KNOWLEDGE
-${prompt.context_knowledge || ""}
-
-GOALS
-${prompt.primary_goals}
-
-LANGUAGE
-${prompt.language}
-
-TONE
-${prompt.tone}
-
-RESPONSE FORMAT
-${prompt.response_format}
-
-GUIDELINES
-${prompt.do_guidelines || ""}
-
-RESTRICTIONS
-${prompt.dont_guidelines || ""}
-
-Always follow the current state.
-`.trim();
-}
 
 
 // async function startElevenLabs(ws, systemPrompt, initialContext) {
