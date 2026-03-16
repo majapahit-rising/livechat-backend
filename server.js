@@ -312,17 +312,15 @@ async function transcribeAudio(buffer) {
 
   try {
 
-    // Kyle STT FIX: Whisper expects multipart/form-data with a 'file' field,
-    // not raw binary with Content-Type: audio/wav.
     const form = new FormData();
 
-    form.append("audio", buffer, {
+    form.append("file", buffer, {
       filename: "audio.wav",
       contentType: "audio/wav"
     });
-    
+
     form.append("model", "whisper-1");
-    
+
     const res = await axios.post(
       WHISPER_URL,
       form,
@@ -746,7 +744,7 @@ export function startVoiceServer(server) {
               ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
             // wait until enough audio has accumulated before sending to STT
-            if (totalSize < 32000) {
+            if (totalSize < 8000) {
               return;
             }
 
