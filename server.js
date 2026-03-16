@@ -782,12 +782,9 @@ export function startVoiceServer(server) {
             //   return;
             // }
 
-            const now = Date.now();
-            const silenceGap = now - ws.lastAudioTime;
-            ws.lastAudioTime = now;
-            
-            // tunggu user selesai bicara
-            if (totalSize < 16000 || silenceGap < 700) {
+           const now = Date.now();
+
+            if (totalSize < 192000) {
               return;
             }
 
