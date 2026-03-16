@@ -771,7 +771,7 @@ export function startVoiceServer(server) {
 
           if (ws.callState !== "ACTIVE") return;
 
-          if (ws.aiSpeaking) return;
+          // if (ws.aiSpeaking) return;
 
           const session = callSessions.get(ws.sessionId);
           if (!session) return;
