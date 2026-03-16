@@ -296,7 +296,7 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 // ======================================================
 
 
-function pcmToWav(pcmBuffer, sampleRate = 16000) {
+function pcmToWav(pcmBuffer, sampleRate) {
   const stream = new PassThrough();
   const writer = new wav.Writer({
     channels: 1,
