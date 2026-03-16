@@ -302,9 +302,8 @@ async function transcribeAudio(buffer) {
     // Kyle STT FIX: Whisper expects multipart/form-data with a 'file' field,
     // not raw binary with Content-Type: audio/wav.
     const form = new FormData();
-    form.append("file", buffer, {
-      filename: "audio.wav",
-      contentType: "audio/wav"
+    form.append("file", buffer, "audio.wav");
+    form.append("model", "whisper-1");
     });
 
     const res = await axios.post(
@@ -422,7 +421,7 @@ async function generateTTS(text) {
     const res = await axios.post(
       KOKORO_URL,
       {
-        text: text,
+        input: text,
         voice: "am_echo",
         speed: 1.1
       },
