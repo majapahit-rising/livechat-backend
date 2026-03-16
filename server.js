@@ -454,7 +454,8 @@ async function generateTTS(text) {
       {
         input: text,
         voice: "am_echo",
-        speed: 1.1
+        speed: 1.1,
+        sample_rate: 48000
       },
       {
         headers: {
