@@ -316,7 +316,7 @@ async function transcribeAudio(buffer) {
     // not raw binary with Content-Type: audio/wav.
     const form = new FormData();
 
-    form.append("file", buffer, {
+    form.append("audio", buffer, {
       filename: "audio.wav",
       contentType: "audio/wav"
     });
