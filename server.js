@@ -744,7 +744,7 @@ export function startVoiceServer(server) {
               ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
             // wait until enough audio has accumulated before sending to STT
-            if (totalSize < 32000) {
+            if (totalSize < 8000) {
               return;
             }
 
@@ -772,7 +772,7 @@ export function startVoiceServer(server) {
             console.log("RAW BYTES:", raw.length);
             
             const audioData = float32ToInt16(floatData);
-            if (!audioData || audioData.length < 16000) {
+            if (!audioData || audioData.length < 8000) {
               console.log("⚠️ Audio too small, skipping STT");
               ws.audioBuffer = [];
               return;
