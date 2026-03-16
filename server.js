@@ -315,7 +315,7 @@ async function transcribeAudio(buffer) {
     // Kyle STT FIX: Whisper expects multipart/form-data with a 'file' field,
     // not raw binary with Content-Type: audio/wav.
     const form = new FormData();
-    form.append("file", buffer, "audio.wav");
+    form.append("audio", buffer, "audio.wav");
     form.append("model", "whisper-1");
 
     const res = await axios.post(
@@ -690,6 +690,9 @@ export function startVoiceServer(server) {
             console.log("[DEBUG] Sending welcome audio to client...");
             // ws.send(welcomeAudio);
             const pcm = welcomeAudio.slice(44);
+            if (pcm.length % 2 !== 0) {
+              pcm = pcm.slice(0, pcm.length - 1);
+            }
 
             ws.send(pcm);
             console.log("[DEBUG] Welcome audio sent.");
@@ -803,6 +806,10 @@ export function startVoiceServer(server) {
             if (audio && ws.readyState === 1) {
 
               const pcm = audio.slice(44);
+
+              if (pcm.length % 2 !== 0) {
+                pcm = pcm.slice(0, pcm.length - 1);
+              }
 
               console.log("🔊 Sending AI audio:", pcm.length);
 
