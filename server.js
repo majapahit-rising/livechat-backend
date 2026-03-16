@@ -445,17 +445,15 @@ async function generateTTS(text) {
 
     console.log("[DEBUG] Attempting to generate TTS audio...");
 
-    // No sample_rate override — let Kokoro use its native rate.
-    // We send the full WAV (header intact) so the client's audio decoder
-    // reads the correct sample rate from the file itself, preventing the
-    // slow-playback caused by a rate mismatch.
+    const KOKORO_SAMPLE_RATE = 48000;
+
     const res = await axios.post(
       KOKORO_URL,
       {
         input: text,
         voice: "am_echo",
         speed: 1.1,
-        sample_rate: 48000
+        sample_rate: KOKORO_SAMPLE_RATE
       },
       {
         headers: {
@@ -465,12 +463,25 @@ async function generateTTS(text) {
       }
     );
 
-    const wavBuffer = Buffer.from(res.data);
-    const detectedRate = readWavSampleRate(wavBuffer);
+    console.log("[DEBUG] TTS response content-type:", res.headers["content-type"]);
+    let wavBuffer = Buffer.from(res.data);
+    console.log("[DEBUG] TTS raw response first 12 bytes:", wavBuffer.slice(0, 12).toString("hex"), "| as ASCII:", wavBuffer.slice(0, 4).toString());
+    let detectedRate = readWavSampleRate(wavBuffer);
+
+    // Kokoro may return raw PCM without a WAV header — wrap it if needed
+    if (!detectedRate) {
+      console.log("[DEBUG] TTS returned raw PCM (no WAV header). Wrapping with WAV header at", KOKORO_SAMPLE_RATE, "Hz");
+      const chunks = [];
+      const wavStream = pcmToWav(wavBuffer, KOKORO_SAMPLE_RATE);
+      for await (const chunk of wavStream) {
+        chunks.push(chunk);
+      }
+      wavBuffer = Buffer.concat(chunks);
+      detectedRate = readWavSampleRate(wavBuffer);
+    }
 
     console.log(`[DEBUG] TTS audio ready. Bytes: ${wavBuffer.length}, Sample rate: ${detectedRate ?? "unknown"}Hz`);
 
-    // Return full WAV — header tells the client the exact sample rate
     return wavBuffer;
 
   } catch (err) {
@@ -681,7 +692,9 @@ export function startVoiceServer(server) {
           callSessions.set(ws.sessionId, session);
           console.log("[DEBUG] Session created and stored.");
 
-          ws.callState = "ACTIVE";
+          // Don't set ACTIVE yet — prevent mic audio from being processed
+          // while we generate and send the welcome TTS
+          ws.callState = "WELCOME";
 
           const welcomeText = "Hi! I'm listening. How can I help you today?";
 
@@ -697,21 +710,19 @@ export function startVoiceServer(server) {
           if (welcomeAudio && ws.readyState === 1) {
 
             console.log("[DEBUG] Sending welcome audio to client...");
-            // ws.send(welcomeAudio);
-            let pcm = welcomeAudio.slice(44);
-            
-            if (pcm.length % 2 !== 0) {
-              pcm = pcm.slice(0, pcm.length - 1);
-            }
-
-            ws.send(pcm);
+            ws.send(JSON.stringify({ type: "audio-start" }));
+            ws.send(welcomeAudio);
+            ws.send(JSON.stringify({ type: "audio-end" }));
             console.log("[DEBUG] Welcome audio sent.");
+            ws.send(JSON.stringify({ type: "call-ready" }));
 
           } else {
              console.log("❌ [DEBUG] Failed to send welcome audio. TTS might have failed or WebSocket closed.");
           }
 
-          console.log("✅ [DEBUG] START-CALL setup complete.");
+          // NOW accept mic audio
+          ws.callState = "ACTIVE";
+          console.log("✅ [DEBUG] START-CALL setup complete. Mic now active.");
           return;
 
         }
@@ -816,16 +827,10 @@ export function startVoiceServer(server) {
 
             if (audio && ws.readyState === 1) {
 
-              let pcm = audio.slice(44);
-
-              if (pcm.length % 2 !== 0) {
-                pcm = pcm.slice(0, pcm.length - 1);
-              }
-
-              console.log("🔊 Sending AI audio:", pcm.length);
-
-              ws.send(pcm);
-              // ws.send(audio);
+              console.log("🔊 Sending AI audio:", audio.length);
+              ws.send(JSON.stringify({ type: "audio-start" }));
+              ws.send(audio);
+              ws.send(JSON.stringify({ type: "audio-end" }));
 
             }
 
