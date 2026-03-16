@@ -804,9 +804,9 @@ export function startVoiceServer(server) {
 
               const pcm = audio.slice(44);
 
-              console.log("🔊 Sending AI audio:", audio.length);
+              console.log("🔊 Sending AI audio:", pcm.length);
 
-              ws.send(audio);
+              ws.send(pcm);
 
             }
 
