@@ -771,8 +771,6 @@ export function startVoiceServer(server) {
 
           if (ws.callState !== "ACTIVE") return;
 
-          // if (ws.aiSpeaking) return;
-
           const session = callSessions.get(ws.sessionId);
           if (!session) return;
 
@@ -878,14 +876,9 @@ export function startVoiceServer(server) {
             if (audio && ws.readyState === 1) {
 
               console.log("🔊 Sending AI audio:", audio.length);
-              // ws.aiSpeaking = true;
-              
               ws.send(JSON.stringify({ type: "audio-start" }));
               ws.send(audio);
               ws.send(JSON.stringify({ type: "audio-end" }));
-              // setTimeout(()=>{
-              //   ws.aiSpeaking = false;
-              // }, 1200);
 
             }
 
@@ -1379,6 +1372,7 @@ async function handleAgentSwitch(ws, newAgentType) {
   console.log("✅ Prompt updated dynamically");
 
 }
+
 
 
 // DISABLED: // ======================================================
