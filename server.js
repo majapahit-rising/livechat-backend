@@ -428,9 +428,9 @@ async function generateTTS(text) {
     const res = await axios.post(
       KOKORO_URL,
       {
-        input: text,
-        voice: "af_sky",
-        model: "kokoro"
+        text: text,
+        voice: "am_echo"
+        // model: "kokoro"
       },
       {
         headers: { "Content-Type": "application/json" },
@@ -471,9 +471,26 @@ async function generateTTS(text) {
     });
 
   } catch (err) {
-    console.error("❌ [DEBUG] TTS FAILED:", err.message);
-    return null;
+  //   console.error("❌ [DEBUG] TTS FAILED:", err.message);
+  //   return null;
+  // }
+      console.error("❌ TTS FAILED");
+
+  if (err.response) {
+    console.error("STATUS:", err.response.status);
+    console.error("HEADERS:", err.response.headers);
+    console.error(
+      "BODY:",
+      Buffer.isBuffer(err.response.data)
+        ? err.response.data.toString()
+        : err.response.data
+    );
+  } else {
+    console.error(err.message);
   }
+
+  return null;
+}
 }
 
 // async function generateTTS(text) {
