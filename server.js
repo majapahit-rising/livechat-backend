@@ -304,7 +304,6 @@ async function transcribeAudio(buffer) {
     const form = new FormData();
     form.append("file", buffer, "audio.wav");
     form.append("model", "whisper-1");
-    });
 
     const res = await axios.post(
       WHISPER_URL,
