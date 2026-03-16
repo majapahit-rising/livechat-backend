@@ -295,6 +295,19 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 // STT
 // ======================================================
 
+
+function float32ToInt16(float32Array) {
+  const buffer = new Int16Array(float32Array.length);
+
+  for (let i = 0; i < float32Array.length; i++) {
+    let s = Math.max(-1, Math.min(1, float32Array[i]));
+    buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+
+  return Buffer.from(buffer.buffer);
+}
+
+
 async function transcribeAudio(buffer) {
 
   try {
@@ -695,7 +708,11 @@ export function startVoiceServer(server) {
               ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
             // wait until enough audio has accumulated before sending to STT
-            if (totalSize < 32000) {
+            // if (totalSize < 32000) {
+            //   return;
+            // }
+
+            if (totalSize < 16000) {
               return;
             }
 
@@ -705,7 +722,12 @@ export function startVoiceServer(server) {
               return;
             }
 
-            const audioData = Buffer.concat(ws.audioBuffer);
+            // const audioData = Buffer.concat(ws.audioBuffer);
+            const floatData = new Float32Array(
+              Buffer.concat(ws.audioBuffer).buffer
+            );
+            
+            const audioData = float32ToInt16(floatData);
             if (!audioData || audioData.length < 16000) {
               console.log("⚠️ Audio too small, skipping STT");
               ws.audioBuffer = [];
