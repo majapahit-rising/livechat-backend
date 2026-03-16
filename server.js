@@ -105,6 +105,7 @@ import FormData from "form-data"; // Kyle STT FIX: needed for multipart/form-dat
 
 // Kyle Local STT&TTS UPDATE: Google Gemini Imports
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { spawn } from "child_process";
 
 // ======================================================
 // CONFIG (Kyle Local STT&TTS UPDATE)
@@ -418,13 +419,11 @@ function readWavSampleRate(buf) {
   return buf.readUInt32LE(24);
 }
 
+
+
 async function generateTTS(text) {
-
   try {
-
-    console.log("[DEBUG] Attempting to generate TTS audio...");
-
-    const KOKORO_SAMPLE_RATE = 48000;
+    console.log("[DEBUG] Generating TTS and converting to Raw PCM...");
 
     const res = await axios.post(
       KOKORO_URL,
@@ -434,47 +433,106 @@ async function generateTTS(text) {
         model: "kokoro"
       },
       {
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         responseType: "arraybuffer"
       }
     );
 
-    console.log("[DEBUG] TTS response content-type:", res.headers["content-type"]);
-    let wavBuffer = Buffer.from(res.data);
-    console.log("[DEBUG] TTS raw response first 12 bytes:", wavBuffer.slice(0, 12).toString("hex"), "| as ASCII:", wavBuffer.slice(0, 4).toString());
-    let detectedRate = readWavSampleRate(wavBuffer);
+    const inputBuffer = Buffer.from(res.data);
+    
+    // Gunakan FFmpeg untuk konversi ke Raw PCM 16-bit Little Endian
+    return new Promise((resolve, reject) => {
+      const ffmpeg = spawn("ffmpeg", [
+        "-i", "pipe:0",          // Ambil input dari Kokoro (apapun formatnya: MP3/WAV/PCM)
+        "-f", "s16le",           // Output format: Signed 16-bit Little Endian (Mentah)
+        "-acodec", "pcm_s16le",  // Codec PCM
+        "-ar", "48000",          // Paksa sample rate ke 48kHz
+        "-ac", "1",              // Paksa ke Mono
+        "pipe:1"                 // Kirim hasil ke stdout
+      ]);
 
-    // Kokoro may return raw PCM without a WAV header — wrap it if needed
-    if (!detectedRate) {
-      console.log("[DEBUG] TTS returned raw PCM (no WAV header). Wrapping with WAV header at", KOKORO_SAMPLE_RATE, "Hz");
-      const chunks = [];
-      const wavStream = pcmToWav(wavBuffer, KOKORO_SAMPLE_RATE);
-      for await (const chunk of wavStream) {
-        chunks.push(chunk);
-      }
-      wavBuffer = Buffer.concat(chunks);
-      detectedRate = readWavSampleRate(wavBuffer);
-    }
+      let pcmChunks = [];
+      ffmpeg.stdout.on("data", (chunk) => pcmChunks.push(chunk));
+      ffmpeg.stderr.on("data", (data) => { /* debug ffmpeg jika perlu: console.log(data.toString()) */ });
 
-    console.log(`[DEBUG] TTS audio ready. Bytes: ${wavBuffer.length}, Sample rate: ${detectedRate ?? "unknown"}Hz`);
+      ffmpeg.on("close", (code) => {
+        if (code === 0) {
+          const finalPcm = Buffer.concat(pcmChunks);
+          console.log(`✅ [DEBUG] TTS PCM Ready: ${finalPcm.length} bytes at 48000Hz`);
+          resolve(finalPcm);
+        } else {
+          console.error("[DEBUG] FFmpeg failed with code", code);
+          reject(new Error("FFmpeg conversion failed"));
+        }
+      });
 
-    return wavBuffer;
+      ffmpeg.stdin.write(inputBuffer);
+      ffmpeg.stdin.end();
+    });
 
   } catch (err) {
-
-    console.error(
-      "❌ [DEBUG] TTS GENERATION FAILED:",
-      err.response?.status,
-      err.response?.data ? new TextDecoder().decode(err.response.data) : err.message
-    );
-
+    console.error("❌ [DEBUG] TTS FAILED:", err.message);
     return null;
-
   }
-
 }
+
+// async function generateTTS(text) {
+
+//   try {
+
+//     console.log("[DEBUG] Attempting to generate TTS audio...");
+
+//     const KOKORO_SAMPLE_RATE = 48000;
+
+//     const res = await axios.post(
+//       KOKORO_URL,
+//       {
+//         input: text,
+//         voice: "af_sky",
+//         model: "kokoro"
+//       },
+//       {
+//         headers: {
+//           "Content-Type": "application/json"
+//         },
+//         responseType: "arraybuffer"
+//       }
+//     );
+
+//     console.log("[DEBUG] TTS response content-type:", res.headers["content-type"]);
+//     let wavBuffer = Buffer.from(res.data);
+//     console.log("[DEBUG] TTS raw response first 12 bytes:", wavBuffer.slice(0, 12).toString("hex"), "| as ASCII:", wavBuffer.slice(0, 4).toString());
+//     let detectedRate = readWavSampleRate(wavBuffer);
+
+//     // Kokoro may return raw PCM without a WAV header — wrap it if needed
+//     if (!detectedRate) {
+//       console.log("[DEBUG] TTS returned raw PCM (no WAV header). Wrapping with WAV header at", KOKORO_SAMPLE_RATE, "Hz");
+//       const chunks = [];
+//       const wavStream = pcmToWav(wavBuffer, KOKORO_SAMPLE_RATE);
+//       for await (const chunk of wavStream) {
+//         chunks.push(chunk);
+//       }
+//       wavBuffer = Buffer.concat(chunks);
+//       detectedRate = readWavSampleRate(wavBuffer);
+//     }
+
+//     console.log(`[DEBUG] TTS audio ready. Bytes: ${wavBuffer.length}, Sample rate: ${detectedRate ?? "unknown"}Hz`);
+
+//     return wavBuffer;
+
+//   } catch (err) {
+
+//     console.error(
+//       "❌ [DEBUG] TTS GENERATION FAILED:",
+//       err.response?.status,
+//       err.response?.data ? new TextDecoder().decode(err.response.data) : err.message
+//     );
+
+//     return null;
+
+//   }
+
+// }
 
 // ======================================================
 // GEMINI BRAIN (Kyle Local STT&TTS UPDATE: Added)
