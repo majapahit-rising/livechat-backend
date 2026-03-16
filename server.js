@@ -378,23 +378,23 @@ async function askN8N(userInput, session) {
 // TTS
 // ======================================================
 
-function pcmToWav(pcmBuffer, sampleRate = 24000) {
+// function pcmToWav(pcmBuffer, sampleRate = 24000) {
 
-  const stream = new PassThrough();
+//   const stream = new PassThrough();
 
-  const writer = new wav.Writer({
-    channels: 1,
-    sampleRate: sampleRate,
-    bitDepth: 16
-  });
+//   const writer = new wav.Writer({
+//     channels: 1,
+//     sampleRate: sampleRate,
+//     bitDepth: 16
+//   });
 
-  writer.pipe(stream);
+//   writer.pipe(stream);
 
-  writer.write(pcmBuffer);
-  writer.end();
+//   writer.write(pcmBuffer);
+//   writer.end();
 
-  return stream;
-}
+//   return stream;
+// }
 
 // Read the sample rate Kokoro actually used from the WAV fmt chunk.
 // WAV format: "RIFF"(4) + fileSize(4) + "WAVE"(4) + "fmt "(4) + chunkSize(4)
