@@ -411,13 +411,24 @@ function pcmToWav(pcmBuffer, sampleRate = 24000) {
 // Read the sample rate Kokoro actually used from the WAV fmt chunk.
 // WAV format: "RIFF"(4) + fileSize(4) + "WAVE"(4) + "fmt "(4) + chunkSize(4)
 // + audioFormat(2) + numChannels(2) + sampleRate(4) + ...
-function readWavSampleRate(wavBuffer) {
-  try {
-    // fmt chunk starts at byte 20, sample rate is at byte 24
-    return wavBuffer.readUInt32LE(24);
-  } catch {
+// function readWavSampleRate(wavBuffer) {
+//   try {
+//     // fmt chunk starts at byte 20, sample rate is at byte 24
+//     return wavBuffer.readUInt32LE(24);
+//   } catch {
+//     return null;
+//   }
+// }
+
+function readWavSampleRate(buf) {
+  if (
+    buf.slice(0,4).toString() !== "RIFF" ||
+    buf.slice(8,12).toString() !== "WAVE"
+  ) {
     return null;
   }
+
+  return buf.readUInt32LE(24);
 }
 
 async function generateTTS(text) {
@@ -677,7 +688,10 @@ export function startVoiceServer(server) {
           if (welcomeAudio && ws.readyState === 1) {
 
             console.log("[DEBUG] Sending welcome audio to client...");
-            ws.send(welcomeAudio);
+            // ws.send(welcomeAudio);
+            const pcm = welcomeAudio.slice(44);
+
+            ws.send(pcm);
             console.log("[DEBUG] Welcome audio sent.");
 
           } else {
@@ -712,7 +726,7 @@ export function startVoiceServer(server) {
             //   return;
             // }
 
-            if (totalSize < 16000) {
+            if (totalSize < 8000) {
               return;
             }
 
@@ -723,8 +737,15 @@ export function startVoiceServer(server) {
             }
 
             // const audioData = Buffer.concat(ws.audioBuffer);
+            // const floatData = new Float32Array(
+            //   Buffer.concat(ws.audioBuffer).buffer
+            // );
+            const raw = Buffer.concat(ws.audioBuffer);
+
             const floatData = new Float32Array(
-              Buffer.concat(ws.audioBuffer).buffer
+              raw.buffer,
+              raw.byteOffset,
+              raw.byteLength / 4
             );
             
             const audioData = float32ToInt16(floatData);
@@ -748,7 +769,10 @@ export function startVoiceServer(server) {
             
             const transcript = await transcribeAudio(wavBuffer);
 
-            if (!transcript) return;
+            iif (!transcript) {
+              ws.isProcessing = false;
+              return;
+            }
 
             console.log("🗣️ User:", transcript);
 
@@ -777,6 +801,8 @@ export function startVoiceServer(server) {
             const audio = await generateTTS(aiReply);
 
             if (audio && ws.readyState === 1) {
+
+              const pcm = audio.slice(44);
 
               console.log("🔊 Sending AI audio:", audio.length);
 
