@@ -116,7 +116,7 @@ const WHISPER_URL = "https://voice.skendern8n.com/stt"; // Kyle Local STT&TTS UP
 const KOKORO_URL = "https://voice.skendern8n.com/tts"; // Kyle Local STT&TTS UPDATE: Updated URL
 
 // Kyle Local STT&TTS UPDATE: Gemini Config
-const GEMINI_API_KEY = GEMINI_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_KEY;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
