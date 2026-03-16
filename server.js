@@ -744,7 +744,7 @@ export function startVoiceServer(server) {
               ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
             // wait until enough audio has accumulated before sending to STT
-            if (totalSize < 8000) {
+            if (totalSize < 32000) {
               return;
             }
 
