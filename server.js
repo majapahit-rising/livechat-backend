@@ -296,62 +296,44 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 // ======================================================
 
 
-function float32ToInt16(float32Array) {
-  const buffer = new Int16Array(float32Array.length);
-
-  for (let i = 0; i < float32Array.length; i++) {
-    let s = Math.max(-1, Math.min(1, float32Array[i]));
-    buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-
-  return Buffer.from(buffer.buffer);
+function pcmToWav(pcmBuffer, sampleRate = 16000) {
+  const stream = new PassThrough();
+  const writer = new wav.Writer({
+    channels: 1,
+    sampleRate: sampleRate,
+    bitDepth: 16
+  });
+  writer.pipe(stream);
+  writer.write(pcmBuffer);
+  writer.end();
+  return stream;
 }
 
-
 async function transcribeAudio(buffer) {
-
   try {
-
     const form = new FormData();
-
+    // Pastikan buffer adalah Buffer Node.js
     form.append("file", buffer, {
       filename: "audio.wav",
       contentType: "audio/wav"
     });
-
     form.append("model", "whisper-1");
 
-    const res = await axios.post(
-      WHISPER_URL,
-      form,
-      {
-        headers: {
-          ...form.getHeaders()
-        },
-        maxBodyLength: Infinity,
-        timeout: 15000
-      }
-    );
-
-    if (typeof res.data !== "object") {
-      console.log("⚠️ STT returned non JSON");
-      return null;
-    }
+    const res = await axios.post(WHISPER_URL, form, {
+      headers: { ...form.getHeaders() },
+      timeout: 15000 
+    });
 
     return res.data.text || null;
-
   } catch (err) {
-
-    console.error(
-      "❌ STT ERROR:",
-      err.response?.status,
-      err.response?.data || err.message
-    );
-
+    // Menangani error 502 dari Cloudflare/Host
+    if (err.response?.status === 502) {
+      console.error("❌ STT SERVER OFFLINE: Host voice.skendern8n.com tidak merespons (Bad Gateway).");
+    } else {
+      console.error("❌ STT ERROR:", err.message);
+    }
     return null;
-
   }
-
 }
 
 // ======================================================
