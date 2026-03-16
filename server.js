@@ -1,3 +1,103 @@
+import express from "express";
+import mysql from "mysql2";
+import WebSocket from "ws";
+import { v4 as uuid } from "uuid";
+import nodemailer from "nodemailer";
+import http from "http";
+import admin from "firebase-admin";
+import twilio from "twilio";
+import axios from "axios";
+import OpenAI from "openai";
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+console.log("ENV CHECK", {
+  TWILIO_SID: !!process.env.TWILIO_SID,
+  TWILIO_AUTH_TOKEN: !!process.env.TWILIO_AUTH_TOKEN,
+  TWILIO_NUMBER: !!process.env.TWILIO_NUMBER,
+});
+const app = express();
+const server = http.createServer(app);
+
+app.use((req, res, next) => {
+    const allowedOrigins = [
+        "https://demo-crm.ihubtechnologies.com.au",
+        "https://n8n.ihubtechnologies.com.au",
+        "https://ihubs-chat.infinityfreeapp.com",
+        "https://livechat-backend-3sft.onrender.com"
+    ];
+
+    const origin = req.headers.origin;
+
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, X-Debug, X-Source"
+    );
+    res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    );
+
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(204);
+    }
+
+    next();
+});
+
+
+/* ============================
+   BODY PARSER – WAJIB PALING ATAS
+============================= */
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+
+
+
+// -----------------------------------------------------
+// MYSQL CONNECTION
+// -----------------------------------------------------
+const db = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000
+});
+
+function queryAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.query(sql, params, (err, results) => {
+      if (err) return reject(err);
+      resolve(results);
+    });
+  });
+}
+
+
+// -----------------------------------------------------
+// LIVE CHAT IN-MEMORY STORE
+// -----------------------------------------------------
+const sessions = {};
+const adminClients = [];
+const clientConnections = {};
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes for inactive sessions
+const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
+
+
+
 import wav from "wav"; // Kyle Local STT&TTS UPDATE: Uncommented
 import { PassThrough } from "stream"; // Kyle Local STT&TTS UPDATE: Uncommented
 import { WebSocketServer } from "ws"; // Kyle Local STT&TTS UPDATE: Uncommented
@@ -1272,3 +1372,5086 @@ async function handleAgentSwitch(ws, newAgentType) {
   console.log("✅ Prompt updated dynamically");
 
 }
+
+
+
+
+// DISABLED: // ======================================================
+// DISABLED: // WEBSOCKET SERVER
+// DISABLED: // ======================================================
+// DISABLED: 
+// DISABLED: wss.on("connection", (ws) => {
+// DISABLED: 
+// DISABLED:   ws.sessionId = null;
+// DISABLED:   ws.sessionReady = false;
+// DISABLED:   ws.elWs = null;
+// DISABLED:   ws.callState = "WELCOME";
+// DISABLED: 
+// DISABLED:   console.log("📞 Client connected", ws.sessionId);
+// DISABLED: 
+// DISABLED:   ws.on("message", async (msg) => {
+// DISABLED: 
+// DISABLED:     let data = null;
+// DISABLED: 
+// DISABLED:     try {
+// DISABLED:       data = JSON.parse(
+// DISABLED:         typeof msg === "string" ? msg : msg.toString()
+// DISABLED:       );
+// DISABLED:     } catch {
+// DISABLED:       data = null;
+// DISABLED:     }
+// DISABLED: 
+// DISABLED:     if (data?.type === "start-call") {
+// DISABLED:       console.log("🚀 START CALL RECEIVED:", data.session_id);
+// DISABLED:     }
+// DISABLED: 
+// DISABLED: 
+// DISABLED:     if (data?.type === "start-call") {
+// DISABLED: 
+// DISABLED:       ws.sessionId = data.session_id;
+// DISABLED:       ws.welcomeAudioSent = false;
+// DISABLED:       ws.callState = "WELCOME";
+// DISABLED:       ws.elReady = false;
+// DISABLED: 
+// DISABLED:       if (ws.elWs) {
+// DISABLED:         try {
+// DISABLED:           ws.elWs.close();
+// DISABLED:         } catch {}
+// DISABLED:         ws.elWs = null;
+// DISABLED:       }
+// DISABLED: 
+// DISABLED:       ws.sessionReady = true;
+// DISABLED: 
+// DISABLED:       // const requestedAgent = data.agent || "sales";
+// DISABLED:       const requestedAgent = "general";
+// DISABLED: 
+// DISABLED:       const rows = await queryAsync(
+// DISABLED:         `
+// DISABLED:         SELECT
+// DISABLED:           id,
+// DISABLED:           agent_type,
+// DISABLED:           identity,
+// DISABLED:           role_description,
+// DISABLED:           primary_goals,
+// DISABLED:           context_knowledge,
+// DISABLED:           language,
+// DISABLED:           tone,
+// DISABLED:           response_format,
+// DISABLED:           do_guidelines,
+// DISABLED:           dont_guidelines
+// DISABLED:         FROM chatbot_prompts
+// DISABLED:         WHERE agent_type = ?
+// DISABLED:         ORDER BY id DESC
+// DISABLED:         LIMIT 1
+// DISABLED:         `,
+// DISABLED:         [requestedAgent]
+// DISABLED:         );
+// DISABLED: 
+// DISABLED:       let prompt = rows[0];
+// DISABLED: 
+// DISABLED:       if (!prompt) {
+// DISABLED: 
+// DISABLED:         const fallback = await queryAsync(
+// DISABLED:           `
+// DISABLED:           SELECT
+// DISABLED:             id,
+// DISABLED:             agent_type,
+// DISABLED:             identity,
+// DISABLED:             role_description,
+// DISABLED:             primary_goals,
+// DISABLED:             context_knowledge,
+// DISABLED:             language,
+// DISABLED:             tone,
+// DISABLED:             response_format,
+// DISABLED:             do_guidelines,
+// DISABLED:             dont_guidelines
+// DISABLED:           FROM chatbot_prompts
+// DISABLED:           WHERE agent_type = 'sales'
+// DISABLED:           ORDER BY id DESC
+// DISABLED:           LIMIT 1
+// DISABLED:           `
+// DISABLED:         );
+// DISABLED: 
+// DISABLED:         if (!fallback.length) {
+// DISABLED:           console.error("❌ No active prompt found");
+// DISABLED: 
+// DISABLED:           ws.send(
+// DISABLED:             JSON.stringify({
+// DISABLED:               type: "ai-text",
+// DISABLED:               text: "Sorry, no agent available."
+// DISABLED:             })
+// DISABLED:           );
+// DISABLED: 
+// DISABLED:           return;
+// DISABLED:         }
+// DISABLED: 
+// DISABLED:         prompt = fallback[0];
+// DISABLED:       }
+// DISABLED: 
+// DISABLED: 
+// DISABLED:       const systemPrompt = buildFullSystemPrompt(prompt);
+// DISABLED: 
+// DISABLED:       const incomingContext = data.context || {};
+// DISABLED: 
+// DISABLED:       const finalContext = {
+// DISABLED: 
+// DISABLED:         agent_type: prompt.agent_type,
+// DISABLED:         postcode: incomingContext.postcode || null,
+// DISABLED:         waste_type_id: incomingContext.waste_type_id || null,
+// DISABLED:         selected_bin_size_id: incomingContext.selected_bin_size_id || null,
+// DISABLED:         leadId: incomingContext.leadId || null,
+// DISABLED: 
+// DISABLED:         delivery_date: incomingContext.delivery_date || null,
+// DISABLED:         hire_days: incomingContext.hire_days || null,
+// DISABLED:         pickup_date: incomingContext.pickup_date || null,
+// DISABLED: 
+// DISABLED:         streetNumber: incomingContext.streetNumber || null,
+// DISABLED:         streetName: incomingContext.streetName || null,
+// DISABLED:         suburb: incomingContext.suburb || null,
+// DISABLED:         state: incomingContext.state || null,
+// DISABLED:         country: incomingContext.country || null,
+// DISABLED:         fullAddress: incomingContext.fullAddress || null,
+// DISABLED: 
+// DISABLED:         name: incomingContext.name || "Guest",
+// DISABLED:         email: incomingContext.email || null,
+// DISABLED:         phoneNumber: incomingContext.phoneNumber || null,
+// DISABLED:         note: incomingContext.note || "none"
+// DISABLED:       };
+// DISABLED: 
+// DISABLED:       callSessions.set(ws.sessionId, {
+// DISABLED:         agent: prompt.agent_type,
+// DISABLED:         promptId: prompt.id,
+// DISABLED:         systemPrompt,
+// DISABLED:         activePrompt: systemPrompt,
+// DISABLED:         history: [],
+// DISABLED:         context: finalContext,
+// DISABLED:         agentLocked: false
+// DISABLED:       });
+// DISABLED: 
+// DISABLED:       await queryAsync(
+// DISABLED:         `
+// DISABLED:         INSERT INTO chatbot_conversation_sessions
+// DISABLED:         (
+// DISABLED:           session_id,
+// DISABLED:           conversation_id,
+// DISABLED:           agent_type,
+// DISABLED:           user_name,
+// DISABLED:           user_ip,
+// DISABLED:           started_at,
+// DISABLED:           total_messages,
+// DISABLED:           ai_messages
+// DISABLED:         )
+// DISABLED:         VALUES (?, ?, ?, ?, ?, NOW(), 0, 0)
+// DISABLED:         `,
+// DISABLED:         [
+// DISABLED:           ws.sessionId,
+// DISABLED:           ws.sessionId,
+// DISABLED:           prompt.agent_type,
+// DISABLED:           "Guest",
+// DISABLED:           ws._socket?.remoteAddress || null
+// DISABLED:         ]
+// DISABLED:       );
+// DISABLED: 
+// DISABLED:       try {
+// DISABLED: 
+// DISABLED:         console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
+// DISABLED: 
+// DISABLED:         const signedUrl = await getElevenLabsSignedUrl();
+// DISABLED: 
+// DISABLED:         const elWs = new WebSocket(signedUrl);
+// DISABLED: 
+// DISABLED: 
+// DISABLED:         elWs.sessionId = ws.sessionId;
+// DISABLED: 
+// DISABLED:         console.log("🔌 ElevenLabs WS instance created");
+// DISABLED: 
+// DISABLED:         ws.elWs = elWs;
+// DISABLED: 
+// DISABLED:         elWs.on("open", async () => {
+// DISABLED: 
+// DISABLED:           console.log("🟢 ElevenLabs OPEN for session:", ws.sessionId);
+// DISABLED:           console.log("🟢 Connected");
+// DISABLED: 
+// DISABLED:           elWs.send(
+// DISABLED:             JSON.stringify({
+// DISABLED:               type: "conversation_initiation_client_data",
+// DISABLED:               conversation_config_override: {
+// DISABLED:                 agent: {
+// DISABLED:                   prompt: {
+// DISABLED:                     prompt: systemPrompt
+// DISABLED:                   },
+// DISABLED:                   language: "en",
+// DISABLED:                   tools: [
+// DISABLED:                     {
+// DISABLED:                       type: "webhook",
+// DISABLED:                       name: "N8NAiResponse",
+// DISABLED:                       url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+// DISABLED:                       method: "POST",
+// DISABLED:                       // description:
+// DISABLED:                       //   "Mandatory tool to get any response. Call this with user_input and the full context object.",
+// DISABLED:                       parameters: {
+// DISABLED:                         type: "object",
+// DISABLED:                         properties: {
+// DISABLED:                           user_input: {
+// DISABLED:                             type: "string",
+// DISABLED:                             description:
+// DISABLED:                               "The full message from the user"
+// DISABLED:                           },
+// DISABLED:                           conversation_history: {
+// DISABLED:                             type: "array",
+// DISABLED:                             description: "Recent conversation history",
+// DISABLED:                             items: {
+// DISABLED:                               type: "object",
+// DISABLED:                               properties: {
+// DISABLED:                                 role: { type: "string" },
+// DISABLED:                                 content: { type: "string" }
+// DISABLED:                               }
+// DISABLED:                             }
+// DISABLED:                           },
+// DISABLED:                           context: {
+// DISABLED:                             type: "object",
+// DISABLED:                             description:
+// DISABLED:                               "Full session context for n8n processing",
+// DISABLED:                             properties: {
+// DISABLED:                               agent_type: { type: "string" },
+// DISABLED:                               postcode: { type: "string" },
+// DISABLED:                               waste_type_id: { type: "integer" },
+// DISABLED:                               selected_bin_size_id: { type: "integer" },
+// DISABLED:                               delivery_date: { type: "string" },
+// DISABLED:                               pickup_date: { type: "string" },
+// DISABLED:                               hire_days: { type: "string" },
+// DISABLED:                               leadId: { type: "integer" },
+// DISABLED:                               suburb: { type: "string" },
+// DISABLED:                               state: { type: "string" },
+// DISABLED:                               country: { type: "string" },
+// DISABLED:                               fullAddress: { type: "string" },
+// DISABLED:                               name: { type: "string" },
+// DISABLED:                               note: { type: "string" }
+// DISABLED:                             }
+// DISABLED:                           }
+// DISABLED:                         },
+// DISABLED:                         required: [
+// DISABLED:                           "user_input",                          
+// DISABLED:                           "conversation_history",
+// DISABLED:                           "context"
+// DISABLED:                         ]
+// DISABLED:                       }
+// DISABLED:                     }
+// DISABLED:                   ]
+// DISABLED:                 }
+// DISABLED:               },
+// DISABLED:               // dynamic_variables: finalContext
+// DISABLED:               dynamic_variables: {
+// DISABLED:                 ...finalContext,
+// DISABLED:                 system_prompt: systemPrompt
+// DISABLED:               }
+// DISABLED:             })
+// DISABLED:           );
+// DISABLED: 
+// DISABLED:           const rows = await queryAsync(
+// DISABLED:             `
+// DISABLED:             SELECT message_text
+// DISABLED:             FROM chatbot_welcome_messages
+// DISABLED:             WHERE is_active = 1
+// DISABLED:             LIMIT 1
+// DISABLED:             `
+// DISABLED:           );
+// DISABLED: 
+// DISABLED:           if (!rows.length) return;
+// DISABLED: 
+// DISABLED:           const welcomeText = rows[0].message_text.trim();
+// DISABLED: 
+// DISABLED:           try {
+// DISABLED: 
+// DISABLED:             console.log("🎤 Generating welcome TTS for:", ws.sessionId);
+// DISABLED: 
+// DISABLED:             const pcmWelcome = await speakWelcome(welcomeText);
+// DISABLED: 
+// DISABLED:             if (ws.readyState === WebSocket.OPEN) {
+// DISABLED: 
+// DISABLED:               ws.send(
+// DISABLED:                 JSON.stringify({
+// DISABLED:                   type: "ai-text",
+// DISABLED:                   text: welcomeText
+// DISABLED:                 })
+// DISABLED:               );
+// DISABLED: 
+// DISABLED:               console.log("📤 Welcome text sent to browser");
+// DISABLED: 
+// DISABLED:               const silence = Buffer.alloc(16000 * 2 * 0.25);
+// DISABLED: 
+// DISABLED:               ws.send(silence);
+// DISABLED:               ws.send(pcmWelcome);
+// DISABLED: 
+// DISABLED:               const durationMs =
+// DISABLED:                 (pcmWelcome.length / 2 / 16000) * 1000;
+// DISABLED: 
+// DISABLED:               setTimeout(() => {
+// DISABLED: 
+// DISABLED:                 ws.callState = "ACTIVE";
+// DISABLED:                 ws.welcomeAudioSent = true;
+// DISABLED: 
+// DISABLED:                 console.log("✅ Welcome selesai, mic dibuka");
+// DISABLED: 
+// DISABLED:               }, durationMs + 100);
+// DISABLED:             }
+// DISABLED: 
+// DISABLED:           } catch (err) {
+// DISABLED:             console.error("Error REST TTS:", err);
+// DISABLED:           }
+// DISABLED:         });
+// DISABLED: 
+// DISABLED:         elWs.on("message", async (elMsg) => {
+// DISABLED: 
+// DISABLED:           if (!ws.sessionId || ws.callState === "ENDED") {
+// DISABLED:             return;
+// DISABLED:           }
+// DISABLED: 
+// DISABLED:           try {
+// DISABLED: 
+// DISABLED:             const event = JSON.parse(elMsg.toString());
+// DISABLED: 
+// DISABLED:             console.log("📩 EL EVENT:", event.type);
+// DISABLED: 
+// DISABLED:             const session = callSessions.get(ws.sessionId);
+// DISABLED: 
+// DISABLED:             if (!session) {
+// DISABLED:               console.warn("⚠️ Session missing in Map. Ignoring EL event.");
+// DISABLED:               return;
+// DISABLED:             }
+// DISABLED: 
+// DISABLED:             switch (event.type) {
+// DISABLED: 
+// DISABLED:               case "conversation_initiation_metadata": {
+// DISABLED:                 ws.elReady = true;
+// DISABLED:                 console.log("EL READY (Metadata received)");
+// DISABLED:                 break;
+// DISABLED:               }
+// DISABLED: 
+// DISABLED:               case "tool_call_result": {
+// DISABLED: 
+// DISABLED:                 try {
+// DISABLED:               
+// DISABLED:                   const toolOutput =
+// DISABLED:                     event.tool_call_result_event?.output;
+// DISABLED:               
+// DISABLED:                   if (!toolOutput) break;
+// DISABLED:               
+// DISABLED:                   // ==============================
+// DISABLED:                   // UPDATE CONTEXT
+// DISABLED:                   // ==============================
+// DISABLED:               
+// DISABLED:                   if (toolOutput.context) {
+// DISABLED:                     session.context = {
+// DISABLED:                       ...session.context,
+// DISABLED:                       ...toolOutput.context
+// DISABLED:                     };
+// DISABLED:               
+// DISABLED:                     console.log("🔄 Context synced:", session.context);
+// DISABLED:                   }
+// DISABLED:               
+// DISABLED:                   // ==============================
+// DISABLED:                   // SEND N8N RESPONSE
+// DISABLED:                   // ==============================
+// DISABLED:               
+// DISABLED:                   if (toolOutput.reply) {
+// DISABLED:               
+// DISABLED:                     const text = toolOutput.reply;
+// DISABLED:               
+// DISABLED:                     console.log("📦 N8N Response:", text);
+// DISABLED:               
+// DISABLED:                     if (ws.readyState === WebSocket.OPEN) {
+// DISABLED:                       ws.send(JSON.stringify({
+// DISABLED:                         type: "ai-text",
+// DISABLED:                         text
+// DISABLED:                       }));
+// DISABLED:                     }
+// DISABLED:               
+// DISABLED:                     session.history.push({
+// DISABLED:                       role: "assistant",
+// DISABLED:                       content: text
+// DISABLED:                     });
+// DISABLED:               
+// DISABLED:                     if (session.history.length > 20) {
+// DISABLED:                       session.history.shift();
+// DISABLED:                     }
+// DISABLED:               
+// DISABLED:                   }
+// DISABLED:               
+// DISABLED:                 } catch (err) {
+// DISABLED:                   console.error("Tool result parse error:", err);
+// DISABLED:                 }
+// DISABLED:               
+// DISABLED:                 break;
+// DISABLED:               }
+// DISABLED: 
+// DISABLED:               case "user_transcript": {
+// DISABLED: 
+// DISABLED:                 try {
+// DISABLED: 
+// DISABLED:                   const text =
+// DISABLED:                     event.user_transcription_event.user_transcript;
+// DISABLED:                   
+// DISABLED: 
+// DISABLED:                         if (session.agent === "general" && shouldSwitchToSales(text)) {
+// DISABLED: 
+// DISABLED:                           console.log("🔁 SWITCHING MODE: general → sales");
+// DISABLED:                         
+// DISABLED:                           await handleAgentSwitch(ws, "sales");
+// DISABLED:                           return;
+// DISABLED:                         }
+// DISABLED:                       
+// DISABLED:                       // }
+// DISABLED: 
+// DISABLED:                       console.log("🗣️ User:", text);
+// DISABLED:     
+// DISABLED:                       if (ws.readyState === WebSocket.OPEN) {
+// DISABLED:                         ws.send(
+// DISABLED:                           JSON.stringify({
+// DISABLED:                             type: "user-text",
+// DISABLED:                             text
+// DISABLED:                           })
+// DISABLED:                         );
+// DISABLED:                       }
+// DISABLED:     
+// DISABLED:                       if (!session) {
+// DISABLED:                         console.warn("⚠ No session found");
+// DISABLED:                         break;
+// DISABLED:                       }
+// DISABLED:     
+// DISABLED:                       session.history.push({
+// DISABLED:                         role: "user",
+// DISABLED:                         content: text
+// DISABLED:                       });
+// DISABLED:     
+// DISABLED:                       if (session.history.length > 20) {
+// DISABLED:                         session.history.shift();
+// DISABLED:                       }
+// DISABLED:     
+// DISABLED:                       session.lastUserMessage = text;
+// DISABLED:     
+// DISABLED:                       session.context = session.context || {};
+// DISABLED:     
+// DISABLED:                       const extractedPostcode =
+// DISABLED:                         extractPostcode(text);
+// DISABLED:     
+// DISABLED:                       if (extractedPostcode) {
+// DISABLED:                         session.context.postcode = extractedPostcode;
+// DISABLED:                         console.log(
+// DISABLED:                           "✅ Postcode extracted:",
+// DISABLED:                           extractedPostcode
+// DISABLED:                         );
+// DISABLED:                       }
+// DISABLED:     
+// DISABLED:                       const deliveryDate =
+// DISABLED:                         extractDeliveryDate(text);
+// DISABLED:     
+// DISABLED:                       if (deliveryDate) {
+// DISABLED:                         session.context.delivery_date =
+// DISABLED:                           deliveryDate;
+// DISABLED:     
+// DISABLED:                         console.log(
+// DISABLED:                           "📦 Delivery date extracted:",
+// DISABLED:                           deliveryDate
+// DISABLED:                         );
+// DISABLED:                       }
+// DISABLED:     
+// DISABLED:                       const pickupDate =
+// DISABLED:                         extractPickupDate(text);
+// DISABLED:     
+// DISABLED:                       if (pickupDate) {
+// DISABLED:                         session.context.pickup_date =
+// DISABLED:                           pickupDate;
+// DISABLED:     
+// DISABLED:                         console.log(
+// DISABLED:                           "🚛 Pickup date extracted:",
+// DISABLED:                           pickupDate
+// DISABLED:                         );
+// DISABLED:                       }
+// DISABLED:     
+// DISABLED:                       console.log(
+// DISABLED:                         "📦 Final Context updated in Node:",
+// DISABLED:                         session.context
+// DISABLED:                       );
+// DISABLED: 
+// DISABLED:                       console.log(
+// DISABLED:                         "🔄 Syncing updated context to ElevenLabs..."
+// DISABLED:                       );
+// DISABLED:   
+// DISABLED:                       ws.elWs.send(
+// DISABLED:                         JSON.stringify({
+// DISABLED:                           // type: "client_tool_outputs",
+// DISABLED:                           type: "dynamic_variables",
+// DISABLED:                           dynamic_variables: {
+// DISABLED:                             conversation_history: session.history.slice(-10),
+// DISABLED:                             system_prompt: session.activePrompt,
+// DISABLED:                             ...session.context
+// DISABLED:                           }
+// DISABLED:                         })
+// DISABLED:                       );
+// DISABLED: 
+// DISABLED:                       } catch (err) {
+// DISABLED:                         console.error(
+// DISABLED:                           "❌ user_transcript error:",
+// DISABLED:                           err
+// DISABLED:                         );
+// DISABLED:                       }
+// DISABLED:       
+// DISABLED:                       break;
+// DISABLED:                     }
+// DISABLED: 
+// DISABLED:               case "agent_response": {
+// DISABLED: 
+// DISABLED:                 const text =
+// DISABLED:                   event.agent_response_event.agent_response;
+// DISABLED: 
+// DISABLED:                 console.log("🤖 Agent:", text);
+// DISABLED: 
+// DISABLED:                 if (ws.readyState === WebSocket.OPEN) {
+// DISABLED:                   ws.send(
+// DISABLED:                     JSON.stringify({
+// DISABLED:                       type: "ai-text",
+// DISABLED:                       text
+// DISABLED:                     })
+// DISABLED:                   );
+// DISABLED:                 }
+// DISABLED: 
+// DISABLED:                 if (!session) break;
+// DISABLED: 
+// DISABLED:                 session.history.push({
+// DISABLED:                   role: "assistant",
+// DISABLED:                   content: text
+// DISABLED:                 });
+// DISABLED: 
+// DISABLED:                 if (session.history.length > 20) {
+// DISABLED:                   session.history.shift();
+// DISABLED:                 }
+// DISABLED: 
+// DISABLED:                 const userMessage =
+// DISABLED:                   session.lastUserMessage || null;
+// DISABLED: 
+// DISABLED:                 await queryAsync(
+// DISABLED:                   `
+// DISABLED:                   INSERT INTO chatbot_conversations
+// DISABLED:                   (
+// DISABLED:                     session_id,
+// DISABLED:                     agent_type,
+// DISABLED:                     prompt_id,
+// DISABLED:                     user_message,
+// DISABLED:                     ai_response,
+// DISABLED:                     confidence,
+// DISABLED:                     resolved,
+// DISABLED:                     created_at
+// DISABLED:                   )
+// DISABLED:                   VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+// DISABLED:                   `,
+// DISABLED:                   [
+// DISABLED:                     ws.sessionId,
+// DISABLED:                     session.agent,
+// DISABLED:                     session.promptId,
+// DISABLED:                     userMessage,
+// DISABLED:                     text,
+// DISABLED:                     0.9
+// DISABLED:                   ]
+// DISABLED:                 );
+// DISABLED: 
+// DISABLED:                 await queryAsync(
+// DISABLED:                   `
+// DISABLED:                   UPDATE chatbot_conversation_sessions
+// DISABLED:                   SET
+// DISABLED:                     total_messages = total_messages + 1,
+// DISABLED:                     ai_messages = ai_messages + 1
+// DISABLED:                   WHERE session_id = ?
+// DISABLED:                   `,
+// DISABLED:                   [ws.sessionId]
+// DISABLED:                 );
+// DISABLED: 
+// DISABLED:                 if (userMessage) {
+// DISABLED:                   await insertLearningQueue({
+// DISABLED:                     sessionId: ws.sessionId,
+// DISABLED:                     question: userMessage,
+// DISABLED:                     answer: text
+// DISABLED:                   });
+// DISABLED:                 }
+// DISABLED: 
+// DISABLED:                 session.lastUserMessage = null;
+// DISABLED: 
+// DISABLED:                 break;
+// DISABLED:               }
+// DISABLED: 
+// DISABLED:               case "audio": {
+// DISABLED: 
+// DISABLED:                 const pcm = Buffer.from(
+// DISABLED:                   event.audio_event.audio_base_64,
+// DISABLED:                   "base64"
+// DISABLED:                 );
+// DISABLED: 
+// DISABLED:                 if (!ws.welcomeAudioSent) {
+// DISABLED:                   console.warn(
+// DISABLED:                     "⛔ ConvAI mencoba bicara tapi REST belum selesai. Skipping..."
+// DISABLED:                   );
+// DISABLED:                   break;
+// DISABLED:                 }
+// DISABLED: 
+// DISABLED:                 if (ws.readyState === WebSocket.OPEN) {
+// DISABLED:                   ws.send(pcm);
+// DISABLED: 
+// DISABLED:                   console.log(
+// DISABLED:                     "🔊 ConvAI Audio sent to browser:",
+// DISABLED:                     pcm.length,
+// DISABLED:                     "bytes"
+// DISABLED:                   );
+// DISABLED:                 }
+// DISABLED: 
+// DISABLED:                 break;
+// DISABLED:               }
+// DISABLED: 
+// DISABLED:               case "interruption": {
+// DISABLED: 
+// DISABLED:                 console.log("⚡ Interruption detected");
+// DISABLED: 
+// DISABLED:                 if (ws.readyState === WebSocket.OPEN) {
+// DISABLED:                   ws.send(
+// DISABLED:                     JSON.stringify({
+// DISABLED:                       type: "interruption"
+// DISABLED:                     })
+// DISABLED:                   );
+// DISABLED:                 }
+// DISABLED: 
+// DISABLED:                 break;
+// DISABLED:               }
+// DISABLED: 
+// DISABLED:               case "ping": {
+// DISABLED: 
+// DISABLED:                 if (elWs.readyState === WebSocket.OPEN) {
+// DISABLED:                   ws.elWs.send(
+// DISABLED:                     JSON.stringify({
+// DISABLED:                       type: "pong",
+// DISABLED:                       event_id: event.ping_event.event_id
+// DISABLED:                     })
+// DISABLED:                   );
+// DISABLED:                 }
+// DISABLED: 
+// DISABLED:                 break;
+// DISABLED:               }
+// DISABLED: 
+// DISABLED:               case "vad_score":
+// DISABLED:               case "internal_tentative_agent_response":
+// DISABLED:                 break;
+// DISABLED: 
+// DISABLED:               default:
+// DISABLED:                 console.log(
+// DISABLED:                   "📩 ElevenLabs event:",
+// DISABLED:                   event.type
+// DISABLED:                 );
+// DISABLED:             }
+// DISABLED: 
+// DISABLED:           } catch (err) {
+// DISABLED:             console.error(
+// DISABLED:               "❌ ElevenLabs parse error:",
+// DISABLED:               err
+// DISABLED:             );
+// DISABLED:           }
+// DISABLED:         });
+// DISABLED: 
+// DISABLED:         elWs.on("close", () => {
+// DISABLED:           console.log(
+// DISABLED:             "❌ ElevenLabs disconnected for session",
+// DISABLED:             elWs.sessionId
+// DISABLED:           );
+// DISABLED:         });
+// DISABLED: 
+// DISABLED:         elWs.on("error", (err) => {
+// DISABLED:           console.error(
+// DISABLED:             "❌ ElevenLabs error:",
+// DISABLED:             err.message
+// DISABLED:           );
+// DISABLED:         });
+// DISABLED: 
+// DISABLED:       } catch (err) {
+// DISABLED: 
+// DISABLED:         console.error(
+// DISABLED:           "❌ ElevenLabs connection failed:",
+// DISABLED:           err
+// DISABLED:         );
+// DISABLED: 
+// DISABLED:         ws.send(
+// DISABLED:           JSON.stringify({
+// DISABLED:             type: "ai-text",
+// DISABLED:             text:
+// DISABLED:               "Sorry, I'm having trouble connecting. Please try again."
+// DISABLED:           })
+// DISABLED:         );
+// DISABLED:       }
+// DISABLED: 
+// DISABLED:       console.log("🎯 Active agent:", prompt.agent_type);
+// DISABLED: 
+// DISABLED:       return;
+// DISABLED:     }
+// DISABLED: 
+// DISABLED:     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
+// DISABLED: 
+// DISABLED:       if (ws.callState !== "ACTIVE") {
+// DISABLED:         return;
+// DISABLED:       }
+// DISABLED: 
+// DISABLED:       if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
+// DISABLED: 
+// DISABLED:       if (ws.elWs.readyState === WebSocket.OPEN) {
+// DISABLED:         ws.elWs.send(
+// DISABLED:           JSON.stringify({
+// DISABLED:             user_audio_chunk: Buffer.from(msg).toString("base64")
+// DISABLED:           })
+// DISABLED:         );
+// DISABLED:       }
+// DISABLED: 
+// DISABLED:       return;
+// DISABLED:     }
+// DISABLED:   });
+// DISABLED: 
+// DISABLED:   ws.on("close", async () => {
+// DISABLED: 
+// DISABLED:     const sessionId = ws.sessionId;
+// DISABLED: 
+// DISABLED:     console.log("❌ Client disconnected", sessionId);
+// DISABLED: 
+// DISABLED:     if (!sessionId) {
+// DISABLED:       console.log(
+// DISABLED:         "⚠️ No sessionId on close, skipping cleanup"
+// DISABLED:       );
+// DISABLED:       return;
+// DISABLED:     }
+// DISABLED: 
+// DISABLED:     try {
+// DISABLED: 
+// DISABLED:       console.log(
+// DISABLED:         "🧹 Cleaning up ElevenLabs for:",
+// DISABLED:         sessionId
+// DISABLED:       );
+// DISABLED: 
+// DISABLED:       const summary =
+// DISABLED:         await summarizeConversation(sessionId);
+// DISABLED: 
+// DISABLED:       await queryAsync(
+// DISABLED:         `
+// DISABLED:         UPDATE chatbot_conversation_sessions
+// DISABLED:         SET
+// DISABLED:           ended_at = NOW(),
+// DISABLED:           session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
+// DISABLED:           conversation_summary = ?
+// DISABLED:         WHERE session_id = ?
+// DISABLED:         `,
+// DISABLED:         [
+// DISABLED:           summary,
+// DISABLED:           sessionId
+// DISABLED:         ]
+// DISABLED:       );
+// DISABLED: 
+// DISABLED:     } catch (err) {
+// DISABLED:       console.error("❌ Session close error:", err);
+// DISABLED:     }
+// DISABLED: 
+// DISABLED:     if (ws.elWs) {
+// DISABLED:       try {
+// DISABLED:         ws.elWs.close();
+// DISABLED:       } catch {}
+// DISABLED: 
+// DISABLED:       ws.elWs = null;
+// DISABLED:     }
+// DISABLED: 
+// DISABLED:     callSessions.delete(sessionId);
+// DISABLED: 
+// DISABLED:     ws.sessionId = null;
+// DISABLED:     ws.sessionReady = false;
+// DISABLED:     ws.callState = "ENDED";
+// DISABLED:     ws.welcomeAudioSent = false;
+// DISABLED:     ws.elReady = false;
+// DISABLED:   });
+// DISABLED: });
+
+
+
+app.post("/api/chat/ai-feedback", async (req, res) => {
+
+  const {
+    session_id,
+    ai_rating,
+    ai_feedback,
+    duration
+  } = req.body;
+
+  if (!session_id || !ai_rating) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+
+  await db.query(`
+    UPDATE chatbot_conversation_sessions
+    SET
+      ai_rating = ?,
+      ai_feedback = ?,
+      session_duration = ?,
+      ended_at = NOW()
+    WHERE session_id = ?
+    LIMIT 1
+  `, [
+    ai_rating,
+    ai_feedback ?? null,
+    duration ?? null,
+    session_id
+  ]);
+
+  res.json({ ok: true });
+});
+
+
+
+
+// ======================================================
+// N8N CALL
+// ======================================================
+
+// async function callN8N({ sessionId, agent, systemPrompt, messages }) {
+
+//   const lastUserMessage = [...messages]
+//     .reverse()
+//     .find(m => m.role === "user");
+
+//   if (!lastUserMessage) {
+//     return "Sorry, I didn't catch that.";
+//   }
+
+//   const res = await fetch(N8N_WEBHOOK, {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({
+//       session_id: sessionId,
+//       agent_type: agent,
+//       system_prompt: systemPrompt,
+//       message: lastUserMessage.content   
+//     }),
+//   });
+
+//   const raw = await res.text();
+
+// if (!raw) {
+//   console.warn("⚠️ N8N returned empty body");
+//   return "Sorry — no response from AI.";
+// }
+
+// let json;
+
+// try {
+//   json = JSON.parse(raw);
+// } catch (err) {
+//   console.error("❌ Invalid JSON from N8N:", raw);
+//   return "Sorry — AI returned invalid data.";
+// }
+
+// return json.reply || "Sorry — malformed AI response.";
+// }
+
+// ======================================================
+// DEEPGRAM TTS (PCM LINEAR16)
+// ======================================================
+
+// export async function tts(text) {
+//   try {
+
+//     const res = await fetch(
+//       "https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=48000",
+//       {
+//         method: "POST",
+//         headers: {
+//           "Authorization": `Token d4715135c6682f6b829c7cd1c102263ba3288395`,
+//           "Content-Type": "application/json"
+//         },
+//         body: JSON.stringify({ text })
+//       }
+//     );
+
+//     if (!res.ok) {
+//       console.error("❌ Deepgram TTS HTTP error:", res.status);
+//       return Buffer.alloc(0);
+//     }
+
+//     const arrayBuffer = await res.arrayBuffer();
+//     const pcm = Buffer.from(arrayBuffer);
+
+//     console.log("🔊 Deepgram PCM bytes:", pcm.length);
+
+//     return pcm;
+
+//   } catch (err) {
+//     console.error("❌ Deepgram TTS error:", err);
+//     return Buffer.alloc(0);
+//   }
+// }
+
+
+
+// ==============================
+// TTS → RAW PCM 16-bit
+// ==============================
+// export async function tts(text) {
+//   try {
+//     const response = await openai.audio.speech.create({
+//       model: "gpt-4o-mini-tts",
+//       voice: "alloy",
+//       format: "pcm16",
+//       input: text
+//     });
+
+//     const pcm = Buffer.from(await response.arrayBuffer());
+//     console.log("🔊 TTS PCM bytes:", pcm.length);
+//     return pcm;
+
+//   } catch (err) {
+//     console.error("❌ TTS error:", err);
+//     return Buffer.alloc(0);
+//   }
+// }
+
+
+
+
+
+
+async function fetchGreetingFromDB() {
+    try {
+        const rows = await queryAsync(`
+            SELECT message_text
+            FROM chatbot_welcome_messages
+            WHERE is_active = 1
+            ORDER BY id DESC
+            LIMIT 1
+        `);
+
+        if (!rows.length) {
+            return "👋 Welcome! How can I assist you today?";
+        }
+
+        return rows[0].message_text;
+
+    } catch (err) {
+        console.error("Greeting DB error:", err);
+        return "👋 Welcome! How can I assist you today?";
+    }
+}
+
+
+app.get("/api/chat/bootstrap", async (req, res) => {
+
+    try {
+
+        // 1️⃣ Greeting first
+        const greeting = await fetchGreetingFromDB();
+
+        // 2️⃣ Load config (reuse logic kamu)
+        const config = await getChatConfigInternal();
+
+        res.json({
+            success: true,
+            data: {
+                greeting,
+                config
+            }
+        });
+
+    } catch (err) {
+
+        console.error("Bootstrap error:", err);
+
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+
+async function getChatConfigInternal() {
+    const prompts = await queryAsync(`
+        SELECT id, agent_type, identity, role_description,
+               primary_goals, status, is_active
+        FROM chatbot_prompts
+        WHERE status='active' AND is_active=1
+    `);
+
+    return prompts;
+}
+
+
+
+
+
+
+
+
+
+let twilioClient = null;
+try {
+  if (process.env.TWILIO_SID && process.env.TWILIO_AUTH_TOKEN) {
+    twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+    console.log("✅ Twilio ready");
+  } else {
+    console.warn("⚠️ Twilio env missing. SMS disabled.");
+  }
+} catch (err) {
+  console.error("❌ Twilio init error:", err.message);
+}
+
+// -----------------------------------------------------
+// SSE HELPER FUNCTIONS
+// -----------------------------------------------------
+function pushToClients(sessionId, message) {
+    if (!clientConnections[sessionId]) return;
+    
+    clientConnections[sessionId] = clientConnections[sessionId].filter(res => {
+        try {
+            res.write(`data: ${JSON.stringify(message)}\n\n`);
+            return true;
+        } catch (error) {
+            console.log('Removing dead client connection');
+            return false;
+        }
+    });
+}
+
+function notifyAdmins(payload) {
+    console.log(`🔔 Notifying ${adminClients.length} admins:`, payload.type);
+    
+    for (let i = adminClients.length - 1; i >= 0; i--) {
+        const res = adminClients[i];
+        if (res.writableEnded || res.destroyed || !res.writable) {
+            adminClients.splice(i, 1);
+            console.log('Removed dead admin connection');
+        }
+    }
+    
+    let sentCount = 0;
+    adminClients.forEach((res, index) => {
+        try {
+            if (res.writable && !res.writableEnded) {
+                const data = `data: ${JSON.stringify(payload)}\n\n`;
+                res.write(data);
+                sentCount++;
+                console.log(`✅ Sent to admin ${index}`);
+            }
+        } catch (error) {
+            console.log(`❌ Failed to send to admin ${index}:`, error.message);
+        }
+    });
+    
+    console.log(`📊 Successfully sent to ${sentCount}/${adminClients.length} admins`);
+}
+
+process.on("unhandledRejection", (reason) => {
+  console.error("🔥 UNHANDLED REJECTION:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err);
+});
+
+let firebaseReady = false;
+
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    firebaseReady = true;
+    console.log("✅ Firebase ready");
+  } else {
+    console.warn("⚠️ FIREBASE_SERVICE_ACCOUNT missing. Push disabled.");
+  }
+} catch (err) {
+  console.error("❌ Firebase init error:", err.message);
+}
+
+function sendIncomingCall(agent_type, session_id) {
+  if (!firebaseReady) return;
+
+  db.query("SELECT fcm_token FROM admin_push_tokens", async (_, rows) => {
+    for (const row of rows) {
+      try {
+        await admin.messaging().send({
+  token: row.fcm_token,
+  notification: {
+    title: "📞 Incoming Call",
+    body: `Customer wants to connect with ${agent_type}`
+  },
+  data: { session_id: String(session_id) }
+});
+      } catch (e) {
+        console.log("Push send error:", e.message);
+      }
+    }
+  });
+}
+
+
+
+function extractSearchTerms(message) {
+    if (!message) return [];
+    const stopWords = ["i","me","my","you","your","he","she","it","they","what","which","who","this","that","is","are","was","were","be","been","have","has","had","do","does","did","a","an","the","and","or","but","if","because","as","until","while","of","at","by","for","with","about","against","between","into","through","during","before","after","above","below","to","from","up","down","in","out","on","off","over","under","again","further","then","once","here","there","when","where","why","how","all","any","both","each","few","more","most","other","some","such","no","nor","not","only","own","same","so","than","too","very","can","will","just","should","now","please","help"];
+    return message.toLowerCase()
+        .replace(/[^\w\s]/g,'')
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !stopWords.includes(w))
+        .slice(0,5);
+}
+
+function isConversationEnded(text = "") {
+    const msg = text.toLowerCase().trim();
+
+    // Abaikan semua kalimat panjang
+    if (msg.length > 20) return false;
+
+    return /^(bye|goodbye|thanks|thank you|end|end chat|ok bye|okay bye|done|finished)$/i
+        .test(msg);
+}
+
+async function generateConversationSummary(conversationId) {
+    const messages = await dbQuery(
+        `
+        SELECT role, content
+        FROM conversation_logs
+        WHERE conversation_id = ?
+        ORDER BY timestamp ASC
+        LIMIT 20
+        `,
+        [conversationId]
+    );
+
+    if (!messages.length) return null;
+
+    const userMessages = messages
+        .filter(m => m.role === 'user')
+        .map(m => m.content)
+        .join(" ");
+
+    return `User asked about: ${userMessages.substring(0, 300)}...`;
+}
+
+async function generateAIReply({ message, agent_type }) {
+    return `Thank you for your message. I'm glad I could help.`;
+}
+
+
+// -----------------------------------------------------
+// SESSION CLEANUP - UPDATED WITH 2-MINUTE TIMEOUT
+// -----------------------------------------------------
+function cleanupExpiredSessions() {
+    const now = Date.now();
+    let expiredCount = 0;
+    let timeoutCount = 0;
+    
+    Object.keys(sessions).forEach(sessionId => {
+        const session = sessions[sessionId];
+        const sessionAge = now - new Date(session.createdAt).getTime();
+        
+        // Check for 2-minute unclaimed timeout
+        if (!session.agentName && sessionAge > SESSION_CLAIM_TIMEOUT) {
+            console.log(`⏰ Session timeout (2 minutes): ${sessionId}`);
+            
+            // Notify client about timeout
+            if (clientConnections[sessionId]) {
+                clientConnections[sessionId].forEach(clientRes => {
+                    try {
+                        clientRes.write(`data: ${JSON.stringify({
+                            type: 'timeout',
+                            message: "No agents were available to connect with you within 2 minutes. Please try again later or leave a message.",
+                            sessionId: sessionId
+                        })}\n\n`);
+                    } catch (error) {
+                        console.log('Failed to send timeout to client');
+                    }
+                });
+            }
+            
+            // Notify admins
+            notifyAdmins({
+                type: "session_timeout",
+                sessionId,
+                userName: session.userName,
+                reason: "No agent claimed within 2 minutes"
+            });
+            
+            // Mark as timed out (but keep for reference)
+            sessions[sessionId].status = 'timed_out';
+            sessions[sessionId].timeoutAt = new Date().toISOString();
+            timeoutCount++;
+            
+        } 
+        // Check for 30-minute inactive timeout
+        else if (sessionAge > SESSION_TIMEOUT) {
+            console.log(`Cleaning up expired session: ${sessionId}`);
+            
+            notifyAdmins({
+                type: "session_expired",
+                sessionId,
+                userName: session.userName
+            });
+            
+            delete sessions[sessionId];
+            delete clientConnections[sessionId];
+            expiredCount++;
+        }
+    });
+    
+    if (expiredCount > 0 || timeoutCount > 0) {
+        console.log(`Cleaned up ${expiredCount} expired sessions, ${timeoutCount} timed out sessions`);
+    }
+}
+
+// Check sessions every 30 seconds
+setInterval(cleanupExpiredSessions, 30000);
+
+// Check for sessions approaching timeout (1.5 minutes)
+setInterval(() => {
+    const now = Date.now();
+    const warningThreshold = 1.5 * 60 * 1000; // 1.5 minutes
+    
+    Object.keys(sessions).forEach(sessionId => {
+        const session = sessions[sessionId];
+        if (!session.agentName) {
+            const sessionAge = now - new Date(session.createdAt).getTime();
+            const timeRemaining = SESSION_CLAIM_TIMEOUT - sessionAge;
+            
+            // Send warning to admins when 30 seconds left
+            if (timeRemaining > 0 && timeRemaining <= 30000 && !session.warningSent) {
+                console.log(`⚠️ Session ${sessionId} will timeout in ${Math.ceil(timeRemaining/1000)} seconds`);
+                
+                notifyAdmins({
+                    type: "session_warning",
+                    sessionId,
+                    userName: session.userName,
+                    secondsRemaining: Math.ceil(timeRemaining/1000),
+                    message: `Session will timeout in ${Math.ceil(timeRemaining/1000)} seconds`
+                });
+                
+                sessions[sessionId].warningSent = true;
+            }
+        }
+    });
+}, 10000); // Check every 10 seconds
+
+
+console.log('='.repeat(50));
+console.log('🔍 ENVIRONMENT VARIABLES CHECK');
+console.log('='.repeat(50));
+console.log('GMAIL_USER:', process.env.GMAIL_USER);
+console.log('GMAIL_APP_PASSWORD present:', !!process.env.GMAIL_APP_PASSWORD);
+console.log('GMAIL_APP_PASSWORD length:', process.env.GMAIL_APP_PASSWORD ? process.env.GMAIL_APP_PASSWORD.length : 'NULL');
+console.log('='.repeat(50));
+
+// Validasi environment variables
+let transporter = null;
+
+if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+  console.warn("⚠️ Gmail credentials missing. Email features disabled.");
+} else {
+  transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD }
+  });
+
+  transporter.verify(err => {
+    if (err) console.log("❌ Gmail error:", err.message);
+    else console.log("✅ Gmail SMTP ready");
+  });
+}
+
+// -----------------------------------------------------
+// CHAT CONFIGURATION
+// -----------------------------------------------------
+const CHAT_CONFIG = {
+    "products": [
+        {
+            "id": 1,
+            "name": "WasteVantage",
+            "code": "wastevantage",
+            "is_default": false,
+            "integrations": [
+                {
+                    "id": 1,
+                    "name": "Formspree",
+                    "code": "formspree",
+                    "config": {
+                        "id": "xnnkpnkz"
+                    }
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "name": "iHub",
+            "code": "ihub",
+            "is_default": true,
+            "integrations": []
+        },
+        {
+            "id": 19,
+            "name": "HiThereAI",
+            "code": "hithatereai",
+            "is_default": false,
+            "integrations": [
+                {
+                    "id": 2,
+                    "name": "Formspree",
+                    "code": "formspree",
+                    "config": {
+                        "id": "xnnkpnkz"
+                    }
+                }
+            ]
+        }
+    ],
+    "agentTypes": [
+        {
+            "id": 1,
+            "code": "general",
+            "name": "General Questions",
+            "product": "ihub",
+            "category": "general",
+            "system_type_id": null,
+            "menu_order": 1,
+            "is_default": true,
+            "display": {
+                "name": "General Assistant",
+                "icon": "🌐",
+                "color": "#1976d2"
+            },
+            "messages": {
+                "on_select": "I can help you with general inquiries about our products and services.",
+                "follow_up": "What would you like to know about iHub?",
+                "default": 'Regarding ":message", I can help you with iHub products. What specific information do you need?',
+                "fallback": "I understand you're asking about \":message\". I can help you with general inquiries about iHub products. What specific information do you need?"
+            }
+        },
+        {
+            "id": 2,
+            "code": "sales",
+            "name": "WasteVantage Sales",
+            "product": "wastevantage",
+            "category": "waste_management",
+            "system_type_id": 1,
+            "menu_order": 2,
+            "is_default": false,
+            "display": {
+                "name": "Sales Specialist",
+                "icon": "💰",
+                "color": "#4CAF50"
+            },
+            "messages": {
+                "on_select": "I specialize in waste management solutions. How can I assist you with WasteVantage?",
+                "default": "For :product sales inquiries, I recommend connecting with our sales team for personalized assistance. Would you like me to connect you now?",
+                "fallback": "Regarding \":message\", I specialize in sales inquiries. Would you like me to connect you with our sales team for more detailed information?"
+            }
+        },
+        {
+            "id": 3,
+            "code": "automation",
+            "name": "Automation Sales",
+            "product": "hithatereai",
+            "category": "automation",
+            "system_type_id": 19,
+            "menu_order": 3,
+            "is_default": false,
+            "display": {
+                "name": "Automation Expert",
+                "icon": "⚙️",
+                "color": "#9C27B0"
+            },
+            "messages": {
+                "on_select": "I specialize in HiThereAI automation solutions. What would you like to know about our automation services?",
+                "default": 'For HiThereAI automation about ":message", we specialize in workflow automation solutions. What specific needs do you have?',
+                "fallback": "For automation questions about \":message\", I can help with HiThereAI solutions. What specific automation needs do you have?"
+            }
+        },
+        {
+            "id": 4,
+            "code": "support",
+            "name": "Ihub Product Support",
+            "product": "ihub",
+            "category": "support",
+            "system_type_id": null,
+            "menu_order": 4,
+            "is_default": false,
+            "display": {
+                "name": "Support Technician",
+                "icon": "🔧",
+                "color": "#FF9800"
+            },
+            "messages": {
+                "on_select": "Let me help you with any technical questions or issues.",
+                "follow_up": "Please describe your issue or question about iHub products.",
+                "default": 'For :product support regarding ":message", please provide more details or email support@ihub.com for assistance.',
+                "fallback": "For support regarding \":message\", please provide more details or email support@ihub.com for assistance."
+            }
+        }
+    ],
+    "liveAgents": [
+        {
+            "id": 1,
+            "role": "sales",
+            "name": "Sales Team",
+            "related_agent_type": "sales",
+            "keywords": [
+                "talk to a live sales person",
+                "connect me to sales",
+                "i want to speak with a sales rep",
+                "can i talk to someone about pricing",
+                "sales team",
+                "sales person",
+                "sales rep",
+                "connect me with sales agent",
+                "speak to sales",
+                "contact sales",
+                "sales contact",
+                "sales department",
+                "sales representative",
+                "i need sales",
+                "get sales",
+                "live sales",
+                "connect with sales"
+            ],
+        },
+        {
+            "id": 2,
+            "role": "consultant",
+            "name": "Consultant Team",
+            "related_agent_type": "automation",
+            "keywords": [
+                "i want to talk to a consultant",
+                "connect me with a waste management consultant",
+                "i need expert advice from a person",
+                "consultant team",
+                "expert advice",
+                "speak with consultant",
+                "consulting services",
+                "professional consultant",
+                "connect me with consultant"
+            ]
+        },
+        {
+            "id": 3,
+            "role": "support",
+            "name": "Support Team",
+            "related_agent_type": "support",
+            "keywords": [
+                "i want to talk to a real person",
+                "transfer me to a human",
+                "can i speak with someone on your team",
+                "i don't want the bot - i want a person",
+                "real person",
+                "human agent",
+                "live person",
+                "speak to human",
+                "talk to a person",
+                "contact support person"
+            ]
+        },
+        {
+            "id": 4,
+            "role": "account",
+            "name": "Account Manager Team",
+            "related_agent_type": "sales",
+            "keywords": [
+                "i want to talk to an account manager",
+                "connect me with account manager",
+                "account manager team",
+                "account management",
+                "billing issue",
+                "account problem",
+                "payment issue",
+                "subscription help",
+                "invoice problem",
+                "speak to account manager",
+                "billing department",
+                "finance team"
+            ]
+        }
+    ],
+    "triggers": [
+        {
+            "type": "pricing",
+            "keywords": [
+                "price",
+                "pricing",
+                "cost",
+                "how much",
+                "quote",
+                "buy"
+            ]
+        }
+    ]
+};
+
+
+
+// Tambahkan ini sebelum endpoint /api/chat/config
+const salesKeywords = [
+    'talk to a live sales person', 'connect me to sales',
+    'i want to speak with a sales rep', 'can i talk to someone about pricing',
+    'sales team', 'sales person', 'sales rep', 'connect me with sales agent',
+    'speak to sales', 'contact sales', 'sales contact', 'sales department',
+    'sales representative', 'i need sales', 'get sales', 'live sales',
+    'connect with sales'
+];
+
+const consultantKeywords = [
+    'i want to talk to a consultant', 'connect me with a waste management consultant',
+    'i need expert advice from a person', 'consultant team', 'expert advice',
+    'speak with consultant', 'consulting services', 'professional consultant', 'connect me with consultant'
+];
+
+const supportKeywords = [
+    'i want to talk to a real person', 'transfer me to a human',
+    'can i speak with someone on your team', 'i don\'t want the bot – i want a person',
+    'real person', 'human agent', 'live person', 'speak to human',
+    'talk to a person', 'contact support person'
+];
+
+const accountKeywords = [
+    'i want to talk to an account manager', 'connect me with account manager',
+    'account manager team', 'account management', 'billing issue',
+    'account problem', 'payment issue', 'subscription help', 'invoice problem',
+    'speak to account manager', 'billing department', 'finance team'
+];
+
+// Helper functions (tambahkan sebelum endpoint)
+function getIconByAgentType(agentType) {
+    const icons = {
+        'support': '🔧',
+        'sales': '💰',
+        'automation': '⚙️',
+        'general': '🌐',
+        'consultant': '👨‍💼',
+        'account': '📊'
+    };
+    return icons[agentType] || '💬';
+}
+
+function getColorByAgentType(agentType) {
+    const colors = {
+        'support': '#FF9800',
+        'sales': '#4CAF50',
+        'automation': '#9C27B0',
+        'general': '#1976d2',
+        'consultant': '#607D8B',
+        'account': '#795548'
+    };
+    return colors[agentType] || '#1976d2';
+}
+
+// -----------------------------------------------------
+// /api/chat/config ENDPOINT YANG BENAR
+// -----------------------------------------------------
+app.get("/api/chat/config", async (req, res) => {
+    console.log("🔍 /api/chat/config endpoint called");
+    
+    try {
+        let conn = await db.promise().getConnection();
+        console.log("✅ Database connection established");
+        
+        try {
+            // 1. QUERY SEMUA PROMPT AKTIF
+            const [prompts] = await conn.query(`
+                SELECT 
+                    id,
+                    agent_type,
+                    identity,
+                    role_description,
+                    primary_goals,
+                    status,
+                    is_active
+                FROM chatbot_prompts 
+                WHERE status = 'active' 
+                  AND is_active = 1
+                ORDER BY 
+                    CASE agent_type
+                        WHEN 'general' THEN 1
+                        WHEN 'sales' THEN 2
+                        WHEN 'automation' THEN 3
+                        WHEN 'support' THEN 4
+                        ELSE 5
+                    END,
+                    id ASC
+            `);
+            
+            console.log("📊 Found active prompts:", prompts.length);
+           
+            
+            // 4. BUILD AGENT TYPES DARI DATA
+            const agentTypes = prompts.map((prompt, index) => {
+                const agentType = prompt.agent_type; // 'general', 'sales', 'automation', 'support'
+                
+                // Tentukan display name
+                let displayName = prompt.identity;
+                if (!displayName) {
+                    switch(agentType) {
+                        case 'sales': displayName = 'Sales Specialist'; break;
+                        case 'automation': displayName = 'Automation Expert'; break;
+                        case 'support': displayName = 'Support Technician'; break;
+                        case 'general': displayName = 'General Assistant'; break;
+                        default: displayName = `${agentType.charAt(0).toUpperCase() + agentType.slice(1)} Assistant`;
+                    }
+                }
+                
+                // Tentukan menu name
+                let menuName = prompt.identity;
+                if (!menuName) {
+                    switch(agentType) {
+                        case 'sales': menuName = 'WasteVantage Sales'; break;
+                        case 'automation': menuName = 'Automation Sales'; break;
+                        case 'support': menuName = 'Ihub Product Support'; break;
+                        case 'general': menuName = 'General Questions'; break;
+                    }
+                }
+                
+                // Tentukan messages
+                const messages = {
+                      on_select: `Hello! I'm ${displayName}. How can I help you?`,
+                  
+                      default: agentType === 'sales'
+                          ? "I can help with pricing, service options, and bookings. Would you like to speak with our sales team?"
+                          : `I can help answer your questions. What would you like to know?`,
+                  
+                      fallback: agentType === 'sales'
+                          ? "I specialize in sales enquiries. Would you like me to connect you with a sales agent?"
+                          : "I understand your question. Could you please provide a bit more detail?"
+                  };
+                
+                return {
+                    id: prompt.id,
+                    agent_type: agentType,
+                    code: agentType,
+                    name: menuName,
+                    menu_order: index + 1,
+                    is_default: agentType === 'general',
+                    display: {
+                        name: displayName,
+                        icon: getIconByAgentType(agentType),
+                        color: getColorByAgentType(agentType)
+                    },
+                    messages: messages,
+                    metadata: {
+                        from_database: true,
+                        database_id: prompt.id,
+                        database_agent_type: agentType,
+                        status: prompt.status,
+                        is_active: prompt.is_active
+                    }
+                };
+            });
+            
+            // 5. DEBUG OUTPUT
+            console.log("🎯 Final Agent Types Structure:");
+            agentTypes.forEach(agent => {
+                console.log(`  [${agent.menu_order}] ${agent.code} (ID: ${agent.id})`);
+                console.log(`      Agent Type: ${agent.code}`);
+                console.log(`      DB Agent Type: ${agent.metadata.database_agent_type}`);
+            });
+            
+            
+            // 7. QUERY TRIGGERS DARI DATABASE (jika ada tabel triggers)
+            let triggers = [];
+            try {
+                const [triggersResult] = await conn.query(`
+                    SELECT agent_types, description FROM chatbot_triggers WHERE is_active = 1
+                `);
+                
+                triggers = triggersResult.map(trigger => ({
+                    type: trigger.agent_types,
+                    keywords: trigger.description ? JSON.parse(trigger.description) : []
+                }));
+                console.log("⚡ Triggers from database:", triggers.length);
+            } catch (triggerErr) {
+                console.log("ℹ️ No triggers table, using default");
+                triggers = [
+                    {
+                        type: "pricing",
+                        keywords: ["price", "pricing", "cost", "how much", "quote", "buy"]
+                    }
+                ];
+            }
+            
+            // 9. RETURN RESPONSE
+            const response = {
+                success: true,
+                data: {
+                    agentTypes: agentTypes,
+                    triggers: triggers,
+                    meta: {
+                        serverTime: new Date().toISOString(),
+                        totalAgents: agentTypes.length,
+                        source: "dynamic_database",
+                        database_tables_used: [
+                            "chatbot_prompts"
+                        ].filter(Boolean),
+                        note: "Configuration dynamically built from available database tables"
+                    }
+                }
+            };
+            
+            // 10. VALIDATE STRUCTURE
+            console.log("🔍 Validating response structure...");
+            agentTypes.forEach(agent => {
+                if (!['general', 'sales', 'automation', 'support'].includes(agent.code)) {
+                    console.warn(`⚠️ Agent code '${agent.code}' may not match expected values`);
+                }
+            });
+            
+            res.json(response);
+            console.log("✅ Config sent successfully");
+            
+        } catch (dbErr) {
+            console.error("❌ Database query error:", dbErr.message);
+            res.status(500).json({
+                success: false,
+                error: "Database query failed: " + dbErr.message,
+                data: null
+            });
+        } finally {
+            conn.release();
+            console.log("🔓 Connection released");
+        }
+        
+    } catch (err) {
+        console.error("❌ API connection error:", err.message);
+        res.status(500).json({
+            success: false,
+            error: "Database connection failed: " + err.message,
+            data: null
+        });
+    }
+});
+
+
+app.post("/send-sms", async (req, res) => {
+  try {
+    const twilio = require("twilio");
+
+    const client = twilio(
+      process.env.TWILIO_SID,
+      process.env.TWILIO_AUTH_TOKEN
+    );
+
+    const { phone, orderCode, paymentLink } = req.body;
+
+    const message = `✅ Order Confirmed!
+Order #${orderCode}
+Pay here:
+${paymentLink}`;
+
+    const sms = await client.messages.create({
+      from: process.env.TWILIO_NUMBER,
+      to: phone,
+      body: message
+    });
+
+    res.json({ success: true, sid: sms.sid });
+  } catch (err) {
+    console.error("Twilio error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+app.get("/api/customers-lookup", async (req, res) => {
+    const { fullname, phone, email } = req.query;
+
+    if (!fullname && !phone && !email) {
+        return res.json({ customer: null });
+    }
+
+    let conn;
+    try {
+        conn = await db.promise().getConnection();
+
+        let customerQuery = `
+            SELECT 
+                c.id,
+                c.first_name,
+                c.last_name,
+                c.email,
+                c.phone,
+                c.postcode,
+                c.status,
+                ct.name AS customer_type
+            FROM customers c
+            LEFT JOIN customer_types ct ON ct.id = c.customer_type_id
+        `;
+
+        const conditions = [];
+        const params = [];
+
+        /* -----------------------------------
+         * PRIORITY MATCH
+         * -----------------------------------*/
+
+        // 1️⃣ EMAIL (HIGHEST PRIORITY)
+        if (email) {
+            conditions.push(`LOWER(c.email) = LOWER(?)`);
+            params.push(email);
+        }
+
+        // 2️⃣ PHONE
+        if (phone) {
+            const normalizedPhone = phone.replace(/\D/g, '');
+            conditions.push(
+                `REGEXP_REPLACE(c.phone, '[^0-9]', '') LIKE ?`
+            );
+            params.push(`%${normalizedPhone}%`);
+        }
+
+        // 3️⃣ FULL NAME (SPLIT)
+        if (fullname) {
+            const parts = fullname.trim().split(/\s+/);
+
+            if (parts.length === 1) {
+                conditions.push(`LOWER(c.first_name) LIKE ?`);
+                params.push(`%${parts[0].toLowerCase()}%`);
+            } else {
+                conditions.push(
+                    `(LOWER(c.first_name) LIKE ? AND LOWER(c.last_name) LIKE ?)`
+                );
+                params.push(
+                    `%${parts[0].toLowerCase()}%`,
+                    `%${parts.slice(1).join(" ").toLowerCase()}%`
+                );
+            }
+        }
+
+        customerQuery += `
+            WHERE ${conditions.join(" AND ")}
+            ORDER BY 
+                CASE 
+                    WHEN c.email IS NOT NULL THEN 1
+                    WHEN c.phone IS NOT NULL THEN 2
+                    ELSE 3
+                END,
+                c.created_at DESC
+            LIMIT 1
+        `;
+
+        const [customers] = await conn.query(customerQuery, params);
+
+        if (!customers.length) {
+            return res.json({ customer: null });
+        }
+
+        const customer = customers[0];
+
+        /* -----------------------------------
+         * AGGREGATES
+         * -----------------------------------*/
+
+        const [[ordersCount]] = await conn.query(
+            `SELECT COUNT(*) AS total FROM orders WHERE customer_id = ?`,
+            [customer.id]
+        );
+
+        const [[lastOrder]] = await conn.query(
+            `
+            SELECT created_at
+            FROM orders
+            WHERE customer_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            `,
+            [customer.id]
+        );
+
+        return res.json({
+            customer: {
+                id: customer.id,
+                first_name: customer.first_name,
+                last_name: customer.last_name,
+                email: customer.email,
+                phone: customer.phone,
+                postcode: customer.postcode,
+                company: customer.company_name || null,
+                customer_type: customer.customer_type || "Standard",
+                status:
+                    customer.status === 1
+                        ? "active"
+                        : customer.status === 2
+                        ? "inactive"
+                        : "pending",
+                total_orders: ordersCount.total,
+                last_order_date: lastOrder?.created_at || null
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Customer lookup error:", err);
+        res.status(500).json({
+            error: "Customer lookup failed",
+            details: err.message
+        });
+    } finally {
+        if (conn) conn.release();
+    }
+});
+
+
+
+app.post("/push/register", (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: "Token required" });
+
+    db.query(
+        "INSERT IGNORE INTO admin_push_tokens (fcm_token, created_at) VALUES (?, NOW())",
+        [token],
+        err => {
+            if (err) {
+                console.error("❌ Token save error:", err);
+                return res.status(500).json({ error: "DB error" });
+            }
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.json({ success: true });
+        }
+    );
+});
+
+
+// -----------------------------------------------------
+// ENHANCED AI CHAT ENDPOINT (WITH FALLBACK HANDLING)
+// -----------------------------------------------------
+ app.post("/ai/chat", async (req, res) => {
+  const startTime = Date.now();
+
+  // ======================================================
+  // IDENTITY EXTRACTOR (BACKEND SOURCE OF TRUTH)
+  // ======================================================
+  function extractIdentity(text = "") {
+    let name = null;
+    let email = null;
+    let phone = null;
+
+    // NAME
+    const nameMatch = text.match(
+      /\b(?:my\s*(?:full\s*)?name\s*(?:is)?|i am|i'm)\s+([a-z][a-z\s'-]{1,40})/i
+    );
+    if (nameMatch) name = nameMatch[1].trim();
+
+    // EMAIL
+    const emailMatch = text.match(
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i
+    );
+    if (emailMatch) email = emailMatch[0];
+
+    // PHONE
+    const phoneMatch = text.match(/\b\d{8,15}\b/);
+    if (phoneMatch) phone = phoneMatch[0];
+
+    return { name, email, phone };
+  }
+
+  try {
+
+    const {
+      session_id,
+      message,
+      agent_type = null,
+      user_name = null,
+      user_email = null,
+      user_phone = null,
+      context = {},
+      conversation_id,
+      conversation_history = []
+    } = req.body;
+
+    console.log("========== STEP 1: INCOMING REQUEST ==========");
+console.log("Session ID:", session_id);
+console.log("Incoming context:", JSON.stringify(context, null, 2));
+console.log("Waste Type in request:", context?.waste_type_id);
+
+    // ======================================================
+    // VALIDATION
+    // ======================================================
+    if (!session_id) {
+      return res.status(400).json({
+        success: false,
+        error: "session_id is required"
+      });
+    }
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "message is empty"
+      });
+    }
+
+    const finalAgentType = agent_type;
+    const sessionId = session_id;
+
+    const userIp =
+      req.headers["x-forwarded-for"] ||
+      req.socket.remoteAddress ||
+      null;
+
+    // ======================================================
+    // BACKEND IDENTITY EXTRACTION
+    // ======================================================
+    const parsed = extractIdentity(message);
+
+    const finalUserName =
+      parsed.name ||
+      user_name ||
+      "Guest";
+
+    const finalUserEmail =
+      parsed.email ||
+      user_email ||
+      null;
+
+    const finalUserPhone =
+      parsed.phone ||
+      user_phone ||
+      null;
+
+    // ======================================================
+      // RESOLVE ACTIVE PROMPT (SOURCE OF TRUTH)
+      // ======================================================
+      const [promptRows] = await db.promise().query(
+        `
+        SELECT id
+        FROM chatbot_prompts
+        WHERE agent_type = ?
+          AND is_active = 1
+          AND status = 'active'
+        ORDER BY activated_at DESC, id DESC
+        LIMIT 1
+        `,
+        [finalAgentType]
+      );
+      
+      const resolvedPromptId = promptRows.length
+        ? promptRows[0].id
+        : null;
+
+    // ======================================================
+    // SAVE USER MESSAGE
+    // ======================================================
+    const [result] = await db.promise().query(
+      `
+      INSERT INTO chatbot_conversations
+      (
+        session_id,
+        user_email,
+        user_name,
+        user_phone,
+        user_ip,
+        agent_type,
+        prompt_id,
+        user_message,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      `,
+      [
+        sessionId,
+        finalUserEmail,
+        finalUserName,
+        finalUserPhone,
+        userIp,
+        finalAgentType,
+        resolvedPromptId,
+        message
+      ]
+    );
+    const conversationId = result.insertId;
+    
+    // ======================================================
+    // END CONVERSATION CHECK
+    // ======================================================
+    if (message.length <= 20 && isConversationEnded(message)) {
+
+      const [rows] = await db.promise().query(
+        `
+        SELECT user_message, ai_response, created_at
+        FROM chatbot_conversations
+        WHERE session_id = ?
+        ORDER BY created_at ASC
+        `,
+        [sessionId]
+      );
+
+      let summary = "Conversation ended.";
+
+      try {
+        const conversationText = rows
+          .map(r => `User: ${r.user_message || ""}\nAI: ${r.ai_response || ""}`)
+          .join("\n");
+
+        const aiResp = await openai.responses.create({
+          model: "gpt-4.1-mini",
+          input: `Summarize this conversation in 3 sentences:\n${conversationText}`
+        });
+
+        summary =
+          aiResp.output?.[0]?.content?.[0]?.text || summary;
+
+      } catch (err) {
+        console.error("❌ SUMMARY ERROR:", err.message);
+      }
+
+      const totalMessages = rows.length;
+      const aiMessages = rows.filter(r => r.ai_response).length;
+
+      const startedAt = rows[0]?.created_at || new Date();
+      const endedAt = new Date();
+
+      const durationSeconds = Math.floor(
+        (endedAt - new Date(startedAt)) / 1000
+      );
+      
+
+      // ======================================================
+      // SAVE SESSION SUMMARY
+      // ======================================================
+      try {
+        await db.promise().query(
+          `
+          INSERT INTO chatbot_conversation_sessions
+          (
+            session_id,
+            conversation_id,
+            user_email,
+            user_name,
+            user_ip,
+            agent_type,
+            total_messages,
+            ai_messages,
+            conversation_summary,
+            session_duration,
+            started_at,
+            ended_at,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          ON DUPLICATE KEY UPDATE
+            conversation_summary = VALUES(conversation_summary),
+            session_duration = VALUES(session_duration),
+            ended_at = VALUES(ended_at)
+          `,
+          [
+            sessionId,
+            conversation_id || sessionId,
+            finalUserEmail,
+            finalUserName,
+            userIp,
+            finalAgentType,
+            totalMessages,
+            aiMessages,
+            summary,
+            durationSeconds,
+            startedAt,
+            endedAt
+          ]
+        );
+      } catch (err) {
+        console.error("❌ INSERT chatbot_conversation_sessions FAILED", err);
+        throw err;
+      }
+
+      return res.json({
+        success: true,
+        ended: true,
+        reply: "Thank you, the conversation has ended.",
+        session_id: sessionId,
+        agent_type: finalAgentType,
+        conversation_id: conversation_id || sessionId
+      });
+    }
+
+    console.log("========== STEP 2: BEFORE SEND TO N8N ==========");
+console.log("Context being sent to n8n:", JSON.stringify(context, null, 2));
+console.log("Waste Type sent:", context?.waste_type_id);
+    // ======================================================
+    // SEND TO N8N
+    // ======================================================
+    const n8nResp = await fetch(
+      "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          message,
+          agent_type: finalAgentType,
+          user_name: finalUserName,
+          user_email: finalUserEmail,
+          user_phone: finalUserPhone,
+          context,
+          conversation_history
+        })
+      }
+    );
+
+    const n8nData = await n8nResp.json();
+    console.log("========== STEP 3: RESPONSE FROM N8N ==========");
+console.log("Context from n8n:", JSON.stringify(n8nData.context, null, 2));
+console.log("Waste Type from n8n:", n8nData?.context?.waste_type_id);
+
+    const aiReply =
+      n8nData.reply ||
+      n8nData.message ||
+      "No response";
+
+    // ======================================================
+    // UPDATE AI RESPONSE
+    // ======================================================
+    let faqData = {
+      faq_ids_used: [],
+      confidence: null
+    };
+    
+    try {
+      const faqRes = await fetch(
+        `https://demo-crm.ihubtechnologies.com.au/api/chatbot/faq/search?query=${encodeURIComponent(message)}`,
+        {
+          method: "GET",
+          headers: {
+            "Accept": "application/json"
+          }
+        }
+      );
+    
+      if (faqRes.ok) {
+        const faqJson = await faqRes.json();
+    
+        faqData.faq_ids_used = faqJson.faq_ids_used || [];
+        faqData.confidence   = faqJson.confidence ?? null;
+      } else {
+        console.warn("⚠ FAQ API failed:", faqRes.status);
+      }
+    
+    } catch (err) {
+      console.error("❌ FAQ API error:", err.message);
+    }
+    
+    await db.promise().query(`
+      UPDATE chatbot_conversations
+      SET
+        ai_response = ?,
+        faq_ids_used = ?,
+        confidence = ?,
+        tokens_used = ?,
+        response_time_ms = ?
+      WHERE id = ?
+    `, [
+      aiReply,
+      JSON.stringify(faqData.faq_ids_used), // dari FAQ API
+      faqData.confidence,                   // dari FAQ API
+      n8nData?.tokens_used ?? null,
+      Date.now() - startTime,
+      conversationId
+    ]);
+
+    console.log("========== STEP 4: FINAL RESPONSE TO FRONTEND ==========");
+console.log("Final context returned:", JSON.stringify(n8nData.context, null, 2));
+console.log("Final Waste Type:", n8nData?.context?.waste_type_id);  
+    // ======================================================
+    // RESPONSE
+    // ======================================================
+    return res.json({
+      success: true,
+      reply: aiReply,
+      session_id: sessionId,
+      agent_type: finalAgentType,
+      conversation_id: conversation_id || sessionId,
+      source: "n8n",
+      context: n8nData.context,
+      timestamp: new Date().toISOString(),
+      response_time_ms: Date.now() - startTime
+    });
+
+  } catch (err) {
+    console.error("🔥 /ai/chat FATAL:", err);
+
+    return res.status(500).json({
+      success: false,
+      reply: "AI temporarily unavailable",
+      agent_type: req.body.agent_type || "general"
+    });
+  }
+});
+
+
+
+
+
+
+app.post("/ai/save-rating", async (req, res) => {
+  try {
+    const {
+      session_id,
+      conversation_id,
+      rating,
+      feedback
+    } = req.body;
+
+    if (!session_id || !rating) {
+      return res.status(400).json({
+        success: false,
+        error: "session_id and rating are required"
+      });
+    }
+
+    await db.promise().query(
+      `
+      UPDATE chatbot_conversation_sessions
+      SET
+        ai_rating = ?,
+        ai_feedback = ?
+      WHERE
+        (conversation_id = ? OR session_id = ?)
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [
+        rating,
+        feedback || null,
+        conversation_id || null,
+        session_id
+      ]
+    );
+
+    return res.json({ success: true });
+
+  } catch (err) {
+    console.error("❌ SAVE RATING ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to save rating"
+    });
+  }
+});
+
+
+
+app.post("/ai/faq-match", async (req, res) => {
+  try {
+    const { session_id, message } = req.body;
+
+    if (!session_id || !message) {
+      return res.status(400).json({
+        success: false,
+        error: "session_id and message are required"
+      });
+    }
+
+    // =====================================================
+    // 1. AMBIL FAQ AKTIF
+    // =====================================================
+    const [faqs] = await db.promise().query(`
+      SELECT id, question, answer, answer_short, keywords, priority
+      FROM chatbot_faq
+      WHERE status = 'active'
+      AND deleted_at IS NULL
+      ORDER BY priority DESC
+    `);
+
+    if (!faqs.length) {
+      return res.json({
+        success: true,
+        matched: false,
+        confidence: 20
+      });
+    }
+
+    const normalize = (text) =>
+      text.toLowerCase().replace(/[^\w\s]/gi, "");
+
+    const userText = normalize(message);
+
+    let bestMatch = null;
+    let bestScore = 0;
+
+    // =====================================================
+    // 2. SIMPLE SIMILARITY SCORING
+    // =====================================================
+    for (const faq of faqs) {
+      const faqText = normalize(faq.question);
+
+      // exact match
+      if (userText === faqText) {
+        bestMatch = faq;
+        bestScore = 100;
+        break;
+      }
+
+      // keyword similarity
+      const userWords = userText.split(" ");
+      const faqWords = faqText.split(" ");
+
+      const intersection = userWords.filter(w =>
+        faqWords.includes(w)
+      );
+
+      const score =
+        (intersection.length / faqWords.length) * 100;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = faq;
+      }
+    }
+
+    // =====================================================
+    // 3. CLASSIFY CONFIDENCE
+    // =====================================================
+    let confidence = 20;
+
+    if (bestScore >= 90) {
+      confidence = 100;
+    } else if (bestScore >= 50) {
+      confidence = 80;
+    } else {
+      confidence = 20;
+    }
+
+    return res.json({
+      success: true,
+      matched: confidence >= 80,
+      confidence,
+      faq: bestMatch
+        ? {
+            id: bestMatch.id,
+            answer: bestMatch.answer,
+            answer_short: bestMatch.answer_short
+          }
+        : null
+    });
+
+  } catch (err) {
+    console.error("FAQ MATCH ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      error: "FAQ match failed"
+    });
+  }
+});
+
+
+
+app.post("/test-ai-fallback",(req,res)=>{
+    res.json({success:true,reply:"Test OK",source:"fallback"});
+});
+
+
+
+// Helper: Build enhanced prompt
+function buildEnhancedPrompt(promptData, similarConversations, context) {
+    // Ambil agent_type dari promptData atau default ke "general"
+    const agentType = promptData.agent_type || "general";
+    
+    let prompt = `
+IDENTITY: ${promptData.identity || 'AI Assistant'}
+ROLE: ${promptData.role_description || ''}
+KNOWLEDGE BASE: ${promptData.context_knowledge || ''}
+LANGUAGE: ${promptData.language || 'australian_english'}
+TONE: ${promptData.tone || 'professional'}
+
+PRIMARY GOALS:
+${promptData.primary_goals || ''}
+
+DO GUIDELINES:
+${promptData.do_guidelines || ''}
+
+DON'T GUIDELINES:
+${promptData.dont_guidelines || ''}
+
+RESPONSE FORMAT: ${promptData.response_format || 'clear and concise'}
+
+CURRENT CONTEXT:
+${JSON.stringify(context, null, 2)}
+`;
+    
+    // Tambahkan learning dari similar conversations
+    if (similarConversations.length > 0) {
+        prompt += "\n\nLEARNED FROM PAST SIMILAR CONVERSATIONS:\n";
+        similarConversations.forEach((conv, index) => {
+            prompt += `
+[Example ${index + 1}]:
+User: ${conv.user_message}
+Assistant: ${conv.ai_response}
+Outcome: ${conv.resolved ? 'Resolved' : 'Not resolved'} (Confidence: ${conv.confidence})
+${conv.user_satisfaction ? `User Feedback: ${conv.user_satisfaction}` : ''}
+---`;
+        });
+        
+        prompt += "\n\nUse insights from these past conversations to inform your response.";
+    }
+    
+    // Tambahkan routing rules jika ada
+    if (promptData.routing_rules) {
+        prompt += `\n\nROUTING RULES:\n${promptData.routing_rules}`;
+    }
+    
+    // Tambahkan escalation triggers jika ada
+    if (promptData.escalation_triggers) {
+        prompt += `\n\nESCALATION TRIGGERS:\n${promptData.escalation_triggers}`;
+    }
+    
+    // KOREKSI: Tambahkan parameter agentType (ke-3)
+    return buildSystemPromptForN8N(promptData, context, agentType);
+}
+
+// Helper: Build OpenAI messages
+function buildOpenAIMessages(systemPrompt, userMessage, history, context) {
+    const messages = [
+        { role: "system", content: systemPrompt }
+    ];
+
+    // Add context as user message
+    if (Object.keys(context).length > 0) {
+        messages.push({
+            role: "user",
+            content: `Additional context: ${JSON.stringify(context, null, 2)}`
+        });
+    }
+
+    // Add history
+    history.forEach(msg => {
+        messages.push({
+            role: msg.role === 'user' ? 'user' : 'assistant',
+            content: msg.content
+        });
+    });
+
+    // Add current message
+    messages.push({ role: "user", content: userMessage });
+
+    return messages;
+}
+
+app.get("/n8n/test", (req, res) => {
+    res.json({
+        status: "online",
+        message: "Server is running on port 3000",
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            getPrompt: "POST /n8n/get-prompt",
+            aiChat: "POST /ai/chat",
+            liveChat: "Various endpoints"
+        }
+    });
+});
+
+// Test endpoint untuk prompt database
+app.get("/n8n/test-prompt/:agent_type", async (req, res) => {
+    const agent_type = req.params.agent_type;
+    
+    try {
+        const promptData = await getAgentPrompt(agent_type);
+        
+        if (!promptData) {
+            return res.json({
+                exists: false,
+                message: `No prompt found for ${agent_type}`,
+                suggestion: "Check chatbot_prompts table"
+            });
+        }
+        
+        const testPrompt = buildSystemPromptForN8N(promptData, {
+            product: "test",
+            user_name: "Test User"
+        });
+        
+        res.json({
+            exists: true,
+            agent_type: agent_type,
+            prompt_data: {
+                identity: promptData.identity,
+                version: promptData.version,
+                status: promptData.status,
+                is_active: promptData.is_active
+            },
+            system_prompt_preview: testPrompt.substring(0, 500) + "...",
+            total_length: testPrompt.length
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            error: error.message
+        });
+    }
+});
+
+// Endpoint untuk melihat semua prompts aktif
+app.get("/test/all-prompts", async (req, res) => {
+    try {
+        const query = `
+            SELECT agent_type, version, identity, status, is_active
+            FROM chatbot_prompts 
+            WHERE is_active = 1
+            ORDER BY agent_type, version DESC
+        `;
+        
+        db.query(query, (error, results) => {
+            if (error) {
+                return res.status(500).json({ error: error.message });
+            }
+            
+            const grouped = results.reduce((acc, prompt) => {
+                if (!acc[prompt.agent_type]) {
+                    acc[prompt.agent_type] = [];
+                }
+                acc[prompt.agent_type].push(prompt);
+                return acc;
+            }, {});
+            
+            res.json({
+                success: true,
+                prompts: grouped,
+                count: results.length
+            });
+        });
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get("/ai/test-prompt/:agent_type", (req, res) => {
+    const agent_type = req.params.agent_type;
+    
+    getAgentPrompt(agent_type).then(promptData => {
+        if (promptData) {
+            res.json({
+                success: true,
+                agent_type: agent_type,
+                prompt: {
+                    identity: promptData.identity,
+                    version: promptData.version,
+                    role: promptData.role_description.substring(0, 100) + '...'
+                },
+                status: 'active'
+            });
+        } else {
+            res.json({
+                success: false,
+                error: `No active prompt found for ${agent_type}`,
+                suggestion: 'Check chatbot_prompts table'
+            });
+        }
+    });
+});
+
+// Endpoint untuk analytics
+app.get("/ai/analytics/:agent_type", (req, res) => {
+    const agent_type = req.params.agent_type;
+    
+    let query = `
+        SELECT 
+            agent_type,
+            COUNT(*) as total_conversations,
+            AVG(confidence) as avg_confidence,
+            SUM(resolved) as resolved_count,
+            AVG(response_time_ms) as avg_response_time,
+            SUM(tokens_used) as total_tokens,
+            SUM(escalated_to_human) as escalated_count,
+            DATE(created_at) as date
+        FROM chatbot_conversations
+    `;
+    
+    const params = [];
+    
+    if (agent_type) {
+        query += ` WHERE agent_type = ?`;
+        params.push(agent_type);
+    }
+    
+    query += ` GROUP BY DATE(created_at), agent_type ORDER BY date DESC LIMIT 30`;
+    
+    db.query(query, params, (error, results) => {
+        if (error) {
+            console.error("Analytics query error:", error);
+            return res.status(500).json({ error: "Database error" });
+        }
+        
+        // Calculate additional metrics
+        const metrics = {
+            by_agent: {},
+            overall: {
+                total_conversations: 0,
+                avg_confidence: 0,
+                resolution_rate: 0,
+                escalation_rate: 0
+            }
+        };
+        
+        results.forEach(row => {
+            if (!metrics.by_agent[row.agent_type]) {
+                metrics.by_agent[row.agent_type] = [];
+            }
+            metrics.by_agent[row.agent_type].push(row);
+            
+            // Aggregate overall
+            metrics.overall.total_conversations += row.total_conversations;
+            metrics.overall.avg_confidence += row.avg_confidence * row.total_conversations;
+        });
+        
+        if (metrics.overall.total_conversations > 0) {
+            metrics.overall.avg_confidence /= metrics.overall.total_conversations;
+            
+            // Calculate rates
+            const resolved = results.reduce((sum, row) => sum + (row.resolved_count || 0), 0);
+            const escalated = results.reduce((sum, row) => sum + (row.escalated_count || 0), 0);
+            
+            metrics.overall.resolution_rate = (resolved / metrics.overall.total_conversations) * 100;
+            metrics.overall.escalation_rate = (escalated / metrics.overall.total_conversations) * 100;
+        }
+        
+        res.json({
+            success: true,
+            analytics: metrics,
+            time_range: 'last_30_days',
+            timestamp: new Date().toISOString()
+        });
+    });
+});
+
+app.post("/n8n/get-prompt", async (req, res) => {
+  console.log("🔧 N8N Request: Get prompt");
+  
+  let rawBody = '';
+  req.on('data', chunk => {
+    rawBody += chunk.toString();
+  });
+  
+  req.on('end', async () => {
+    console.log("📦 Raw request body length:", rawBody.length);
+    
+    try {
+      let body = {};
+      
+      if (rawBody.trim()) {
+        try {
+          body = JSON.parse(rawBody);
+          console.log("✅ Successfully parsed JSON body");
+        } catch (parseError) {
+          console.log("⚠️ Could not parse as JSON");
+        }
+      }
+      
+      const rawAgentType = body.agent_type;
+      const context = body.context || {};
+      
+      console.log("🔍 Raw agent_type from request:", rawAgentType);
+      
+      // Determine agent_type
+      let agentTypeForQuery = "general";
+      
+      if (rawAgentType && typeof rawAgentType === "string") {
+        const cleanAgentType = rawAgentType.toLowerCase().trim();
+        const allowedTypes = ["sales", "support", "automation", "general"];
+        
+        if (allowedTypes.includes(cleanAgentType)) {
+          agentTypeForQuery = cleanAgentType;
+          console.log("✅ Using valid agent_type:", agentTypeForQuery);
+        }
+      }
+      
+      console.log("🔍 Final agent_type for query:", agentTypeForQuery);
+
+      // ⚠️ PERBAIKAN PENTING: Query yang benar berdasarkan data database
+      const query = `
+        SELECT * FROM chatbot_prompts
+        WHERE agent_type = ?
+        AND is_active = 1
+        ORDER BY 
+          CASE 
+            WHEN status = 'active' THEN 1
+            WHEN status = 'testing' THEN 2
+            WHEN status = 'draft' THEN 3
+            ELSE 4
+          END,
+          version DESC
+        LIMIT 1
+      `;
+
+      console.log(`📡 Query Database: "${agentTypeForQuery}"`);
+      
+      db.query(query, [agentTypeForQuery], (error, results) => {
+        if (error) {
+          console.error("❌ Database error:", error);
+          return createDefaultPrompt(agentTypeForQuery, context, res, "database_error");
+        }
+
+        console.log(`🔍 Database results: ${results.length} rows`);
+        
+        if (results.length > 0) {
+          const prompt = results[0];
+          console.log(`✅ Found prompt for "${agentTypeForQuery}": ${prompt.identity}`);
+          console.log(`📊 Prompt status: ${prompt.status}, is_active: ${prompt.is_active}`);
+          
+          const systemPrompt = buildSystemPromptForN8N(prompt, context, agentTypeForQuery);
+          
+          return res.json({
+            success: true,
+            prompt: {
+              system_prompt: systemPrompt,
+              identity: prompt.identity,
+              agent_type: agentTypeForQuery,
+              language: prompt.language || "australian_english",
+              tone: prompt.tone || "professional",
+              version: prompt.version || "v1.0",
+              context_knowledge: prompt.context_knowledge || "",
+              role_description: prompt.role_description || "",
+              status: prompt.status || "draft"
+            },
+            is_fallback: false,
+            timestamp: new Date().toISOString(),
+            debug: {
+              requested_agent_type: rawAgentType,
+              response_agent_type: agentTypeForQuery,
+              db_status: prompt.status,
+              db_is_active: prompt.is_active,
+              note: "Using prompt from database"
+            }
+          });
+        }
+        
+        // Jika tidak ditemukan, buat default
+        console.log(`⚠️ No prompt found for "${agentTypeForQuery}" in database`);
+        return createDefaultPrompt(agentTypeForQuery, context, res, "no_prompt_in_db");
+      });
+
+    } catch (error) {
+      console.error("❌ N8N get-prompt error:", error);
+      const agentType = body.agent_type || "general";
+      createDefaultPrompt(agentType, body.context || {}, res, "catch_error");
+    }
+  });
+});
+
+// 🔧 Helper function untuk hardcoded fallback response
+function sendHardcodedFallbackResponse(requestedAgentType, context, res, reason) {
+  console.log(`🔄 Sending hardcoded fallback response due to: ${reason}`);
+  
+  // SELALU gunakan "general" untuk fallback hardcoded
+  const fallbackAgentType = "general";
+  
+  const fallbackPrompt = {
+    identity: `${fallbackAgentType.charAt(0).toUpperCase() + fallbackAgentType.slice(1)} Assistant`,
+    context_knowledge: "General information about iHub products and services.",
+    role_description: `Assist with ${fallbackAgentType} related inquiries.`,
+    language: "australian_english",
+    tone: "professional"
+  };
+  
+  const systemPrompt = buildSystemPromptForN8N(fallbackPrompt, context, fallbackAgentType);
+
+  res.json({
+    success: true,
+    prompt: {
+      system_prompt: systemPrompt,
+      identity: fallbackPrompt.identity,
+      agent_type: fallbackAgentType, // ⚠️ GUNAKAN "general"
+      language: fallbackPrompt.language,
+      tone: fallbackPrompt.tone,
+      version: "hardcoded_fallback",
+      context_knowledge: fallbackPrompt.context_knowledge,
+      role_description: fallbackPrompt.role_description
+    },
+    is_fallback: true,
+    timestamp: new Date().toISOString(),
+    debug: {
+      requested_agent_type: requestedAgentType,
+      response_agent_type: fallbackAgentType,
+      fallback_reason: reason
+    }
+  });
+}
+
+// 🔧 Helper function to handle query results
+function handleQueryResults(error, results, rawAgentType, queryAgentType, context, res) {
+  if (error) {
+    console.error("❌ Query error:", error);
+    return sendFallbackResponse(rawAgentType, context, res, "query_error");
+  }
+
+  if (results.length === 0) {
+    console.log(`❌ No prompt found for "${queryAgentType}", using fallback`);
+    return sendFallbackResponse(rawAgentType, context, res, "no_results");
+  }
+
+  const prompt = results[0];
+  console.log(`✅ Found prompt for "${queryAgentType}": ${prompt.identity}`);
+  
+  // 🔒 CRITICAL: Use REQUESTED agent_type, not database agent_type
+  const responseAgentType = rawAgentType || queryAgentType || "general";
+  console.log(`🔍 Response agent_type: "${responseAgentType}"`);
+  
+  // Build system prompt - FORCE correct agent_type
+  const systemPrompt = buildSystemPromptForN8N(prompt, context, responseAgentType);
+
+  res.json({
+    success: true,
+    prompt: {
+      system_prompt: systemPrompt,
+      identity: prompt.identity,
+      agent_type: responseAgentType, // 🔥 USE REQUESTED TYPE
+      language: prompt.language || "australian_english",
+      tone: prompt.tone || "professional",
+      version: prompt.version || "v1.0",
+      context_knowledge: prompt.context_knowledge || "",
+      role_description: prompt.role_description || "",
+      status: prompt.status || "active"
+    },
+    is_fallback: false,
+    timestamp: new Date().toISOString(),
+    debug: {
+      requested_agent_type: rawAgentType,
+      query_agent_type: queryAgentType,
+      db_agent_type: prompt.agent_type,
+      response_agent_type: responseAgentType,
+      note: "Using requested agent_type for response"
+    }
+  });
+}
+
+// 🔧 Helper function for fallback queries
+function handleFallbackQuery(error, results, rawAgentType, originalQueryAgentType, context, res) {
+  if (error) {
+    console.error("❌ Fallback query error:", error);
+    return sendFallbackResponse(rawAgentType, context, res, "fallback_error");
+  }
+
+  if (results.length === 0) {
+    console.log("❌ No general prompt found either, using basic fallback");
+    return sendFallbackResponse(rawAgentType, context, res, "no_general_fallback");
+  }
+
+  const prompt = results[0];
+  console.log(`🔄 Using general fallback prompt`);
+  
+  // Still use requested agent_type even with fallback prompt
+  const responseAgentType = rawAgentType || "general";
+  const systemPrompt = buildSystemPromptForN8N(prompt, context, responseAgentType);
+
+  res.json({
+    success: true,
+    prompt: {
+      system_prompt: systemPrompt,
+      identity: prompt.identity,
+      agent_type: responseAgentType, // 🔥 STILL USE REQUESTED TYPE
+      language: prompt.language || "australian_english",
+      tone: prompt.tone || "professional",
+      version: prompt.version || "v1.0",
+      context_knowledge: prompt.context_knowledge || "",
+      role_description: prompt.role_description || ""
+    },
+    is_fallback: true,
+    timestamp: new Date().toISOString(),
+    debug: {
+      requested_agent_type: rawAgentType,
+      original_query_agent_type: originalQueryAgentType,
+      fallback_agent_type: "general",
+      response_agent_type: responseAgentType,
+      note: "Used general prompt as fallback"
+    }
+  });
+}
+
+// 🔧 Helper function for fallback responses
+function sendFallbackResponse(requestedAgentType, context, res, reason) {
+  console.log(`🔄 Sending fallback response due to: ${reason}`);
+  
+  const responseAgentType = requestedAgentType || "general";
+  const fallbackPrompt = {
+    identity: `${responseAgentType.charAt(0).toUpperCase() + responseAgentType.slice(1)} Assistant`,
+    context_knowledge: "General information about iHub products and services.",
+    role_description: `Assist with ${responseAgentType} related inquiries.`,
+    language: "australian_english",
+    tone: "professional"
+  };
+  
+  const systemPrompt = buildSystemPromptForN8N(fallbackPrompt, context, responseAgentType);
+
+  res.json({
+    success: true,
+    prompt: {
+      system_prompt: systemPrompt,
+      identity: fallbackPrompt.identity,
+      agent_type: responseAgentType, // 🔥 USE REQUESTED TYPE
+      language: fallbackPrompt.language,
+      tone: fallbackPrompt.tone,
+      version: "fallback_1.0",
+      context_knowledge: fallbackPrompt.context_knowledge,
+      role_description: fallbackPrompt.role_description
+    },
+    is_fallback: true,
+    timestamp: new Date().toISOString(),
+    debug: {
+      requested_agent_type: requestedAgentType,
+      response_agent_type: responseAgentType,
+      fallback_reason: reason
+    }
+  });
+}
+
+app.get("/ai/prompts", (req, res) => {
+    const query = `
+        SELECT id, agent_type, version, identity, status, is_active
+        FROM chatbot_prompts 
+        WHERE is_active = 1 
+        ORDER BY agent_type, version DESC
+    `;
+
+    db.query(query, (error, results) => {
+        if (error) {
+            console.error("Prompts query error:", error);
+            return res.status(500).json({ error: "Database error" });
+        }
+
+        // Group by agent_type
+        const grouped = results.reduce((acc, prompt) => {
+            if (!acc[prompt.agent_type]) {
+                acc[prompt.agent_type] = [];
+            }
+            acc[prompt.agent_type].push(prompt);
+            return acc;
+        }, {});
+
+        res.json({
+            success: true,
+            prompts: grouped,
+            count: results.length,
+            agent_types: Object.keys(grouped)
+        });
+    });
+});
+
+// -----------------------------------------------------
+// AI DASHBOARD ENDPOINTS
+// -----------------------------------------------------
+
+// Real-time dashboard data
+app.get("/ai/dashboard", (req, res) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const queries = {
+        today_stats: `
+            SELECT 
+                agent_type,
+                COUNT(*) as conversations,
+                AVG(confidence) as avg_confidence,
+                SUM(resolved) as resolved,
+                AVG(response_time_ms) as avg_response_time
+            FROM chatbot_conversations
+            WHERE DATE(created_at) = ?
+            GROUP BY agent_type
+        `,
+        
+        top_conversations: `
+            SELECT 
+                session_id,
+                user_message,
+                ai_response,
+                confidence,
+                resolved,
+                agent_type,
+                TIMESTAMPDIFF(MINUTE, created_at, NOW()) as minutes_ago
+            FROM chatbot_conversations
+            WHERE DATE(created_at) = ?
+            ORDER BY confidence DESC
+            LIMIT 10
+        `,
+        
+        escalation_stats: `
+            SELECT 
+                agent_type,
+                COUNT(*) as total,
+                SUM(escalated_to_human) as escalated,
+                GROUP_CONCAT(DISTINCT escalation_reason) as reasons
+            FROM chatbot_conversations
+            WHERE DATE(created_at) = ?
+            GROUP BY agent_type
+        `
+    };
+    
+    // Execute all queries
+    Promise.all([
+        dbQuery(queries.today_stats, [today]),
+        dbQuery(queries.top_conversations, [today]),
+        dbQuery(queries.escalation_stats, [today])
+    ]).then(([todayStats, topConvs, escalationStats]) => {
+        
+        // Calculate insights
+        const insights = [];
+        
+        // Low confidence alert
+        todayStats.forEach(stat => {
+            if (stat.avg_confidence < 0.6) {
+                insights.push({
+                    type: 'warning',
+                    message: `Low confidence (${Math.round(stat.avg_confidence * 100)}%) for ${stat.agent_type} agent`,
+                    suggestion: 'Consider updating prompts or adding training data'
+                });
+            }
+        });
+        
+        // High escalation alert
+        escalationStats.forEach(stat => {
+            const escalationRate = (stat.escalated / stat.total) * 100;
+            if (escalationRate > 20) {
+                insights.push({
+                    type: 'alert',
+                    message: `High escalation rate (${Math.round(escalationRate)}%) for ${stat.agent_type}`,
+                    suggestion: 'Review escalation triggers or improve AI responses'
+                });
+            }
+        });
+        
+        res.json({
+            success: true,
+            dashboard: {
+                today: today,
+                stats: {
+                    by_agent: todayStats,
+                    total_conversations: todayStats.reduce((sum, s) => sum + s.conversations, 0),
+                    avg_response_time: todayStats.reduce((sum, s) => sum + s.avg_response_time, 0) / todayStats.length
+                },
+                top_conversations: topConvs,
+                escalation_analysis: escalationStats,
+                insights: insights,
+                last_updated: new Date().toISOString()
+            }
+        });
+        
+    }).catch(error => {
+        console.error("Dashboard query error:", error);
+        res.status(500).json({ error: "Dashboard data error" });
+    });
+});
+
+// FUNGSI YANG BENAR (tunggal):
+function buildSystemPromptForN8N(promptData, context, agentType) {
+  // Ensure agentType is always set
+  const finalAgentType = agentType;
+  
+  console.log(`🔍 Building prompt for agent_type: "${finalAgentType}"`);
+  console.log(`🔍 promptData.agent_type: "${promptData.agent_type}"`);
+  console.log(`🔍 parameter agentType: "${agentType}"`);
+
+  const roleRules = {
+    sales: `
+- You MAY discuss pricing, plans, and subscriptions
+- You MAY guide users toward purchase decisions
+- Focus on product features and benefits
+- Provide clear pricing information when asked`,
+    
+    support: `
+- Focus on troubleshooting and issue resolution
+- DO NOT discuss pricing or sales topics
+- Provide technical assistance and solutions
+- Escalate billing issues to sales team`,
+    
+    automation: `
+- Explain workflows, integrations, and automations
+- Focus on technical implementation steps
+- DO NOT discuss pricing or sales topics
+- Provide guidance on setup and configuration`,
+    
+    general: `
+- Provide high-level product information
+- DO NOT discuss pricing or technical details
+- Route specific inquiries to appropriate teams
+- Maintain general assistance role`
+  };
+
+  const userInfo = context.user_name ? `User: ${context.user_name}` : "";
+  const productInfo = context.product ? `Product: ${context.product}` : "";
+  
+  const prompt = `
+# IDENTITY
+${promptData.identity || `You are a ${finalAgentType} AI assistant for iHub products.`}
+
+# RESPONSIBILITIES
+${promptData.role_description || `Assist users with ${finalAgentType} related inquiries.`}
+
+# KNOWLEDGE BASE
+${promptData.context_knowledge || "General information about iHub products and services."}
+
+# CONTEXT
+${userInfo}
+${productInfo}
+${context.chat_history_length ? `Chat History Length: ${context.chat_history_length}` : ""}
+
+# ROLE-SPECIFIC RULES
+${roleRules[finalAgentType] || roleRules.general}
+
+# COMMUNICATION STYLE
+Language: ${promptData.language || "australian_english"}
+Tone: ${promptData.tone || "professional"}
+
+# HARD CONSTRAINTS
+1. You MUST act strictly as a ${finalAgentType} agent
+2. You are NOT allowed to switch roles
+3. If a request is outside your role, politely redirect
+4. Always maintain professional and helpful tone
+
+# FINAL INSTRUCTION
+Answer the user's question clearly, accurately, and according to your role constraints.
+`.trim();
+
+  console.log(`🔍 Built prompt length: ${prompt.length} chars`);
+  console.log(`🔍 Prompt starts with: ${prompt.substring(0, 100)}...`);
+  
+  return prompt;
+}
+
+// Endpoint untuk N8N mengirim chat dengan database prompt
+app.post("/n8n/chat-with-prompt", async (req, res) => {
+    try {
+        const { 
+            agent_type, 
+            message, 
+            conversation_id,
+            user_name,
+            context = {}
+        } = req.body;
+        
+        console.log(`💬 N8N Chat: ${agent_type} - "${message.substring(0, 50)}..."`);
+        
+        // 1. Ambil prompt dari database
+        const promptData = await getAgentPrompt(agent_type);
+        
+        if (!promptData) {
+            return res.json({
+                success: true,
+                reply: `I'm here to help with ${agent_type} inquiries. How can I assist you?`,
+                source: 'fallback_no_prompt',
+                agent_type: agent_type
+            });
+        }
+        
+        // 2. Simpan conversation untuk learning
+        const conversationData = {
+            session_id: conversation_id || `n8n_${Date.now()}`,
+            agent_type: agent_type,
+            user_message: message,
+            context: context,
+            prompt_id: promptData.id,
+            created_at: new Date().toISOString()
+        };
+        
+        saveConversationToDatabase(conversationData);
+        
+        // 3. Return structured data untuk N8N
+        res.json({
+            success: true,
+            n8n_ready: true,
+            agent_type: agent_type,
+            prompt_info: {
+                identity: promptData.identity,
+                version: promptData.version,
+                tone: promptData.tone,
+                language: promptData.language
+            },
+            context: context,
+            user_message: message,
+            conversation_id: conversation_id,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error("❌ N8N chat error:", error);
+        res.json({
+            success: true,
+            reply: `I received your message. As the ${req.body.agent_type} assistant, I'll help you with that.`,
+            agent_type: req.body.agent_type,
+            source: 'error_fallback'
+        });
+    }
+});    
+
+
+// Helper: Generate response dari prompt template
+function generateResponseFromPrompt(promptData, userMessage, context) {
+    const productName = context.product === 'wastevantage' ? 'WasteVantage' : 
+                       context.product === 'hithatereai' ? 'HiThereAI' : 'our product';
+    
+    // Base template berdasarkan agent_type
+    const templates = {
+        'sales': `Regarding your inquiry about "${userMessage}", as a ${promptData.identity}, I recommend discussing this with our sales team for accurate pricing and personalized solutions for ${productName}. Would you like me to connect you?`,
+        'support': `For ${productName} support regarding "${userMessage}", please provide more details or contact our support team at support@ihub.com.`,
+        'automation': `For HiThereAI automation solutions about "${userMessage}", we specialize in workflow automation. What specific process would you like to automate?`,
+        'general': `Regarding "${userMessage}", I can help you with iHub products. What specific information do you need?`
+    };
+    
+    return templates[promptData.agent_type] || templates.general;
+}
+
+// Cari conversations yang similar untuk learning
+async function findSimilarConversations(currentMessage, agent_type, limit = 5) {
+    return new Promise((resolve, reject) => {
+        // Use better search - look for keywords in the message
+        const keywords = currentMessage.toLowerCase().split(' ').filter(word => word.length > 3);
+        let searchCondition = '';
+        let params = [agent_type];
+        
+        if (keywords.length > 0) {
+            // Build OR conditions for each keyword
+            const keywordConditions = keywords.map(keyword => `user_message LIKE ?`).join(' OR ');
+            searchCondition = `AND (${keywordConditions})`;
+            params = params.concat(keywords.map(keyword => `%${keyword}%`));
+        }
+        
+        const query = `
+            SELECT 
+                id,
+                user_message,
+                ai_response,
+                confidence,
+                resolved,
+                user_satisfaction,
+                TIMESTAMPDIFF(HOUR, created_at, NOW()) as hours_ago
+            FROM chatbot_conversations 
+            WHERE agent_type = ?
+            ${searchCondition}
+            AND confidence > 0.6
+            ORDER BY 
+                CASE 
+                    WHEN resolved = 1 AND user_satisfaction = 'helpful' THEN 1
+                    WHEN resolved = 1 THEN 2
+                    ELSE 3
+                END,
+                confidence DESC,
+                hours_ago ASC
+            LIMIT ?
+        `;
+        
+        params.push(limit);
+        
+        db.query(query, params, (error, results) => {
+            if (error) {
+                console.error("Similar conversations query error:", error);
+                resolve([]);
+            } else {
+                console.log(`🔍 Found ${results.length} similar conversations for "${currentMessage}"`);
+                results.forEach((r, i) => {
+                    console.log(`   ${i+1}. "${r.user_message.substring(0, 50)}..." (conf: ${r.confidence})`);
+                });
+                resolve(results);
+            }
+        });
+    });
+}
+
+    // Ambil prompt dengan version terbaru
+async function getAgentPrompt(agent_type, forceGeneralFallback = false) {
+    return new Promise((resolve, reject) => {
+        console.log(`🔍 getAgentPrompt called for: "${agent_type}"`);
+        
+        // Cari spesifik dulu
+        const query = `
+            SELECT * FROM chatbot_prompts 
+            WHERE agent_type = ? 
+            AND is_active = 1 
+            AND status = 'active'
+            ORDER BY version DESC 
+            LIMIT 1
+        `;
+        
+        db.query(query, [agent_type], (error, results) => {
+            if (error) {
+                console.error("❌ Get prompt error:", error);
+                resolve(null);
+            } else if (results.length === 0) {
+                console.log(`⚠️ No active prompt found for "${agent_type}"`);
+                
+                // Fallback ke general JIKA DIIZINKAN
+                if (forceGeneralFallback) {
+                    console.log(`🔄 Trying fallback to general...`);
+                    // Rekursi dengan parameter general
+                    getAgentPrompt("general", false).then(generalPrompt => {
+                        resolve(generalPrompt);
+                    });
+                } else {
+                    resolve(null);
+                }
+            } else {
+                const prompt = results[0];
+                console.log(`✅ Prompt found for ${agent_type}: ${prompt.identity}`);
+                resolve(prompt);
+            }
+        });
+    });
+}
+
+// Bangun enhanced prompt dengan learning
+
+async function callN8NWebhook(data, endpoint = "wastevantage-chatbot") {
+    const n8nUrl = `https://n8n.ihubtechnologies.com.au/webhook/${endpoint}`;
+    
+    console.log(`🔗 Calling N8N: ${n8nUrl}`);
+    console.log(`   Request data:`, JSON.stringify(data, null, 2));
+    
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(n8nUrl, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                "X-Source": "ihub-server"
+            },
+            body: JSON.stringify(data),
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        console.log(`   Response Status: ${response.status} ${response.statusText}`);
+        
+        const responseText = await response.text();
+        console.log(`   Response Body (first 500 chars): ${responseText.substring(0, 500)}`);
+        
+        // Try to parse as JSON
+        try {
+            const jsonResponse = JSON.parse(responseText);
+            console.log(`   ✅ JSON parsed successfully`);
+            return { success: true, status: response.status, data: jsonResponse };
+        } catch (parseError) {
+            console.log(`   ⚠️ Response is not JSON: ${parseError.message}`);
+            return { 
+                success: false, 
+                status: response.status, 
+                error: "Response not JSON", 
+                raw: responseText 
+            };
+        }
+        
+    } catch (error) {
+        console.log(`   ❌ Fetch error: ${error.message}`);
+        return { success: false, error: error.message };
+    }
+}
+
+
+// Analisa response untuk business logic
+function analyzeResponse(aiResponse, userMessage, agent_type) {
+    const analysis = {
+        confidence: 0.8, // Default
+        resolved: false,
+        escalation_needed: false,
+        escalation_reason: null,
+        category_id: null,
+        faq_ids: [],
+        create_ticket: false,
+        create_lead: false,
+        ticket_id: null,
+        lead_id: null,
+        suggested_actions: []
+    };
+    
+    // Deteksi berdasarkan keyword
+    const lowerMessage = userMessage.toLowerCase();
+    const lowerResponse = aiResponse.toLowerCase();
+    
+    // Support issues
+    if (agent_type === 'support') {
+        if (lowerMessage.includes('error') || lowerMessage.includes('not working') || 
+            lowerMessage.includes('problem') || lowerMessage.includes('issue')) {
+            analysis.category_id = 15; // Support category
+            analysis.create_ticket = !lowerResponse.includes('resolved') && 
+                                    !lowerResponse.includes('fixed') &&
+                                    !lowerResponse.includes('solved');
+        }
+    }
+    
+    // Sales inquiries
+    if (agent_type === 'sales') {
+        if (lowerMessage.includes('price') || lowerMessage.includes('cost') ||
+            lowerMessage.includes('buy') || lowerMessage.includes('purchase') ||
+            lowerMessage.includes('demo')) {
+            analysis.category_id = 22; // Sales category
+            analysis.create_lead = lowerMessage.includes('demo') || 
+                                  lowerMessage.includes('contact me') ||
+                                  lowerResponse.includes('sales team');
+        }
+    }
+    
+    // Escalation detection
+    const escalationKeywords = ['talk to human', 'speak to person', 'real person', 
+                               'live agent', 'customer service', 'manager'];
+    if (escalationKeywords.some(keyword => lowerMessage.includes(keyword))) {
+        analysis.escalation_needed = true;
+        analysis.escalation_reason = 'User requested human assistance';
+    }
+    
+    // Confidence calculation (sederhana)
+    if (lowerResponse.includes('i don\'t know') || lowerResponse.includes('i\'m not sure')) {
+        analysis.confidence = 0.3;
+        analysis.resolved = false;
+    } else if (lowerResponse.length > 100 && !lowerResponse.includes('?')) {
+        analysis.confidence = 0.9;
+        analysis.resolved = true;
+    }
+    
+    return analysis;
+}
+
+
+
+// Endpoint untuk feedback dari user
+app.post("/ai/feedback", (req, res) => {
+    const { conversation_id, satisfaction, feedback_text } = req.body;
+    
+    const query = `
+        UPDATE chatbot_conversations 
+        SET user_satisfaction = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE session_id = ? 
+        ORDER BY created_at DESC 
+        LIMIT 1
+    `;
+    
+    db.query(query, [satisfaction, conversation_id], (error, result) => {
+        if (error) {
+            console.error("Feedback update error:", error);
+            return res.status(500).json({ error: "Failed to save feedback" });
+        }
+        
+        // Juga update confidence berdasarkan feedback
+        if (satisfaction === 'helpful') {
+            // Increase confidence for similar future responses
+            updateConfidenceScore(conversation_id, 'increase');
+        } else if (satisfaction === 'not_helpful') {
+            updateConfidenceScore(conversation_id, 'decrease');
+        }
+        
+        res.json({
+            success: true,
+            message: "Thank you for your feedback!",
+            affected_rows: result.affectedRows
+        });
+    });
+});
+
+// Update confidence score untuk learning
+function updateConfidenceScore(conversation_id, direction) {
+    const query = `
+        UPDATE chatbot_conversations 
+        SET confidence = confidence ${direction === 'increase' ? '+' : '-'} 0.1
+        WHERE session_id = ? 
+        AND confidence IS NOT NULL
+    `;
+    
+    db.query(query, [conversation_id], (error) => {
+        if (error) {
+            console.error("Update confidence error:", error);
+        }
+    });
+}
+
+
+
+// Test endpoint untuk verifikasi prompt database
+
+
+// Fallback ke N8N
+async function handleWithN8N(req, res) {
+    try {
+        const n8nResponse = await fetch("https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(req.body)
+        });
+
+        if (!n8nResponse.ok) throw new Error("N8N fallback failed");
+        
+        const data = await n8nResponse.json();
+        
+        res.json({
+            success: true,
+            reply: data.reply,
+            agent_type: req.body.agent_type,
+            source: 'n8n_fallback'
+        });
+    } catch (n8nError) {
+        res.status(500).json({
+            success: false,
+            error: "Both AI and N8N failed",
+            fallback_message: "I apologize, but I'm having trouble processing your request. Please try again or contact support directly."
+        });
+    }
+}
+
+// Ambil history percakapan
+async function getConversationHistory(conversation_id) {
+    return new Promise((resolve, reject) => {
+        const query = `
+            SELECT role, content, timestamp 
+            FROM conversation_logs 
+            WHERE conversation_id = ? 
+            ORDER BY timestamp ASC 
+            LIMIT 10
+        `;
+        
+        db.query(query, [conversation_id], (error, results) => {
+            if (error) {
+                console.error("History query error:", error);
+                resolve([]);
+            } else {
+                resolve(results);
+            }
+        });
+    });
+}
+
+// Simpan percakapan
+async function saveConversation(conversation_id, role, content) {
+    const query = `
+        INSERT INTO conversation_logs (conversation_id, role, content) 
+        VALUES (?, ?, ?)
+    `;
+    
+    db.query(query, [conversation_id, role, content]);
+}
+
+// Endpoint untuk mengambil semua prompt aktif
+
+
+// Helper function untuk query
+function dbQuery(sql, params) {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (error, results) => {
+            if (error) {
+                reject(error);
+            } else {
+                resolve(results);
+            }
+        });
+    });
+}
+
+// -----------------------------------------------------
+// CHAT GREETING API (From Database) - UPDATED VERSION
+// -----------------------------------------------------
+app.get("/api/chat/greeting", (req, res) => {
+    console.log("🔍 /api/chat/greeting endpoint called");
+
+    // Query yang sesuai dengan struktur database Anda
+    const query = `
+        SELECT message_text 
+        FROM chatbot_welcome_messages 
+        WHERE is_active = 1 
+        ORDER BY id DESC 
+        LIMIT 1
+    `;
+
+    console.log("📊 Executing query:", query);
+
+    db.query(query, (error, results) => {
+        if (error) {
+            console.error("❌ Database error in /api/chat/greeting:", error);
+            
+            // Return fallback dengan format yang benar
+            return res.json({
+                success: true,
+                fallback: true,
+                data: {
+                    message: "👋 Welcome to iHub! How can I assist you today? Please select an option:\n\n" +
+                            "1️⃣ General Questions\n" +
+                            "2️⃣ WasteVantage Sales\n" + 
+                            "3️⃣ Automation Sales\n" +
+                            "4️⃣ Ihub Product Support"
+                }
+            });
+        }
+
+        console.log("📋 Query results:", results);
+
+        if (results.length === 0) {
+            console.log("ℹ️ No active greeting found in database");
+            return res.json({
+                success: true,
+                data: {
+                    message: "👋 Welcome to iHub! How can I assist you today? Please select an option:\n\n" +
+                            "1️⃣ General Questions\n" +
+                            "2️⃣ WasteVantage Sales\n" + 
+                            "3️⃣ Automation Sales\n" +
+                            "4️⃣ Ihub Product Support"
+                }
+            });
+        }
+
+        const text = results[0].message_text;
+        
+        console.log("✅ Greeting fetched from database:", text.substring(0, 100) + "...");
+
+        return res.json({
+            success: true,
+            data: {
+                message: text
+            }
+        });
+    });
+});
+
+function getDefaultGreeting() {
+    return {
+        message: "👋 Cannot connect to database. Using default greeting..."
+    };
+}
+
+async function safeQuery(
+  sql,
+  params = [],
+  {
+    retries = 2,
+    delayMs = 200
+  } = {}
+) {
+  try {
+    return await dbQuery(sql, params);
+  } catch (err) {
+    const retryableErrors = [
+      "ECONNRESET",
+      "PROTOCOL_CONNECTION_LOST",
+      "ETIMEDOUT",
+      "EPIPE"
+    ];
+
+    const shouldRetry =
+      retryableErrors.includes(err.code) && retries > 0;
+
+    if (!shouldRetry) {
+      console.error("❌ DB Query Failed:", {
+        code: err.code,
+        message: err.message,
+        sql
+      });
+      throw err;
+    }
+
+    console.warn(
+      `⚠️ DB error (${err.code}). Retrying in ${delayMs}ms... (${retries} left)`
+    );
+
+    // Delay (simple backoff)
+    await new Promise(res => setTimeout(res, delayMs));
+
+    return safeQuery(sql, params, {
+      retries: retries - 1,
+      delayMs: delayMs * 2 // exponential backoff
+    });
+  }
+}
+// -----------------------------------------------------
+// AI GENERATION ENDPOINT
+// -----------------------------------------------------
+app.post("/generate", async (req, res) => {
+    try {
+        const { prompt } = req.body;
+        
+        if (!prompt) {
+            return res.status(400).json({ 
+                success: false, 
+                error: "Prompt is required" 
+            });
+        }
+
+        console.log(`\n=== /generate REQUEST ===`);
+        console.log(`Prompt: "${prompt}"`);
+
+        // Prepare data for N8N
+        const n8nData = {
+            // Coba format yang berbeda-beda
+            agent_type: "automation",
+            message: prompt,
+            task: "generate",
+            original_prompt: prompt,
+            system_instruction: "Generate structured content using WasteVantage rules.",
+            source: "generate_endpoint",
+            timestamp: new Date().toISOString(),
+            
+            // Tambahkan semua field dari request asli
+            ...req.body
+        };
+
+        // Coba panggil N8N
+        const n8nResult = await callN8NWebhook(n8nData, "ihubs_chat");
+        
+        if (n8nResult.success && n8nResult.data) {
+            console.log(`✅ N8N response successful`);
+            
+            // Cek berbagai kemungkinan field response
+            const output = n8nResult.data.reply || 
+                          n8nResult.data.output || 
+                          n8nResult.data.message ||
+                          n8nResult.data.content ||
+                          "Generated content from N8N";
+            
+            return res.json({
+                success: true,
+                output: output,
+                source: 'n8n',
+                n8n_response: n8nResult.data,
+                raw_n8n_status: n8nResult.status
+            });
+        }
+        
+        console.log(`⚠️ N8N failed, using fallback`);
+        
+        // Fallback
+        return res.json({
+            success: true,
+            output: `Based on: "${prompt}", I've processed your generation request.`,
+            source: 'fallback',
+            n8n_status: 'no_valid_response',
+            note: "N8N responded but no valid output field found"
+        });
+
+    } catch (err) {
+        console.error("❌ /generate Error:", err);
+        
+        res.json({
+            success: false,
+            error: err.message,
+            stack: err.stack
+        });
+    }
+});
+
+app.post("/test-n8n-format", async (req, res) => {
+    const { format } = req.body;
+    
+    const testData = {
+        timestamp: new Date().toISOString(),
+        test: "format_test"
+    };
+    
+    // Coba format yang berbeda
+    if (format === 'simple') {
+        testData.message = "Test message";
+        testData.agent_type = "general";
+    } else if (format === 'chat') {
+        testData.agent_type = "sales";
+        testData.message = "Test sales inquiry";
+        testData.user_name = "Test User";
+    } else if (format === 'generate') {
+        testData.task = "generate";
+        testData.prompt = "Test generation prompt";
+        testData.agent_type = "automation";
+    }
+    
+    console.log(`\n=== Testing N8N format: ${format} ===`);
+    console.log("Sending:", JSON.stringify(testData, null, 2));
+    
+    const result = await callN8NWebhook(testData, "ihubs_chat");
+    
+    res.json({
+        test_format: format,
+        sent_data: testData,
+        n8n_result: result
+    });
+});
+
+// -----------------------------------------------------
+// CORS OPTIONS HANDLING
+// -----------------------------------------------------
+app.options("/livechat/admin/stream", (req, res) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Accept");
+    res.status(200).end();
+});
+
+app.options("/livechat/stream", (req, res) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Accept");
+    res.status(200).end();
+});
+
+// -----------------------------------------------------
+// LIVE CHAT ENDPOINTS (Updated with timeout support)
+// -----------------------------------------------------
+
+// Create Session with timeout info
+app.post("/livechat/request", (req, res) => {
+
+    const {
+        name = "Guest",
+        email = "",
+        requestedRole = "support",
+        initialMessages = []
+    } = req.body;
+
+    const sessionId = uuid();
+    const safeName  = name && name !== "null" ? name : "Guest";
+    const safeEmail = email || "";
+    const role      = requestedRole.toLowerCase();
+
+    // 1️⃣ CREATE SESSION
+    sessions[sessionId] = {
+        id: sessionId,
+        userName: safeName,
+        userEmail: safeEmail,
+        requestedRole: role,
+        agentName: null,
+        messages: [...initialMessages],
+        createdAt: new Date(),
+        lastActivity: new Date(),
+        status: "waiting",
+        timeoutAt: new Date(Date.now() + SESSION_CLAIM_TIMEOUT),
+        warningSent: false
+    };
+
+    // 2️⃣ INSERT DB
+    db.query(
+        `INSERT INTO chatbot_conversations_liveagent
+         (session_id, client_name, client_email, conversation_text, created_at, status)
+         VALUES (?, ?, ?, '', NOW(), 'active')`,
+        [sessionId, safeName, safeEmail],
+        (err) => {
+            if (err) {
+                console.error("❌ DB insert error:", err);
+                return res.status(500).json({ error: "DB insert failed" });
+            }
+
+            // 3️⃣ FIREBASE DATA PUSH
+            db.query("SELECT fcm_token FROM admin_push_tokens", (e, rows) => {
+                if (!rows || rows.length === 0) {
+                    console.log("⚠️ No admin FCM tokens");
+                } else {
+                    const tokens = rows.map(r => r.fcm_token).filter(Boolean);
+
+                    if (tokens.length) {
+                        admin.messaging().sendEachForMulticast({
+                            data: {
+                                title: "📞 Incoming Live Chat",
+                                body: `${safeName} wants ${role} support`,
+                                session_id: sessionId,
+                                requestedRole: role,
+                                type: "incoming_call"
+                            },
+                            tokens
+                        }).catch(err => {
+                            console.error("❌ FCM send error:", err.message);
+                        });
+                    }
+                }
+            });
+
+            // 4️⃣ SSE
+            notifyAdmins({
+                type: "new_session",
+                sessionId,
+                userName: safeName,
+                requestedRole: role
+            });
+
+            res.json({
+                sessionId,
+                timeout: SESSION_CLAIM_TIMEOUT / 1000,
+                message: "Session created"
+            });
+        }
+    );
+});
+
+
+async function sendAdminPush(sessionId, userName, requestedRole) {
+    try {
+        const [rows] = await db.query("SELECT fcm_token FROM admin_push_tokens");
+        const tokens = rows.map(r => r.fcm_token).filter(Boolean);
+        if (!tokens.length) return;
+
+        const message = {
+            data: {
+                title: "📞 Incoming Live Chat",
+                body: `${userName} wants ${requestedRole} support`,
+                session_id: sessionId,
+                requestedRole,
+                type: "incoming_call"
+            },
+            tokens
+        };
+
+        await admin.messaging().sendEachForMulticast(message);
+        console.log("🔥 DATA PUSH SENT:", sessionId);
+    } catch (err) {
+        console.error("❌ sendAdminPush error:", err);
+    }
+}
+
+
+
+// Endpoint untuk menerima rating
+app.post('/livechat/rating', (req, res) => {
+    let { sessionId, rating, ratingType } = req.body;
+
+    // ===============================
+    // SAFETY NORMALIZATION
+    // ===============================
+    const VALID = ['Good', 'Needs Improvement', 'Not Rated'];
+
+    if (!VALID.includes(rating)) rating = 'Not Rated';
+    if (!VALID.includes(ratingType)) ratingType = 'Not Rated';
+
+    db.query(
+        `UPDATE chatbot_conversations_liveagent
+         SET rating = ?,
+             rating_type = ?
+         WHERE session_id = ?`,
+        [rating, ratingType, sessionId],
+        (err) => {
+            if (err) {
+                console.error('❌ DB rating error:', err.message);
+                return res.status(500).json({ success: false });
+            }
+
+            db.query(
+                `INSERT INTO chatbot_session_logs
+                 (session_id, action, details, timestamp)
+                 VALUES (?, 'rating', ?, NOW())`,
+                [sessionId, rating],
+                () => {}
+            );
+
+            res.json({ success: true });
+        }
+    );
+});
+
+
+
+app.get('/livechat/session/:sessionId/agent', (req, res) => {
+    const { sessionId } = req.params;
+    
+    console.log(`🔍 Getting agent name for session: ${sessionId}`);
+    
+    try {
+        // CEK DARI MEMORY TERLEBIH DAHULU
+        if (sessions[sessionId] && sessions[sessionId].agentName) {
+            console.log(`✅ Found agent in memory: ${sessions[sessionId].agentName}`);
+            return res.json({
+                success: true,
+                agentName: sessions[sessionId].agentName,
+                sessionId: sessionId
+            });
+        }
+        
+        // JIKA TIDAK ADA DI MEMORY, CEK DATABASE
+        console.log(`🔍 Agent not found in memory, checking database...`);
+        db.query(
+            `SELECT agent_name FROM chatbot_conversations_liveagent 
+             WHERE session_id = ?`,
+            [sessionId],
+            (err, results) => {
+                if (err) {
+                    console.error('❌ Database error:', err.message);
+                    return res.status(500).json({ 
+                        success: false, 
+                        error: 'Database error' 
+                    });
+                }
+                
+                if (results.length > 0 && results[0].agent_name) {
+                    console.log(`✅ Found agent in database: ${results[0].agent_name}`);
+                    return res.json({
+                        success: true,
+                        agentName: results[0].agent_name,
+                        sessionId: sessionId
+                    });
+                }
+                
+                // JIKA TIDAK DITEMUKAN
+                console.log(`❌ Agent name not found for session: ${sessionId}`);
+                res.json({
+                    success: false,
+                    message: 'Agent name not found for this session'
+                });
+            }
+        );
+        
+    } catch (error) {
+        console.error('❌ Error in getAgentNameFromServer:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Internal server error' 
+        });
+    }
+});
+
+
+
+// Client SSE Stream with timeout support
+app.get('/livechat/stream', (req, res) => {
+    const sessionId = req.query.sessionId;
+    
+    if (!sessionId) {
+        return res.status(400).json({ error: 'Session ID required' });
+    }
+
+    console.log(`🔗 Client connected to SSE: ${sessionId}`);
+
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    // Send current session status
+    if (sessions[sessionId]) {
+        const session = sessions[sessionId];
+        const timeRemaining = Math.max(0, SESSION_CLAIM_TIMEOUT - (Date.now() - new Date(session.createdAt).getTime()));
+        
+        res.write(`data: ${JSON.stringify({ 
+            type: 'connected', 
+            sessionId,
+            timeRemaining: Math.ceil(timeRemaining / 1000),
+            status: session.status
+        })}\n\n`);
+    } else {
+        res.write(`data: ${JSON.stringify({ type: 'connected', sessionId })}\n\n`);
+    }
+
+    if (!clientConnections[sessionId]) {
+        clientConnections[sessionId] = [];
+    }
+    clientConnections[sessionId].push(res);
+
+    const heartbeat = setInterval(() => {
+        if (res.writableEnded) {
+            clearInterval(heartbeat);
+            return;
+        }
+        res.write(`data: ${JSON.stringify({ 
+            type: 'heartbeat', 
+            timestamp: Date.now(),
+            sessionStatus: sessions[sessionId] ? sessions[sessionId].status : 'unknown'
+        })}\n\n`);
+    }, 30000);
+
+    req.on('close', () => {
+        console.log(`🔌 Client SSE connection closed: ${sessionId}`);
+        clearInterval(heartbeat);
+        
+        if (clientConnections[sessionId]) {
+            clientConnections[sessionId] = clientConnections[sessionId].filter(conn => conn !== res);
+            if (clientConnections[sessionId].length === 0) {
+                delete clientConnections[sessionId];
+            }
+        }
+    });
+});
+
+// Admin SSE Stream with timeout notifications
+app.get("/livechat/admin/stream", (req, res) => {
+    res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+        "X-Accel-Buffering": "no"
+    });
+
+    const clientId = Math.random().toString(36).slice(2,8);
+    adminClients.push(res);
+
+    console.log("🖥️ Admin SSE connected:", clientId);
+
+    res.write(`data: ${JSON.stringify({ type:"connected", clientId })}\n\n`);
+
+    const heartbeat = setInterval(() => {
+        try {
+            res.write(`data: ${JSON.stringify({ type:"heartbeat" })}\n\n`);
+        } catch {}
+    }, 15000);
+
+    req.on("close", () => {
+        clearInterval(heartbeat);
+        const idx = adminClients.indexOf(res);
+        if (idx !== -1) adminClients.splice(idx, 1);
+        console.log("📴 Admin SSE disconnected:", clientId);
+    });
+});
+
+// Send Message
+app.post('/livechat/send', (req, res) => {
+    try {
+        const { sessionId, text, from, name } = req.body;
+
+        if (!sessionId || !text) {
+            return res.status(400).json({ error: 'Session ID and text are required' });
+        }
+
+        if (!sessions[sessionId]) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        const senderName =
+            from === 'agent'
+                ? (sessions[sessionId].agentName || 'Agent')
+                : (sessions[sessionId].userName || 'Guest');
+
+        const line =
+            `[${senderName} - ${new Date().toLocaleString()}] ${text}\n`;
+
+        // 1️⃣ APPEND KE conversation_text
+        db.query(
+            `UPDATE chatbot_conversations_liveagent
+             SET conversation_text = CONCAT(IFNULL(conversation_text,''), ?)
+             WHERE session_id = ?`,
+            [line, sessionId],
+            (err) => {
+                if (err) {
+                    console.error('❌ DB append conversation error:', err.message);
+                }
+            }
+        );
+
+        // 2️⃣ LOG KE session_logs
+        db.query(
+            `INSERT INTO chatbot_session_logs
+             (session_id, action, details, timestamp)
+             VALUES (?, 'message', ?, NOW())`,
+            [sessionId, `${senderName}: ${text}`],
+            () => {}
+        );
+
+        // === LOGIC CHAT LAMA (TETAP) ===
+        const message = {
+            from,
+            text,
+            timestamp: new Date().toISOString(),
+            name: senderName
+        };
+
+        sessions[sessionId].messages.push(message);
+        sessions[sessionId].lastActivity = Date.now();
+
+        if (from === 'user') {
+            notifyAdmins({
+                type: "message",
+                sessionId,
+                from: 'user',
+                text,
+                userName: senderName,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        if (from === 'agent' && clientConnections[sessionId]) {
+            clientConnections[sessionId].forEach(res => {
+                try {
+                    res.write(`data: ${JSON.stringify(message)}\n\n`);
+                } catch {}
+            });
+        }
+
+        res.json({ success: true });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+});
+
+// Test Message to Admin
+app.post("/test-message-to-admin", (req, res) => {
+    const { sessionId, text = "Test message" } = req.body;
+    
+    console.log("🔧 TEST: Sending direct message to admins");
+    
+    if (!sessionId) {
+        return res.status(400).json({ error: "Session ID required" });
+    }
+    
+    let sentCount = 0;
+    adminClients.forEach((adminRes, index) => {
+        try {
+            if (!adminRes.writableEnded && adminRes.writable) {
+                const testMessage = {
+                    type: "message",
+                    sessionId: sessionId,
+                    from: "user", 
+                    text: text,
+                    name: "Test User",
+                    timestamp: new Date().toISOString(),
+                    message: text,
+                    test: true
+                };
+                
+                adminRes.write(`data: ${JSON.stringify(testMessage)}\n\n`);
+                sentCount++;
+                console.log(`✅ TEST sent to admin ${index}`);
+            }
+        } catch (error) {
+            console.log(`❌ TEST failed for admin ${index}:`, error.message);
+        }
+    });
+    
+    res.json({ 
+        success: true, 
+        message: `Test message sent to ${sentCount} admins`,
+        adminConnections: adminClients.length,
+        sentTo: sentCount
+    });
+});
+
+
+app.post("/livechat/queue/add", async (req, res) => {
+    const { sessionId } = req.body;
+
+    try {
+        await db.query(`
+            INSERT INTO chat_queue (session_id, agent_type, queue_number, status, created_at)
+            VALUES (?, ?, 
+                (SELECT IFNULL(MAX(queue_number),0)+1 FROM chat_queue),
+                'waiting', NOW()
+            )
+        `, [sessionId, 'support']);
+
+        // kirim pesan ke client via SSE
+        sendToClient(sessionId, {
+            type: "queue_status",
+            message: "You are in queue. Live agent will connect to you shortly."
+        });
+
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success:false, error:e.message });
+    }
+});
+
+
+
+// Admin Send Message to Client
+app.post('/livechat/admin-send', async (req, res) => {
+    try {
+        const { sessionId, text, agentName } = req.body;
+        
+        if (!sessionId || !text) {
+            return res.status(400).json({ error: 'Session ID and text are required' });
+        }
+
+        console.log(`👨‍💼 Admin message for session ${sessionId}: ${text}`);
+
+        if (!sessions[sessionId]) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+        
+        const message = {
+            from: 'agent',
+            text: text,
+            timestamp: new Date().toISOString(),
+            name: agentName || 'Agent'
+        };
+        
+        sessions[sessionId].messages.push(message);
+        sessions[sessionId].lastActivity = Date.now();
+
+        pushToClients(sessionId, message);
+
+        res.json({ success: true, message: 'Message sent to client' });
+
+    } catch (error) {
+        console.error('❌ Error sending admin message:', error);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+});
+
+// Admin Claims Session
+app.post("/livechat/claim", (req, res) => {
+    const { sessionId, agentName, agentRole } = req.body;
+
+    console.log(`Claiming session ${sessionId} by ${agentName} (${agentRole})`);
+
+    // 1️⃣ VALIDASI SESSION
+    if (!sessions[sessionId]) {
+        return res.status(400).json({ error: "Invalid session" });
+    }
+
+    // 2️⃣ CEK TIMEOUT
+    if (sessions[sessionId].status === 'timed_out') {
+        return res.status(400).json({ 
+            error: "Session has already timed out. Please ask the user to start a new session." 
+        });
+    }
+
+    // 3️⃣ CEK SUDAH DICLAIM
+    if (sessions[sessionId].agentName) {
+        return res.status(400).json({ 
+            error: "Session already claimed by another agent" 
+        });
+    }
+
+    // 4️⃣ SIMPAN KE MEMORY (WAJIB)
+    sessions[sessionId].agentName = agentName;
+    sessions[sessionId].assignedRole = agentRole.toLowerCase();
+    sessions[sessionId].lastActivity = new Date();
+    sessions[sessionId].status = 'claimed';
+    sessions[sessionId].claimedAt = new Date().toISOString();
+
+    // 5️⃣ UPDATE TABLE UTAMA (🔥 AUTO SAVE AGENT)
+    db.query(
+        `UPDATE chatbot_conversations_liveagent
+         SET agent_name = ?,
+             status = 'claimed'
+         WHERE session_id = ?
+           AND agent_name IS NULL`,
+        [agentName, sessionId],
+        (err) => {
+            if (err) {
+                console.error('❌ DB claim update error:', err.message);
+            }
+        }
+    );
+
+    // 6️⃣ LOG KE SESSION LOGS
+    db.query(
+        `INSERT INTO chatbot_session_logs
+         (session_id, action, details, timestamp)
+         VALUES (?, 'claim', ?, NOW())`,
+        [sessionId, `Claimed by ${agentName} (${agentRole})`],
+        () => {}
+    );
+
+    // 7️⃣ NOTIFY ADMIN LAIN
+    notifyAdmins({
+        type: "assigned",
+        sessionId,
+        agentName,
+        agentRole: agentRole.toLowerCase(),
+        userName: sessions[sessionId].userName,
+        requestedRole: sessions[sessionId].requestedRole,
+        timestamp: new Date().toISOString()
+    });
+
+    // 8️⃣ NOTIFY CLIENT (SSE)
+    if (clientConnections[sessionId]) {
+        clientConnections[sessionId].forEach(clientRes => {
+            try {
+                clientRes.write(`data: ${JSON.stringify({
+                    type: 'agent_connected',
+                    message: `Connected to ${agentName} from ${agentRole} team`,
+                    agentName: agentName,
+                    timestamp: new Date().toISOString()
+                })}\n\n`);
+            } catch (error) {
+                console.log('❌ Failed to notify client about agent connection');
+            }
+        });
+    }
+
+    // 9️⃣ WELCOME MESSAGE (TETAP SEPERTI SEKARANG)
+    const welcomeMsg = {
+        from: "agent",
+        text: `Hello, I'm ${agentName} from the ${agentRole} team. How can I help you today?`,
+        timestamp: new Date().toISOString()
+    };
+
+    sessions[sessionId].messages.push(welcomeMsg);
+    pushToClients(sessionId, welcomeMsg);
+
+    // 🔟 RESPONSE
+    res.json({ 
+        success: true,
+        message: "Session claimed successfully"
+    });
+});
+
+// Get Sessions with timeout info
+app.get("/livechat/sessions", (req, res) => {
+    const { role, includeTimedOut = false } = req.query;
+    
+    let filteredSessions = Object.values(sessions);
+    
+    // Filter by role if specified
+    if (role && role !== 'all') {
+        filteredSessions = filteredSessions.filter(
+            session => session.requestedRole === role.toLowerCase()
+        );
+    }
+    
+    // Exclude timed out sessions unless specifically requested
+    if (includeTimedOut !== 'true') {
+        filteredSessions = filteredSessions.filter(session => session.status !== 'timed_out');
+    }
+    
+    // Filter out claimed sessions if we're looking for waiting sessions
+    const waitingOnly = req.query.waiting === 'true';
+    if (waitingOnly) {
+        filteredSessions = filteredSessions.filter(session => !session.agentName);
+    }
+
+    const list = filteredSessions.map((s) => {
+        const sessionAge = Date.now() - new Date(s.createdAt).getTime();
+        const timeRemaining = Math.max(0, SESSION_CLAIM_TIMEOUT - sessionAge);
+        
+        return {
+            id: s.id,
+            userName: s.userName,
+            agentName: s.agentName,
+            requestedRole: s.requestedRole,
+            assignedRole: s.assignedRole,
+            messagesCount: s.messages.length,
+            lastMessage: s.messages[s.messages.length - 1] || null,
+            createdAt: s.createdAt,
+            lastActivity: s.lastActivity,
+            status: s.status,
+            timeRemaining: Math.ceil(timeRemaining / 1000),
+            isUrgent: timeRemaining <= 30000, // 30 seconds remaining
+            timeoutAt: s.timeoutAt || new Date(new Date(s.createdAt).getTime() + SESSION_CLAIM_TIMEOUT)
+        };
+    });
+
+    console.log(`Returning ${list.length} sessions for role: ${role || 'all'}`);
+    res.json(list);
+});
+
+// Get Session by ID
+app.get("/livechat/session/:sessionId", (req, res) => {
+    const sessionId = req.params.sessionId;
+    
+    if (!sessions[sessionId]) {
+        return res.status(404).json({ error: "Session not found" });
+    }
+    
+    const session = sessions[sessionId];
+    const sessionAge = Date.now() - new Date(session.createdAt).getTime();
+    const timeRemaining = Math.max(0, SESSION_CLAIM_TIMEOUT - sessionAge);
+
+    res.json({
+        ...session,
+        timeRemaining: Math.ceil(timeRemaining / 1000),
+        isUrgent: timeRemaining <= 30000,
+        minutesWaiting: Math.floor(sessionAge / 60000)
+    });
+});
+
+// Chat History
+app.get("/livechat/history/:sessionId", (req, res) => {
+    const id = req.params.sessionId;
+
+    if (!sessions[id]) {
+        return res.status(404).json({ error: "Session not found" });
+    }
+
+    res.json(sessions[id].messages);
+});
+
+// -----------------------------------------------------
+// CLOSE SESSION (cleanup)
+// -----------------------------------------------------
+app.post('/livechat/close', (req, res) => {
+    const { sessionId } = req.body;
+
+    if (!sessions[sessionId]) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // update main table
+    db.query(
+        `UPDATE chatbot_conversations_liveagent
+         SET ended_at = NOW(),
+             status = 'ended'
+         WHERE session_id = ?`,
+        [sessionId],
+        (err) => {
+            if (err) {
+                console.error('❌ DB close error:', err.message);
+            }
+        }
+    );
+
+    // log
+    db.query(
+        `INSERT INTO chatbot_session_logs
+         (session_id, action, details, timestamp)
+         VALUES (?, 'close', 'Session closed by agent', NOW())`,
+        [sessionId],
+        () => {}
+    );
+
+    // notify client
+    if (clientConnections[sessionId]) {
+        clientConnections[sessionId].forEach(res => {
+            try {
+                res.write(`data: ${JSON.stringify({
+                    type: 'session_closed',
+                    timestamp: new Date().toISOString()
+                })}\n\n`);
+            } catch {}
+        });
+    }
+
+    delete sessions[sessionId];
+    delete clientConnections[sessionId];
+
+    res.json({ success: true });
+});
+
+
+// -----------------------------------------------------
+// END SESSION (Admin ends chat)
+// -----------------------------------------------------
+    app.post("/livechat/end-session", (req, res) => {
+    const { sessionId, agentName = "Admin", agentRole = "support", reason = "Chat ended by agent" } = req.body;
+
+    console.log(`👋 End session requested: ${sessionId} by ${agentName}`);
+
+    if (!sessionId) {
+        return res.status(400).json({ error: "Session ID is required" });
+    }
+
+    if (!sessions[sessionId]) {
+        return res.status(404).json({ error: "Session not found" });
+    }
+
+    const session = sessions[sessionId];
+    const userName = session.userName || 'Guest';
+
+    // Notify client if still connected
+    if (clientConnections[sessionId]) {
+        clientConnections[sessionId].forEach(clientRes => {
+            try {
+                clientRes.write(`data: ${JSON.stringify({
+                    type: 'agent_ended',
+                    message: `👋 ${agentName} (${agentRole}) has ended the chat. Thank you for contacting us!`,
+                    reason: reason
+                })}\n\n`);
+            } catch (error) {
+                // Ignore errors
+            }
+        });
+    }
+
+    // Clean up
+    delete sessions[sessionId];
+    delete clientConnections[sessionId];
+
+    // Notify admins
+    notifyAdmins({
+        type: "session_ended",
+        sessionId,
+        userName,
+        endedBy: agentName,
+        reason: reason,
+        timestamp: new Date().toISOString()
+    });
+
+    res.json({ 
+        success: true, 
+        message: "Session ended successfully",
+        notification: `User ${userName} has been notified that the chat ended`
+    });
+});
+
+// Transfer Session
+app.post("/livechat/transfer", (req, res) => {
+    const { sessionId, targetRole, transferredBy } = req.body;
+
+    if (!sessions[sessionId]) {
+        return res.status(404).json({ error: "Session not found" });
+    }
+
+    const validRoles = ["sales", "consultant", "support", "account"];
+    if (!validRoles.includes(targetRole.toLowerCase())) {
+        return res.status(400).json({ error: "Invalid target role" });
+    }
+
+    const oldRole = sessions[sessionId].requestedRole;
+    sessions[sessionId].requestedRole = targetRole.toLowerCase();
+    sessions[sessionId].agentName = null;
+    sessions[sessionId].lastActivity = new Date();
+
+    notifyAdmins({
+        type: "session_transferred",
+        sessionId,
+        userName: sessions[sessionId].userName,
+        fromRole: oldRole,
+        toRole: targetRole,
+        transferredBy,
+        timestamp: new Date().toISOString()
+    });
+
+    res.json({ 
+        success: true, 
+        message: `Session transferred from ${oldRole} to ${targetRole}` 
+    });
+});
+
+// Connection Test
+app.get("/livechat/test-connection", (req, res) => {
+    res.json({
+        status: "ok",
+        serverTime: new Date().toISOString(),
+        sessions: Object.keys(sessions).length,
+        adminConnections: adminClients.length,
+        activeClientStreams: Object.keys(clientConnections).length,
+        environment: process.env.NODE_ENV || 'development',
+        message: "Live Chat Server is running correctly"
+    });
+});
+
+// Health Check with timeout info
+app.get("/health", (req, res) => {
+    const waitingSessions = Object.values(sessions).filter(s => !s.agentName && s.status !== 'timed_out');
+    const timedOutSessions = Object.values(sessions).filter(s => s.status === 'timed_out');
+    
+    res.json({ 
+        status: "ok", 
+        totalSessions: Object.keys(sessions).length,
+        waitingSessions: waitingSessions.length,
+        timedOutSessions: timedOutSessions.length,
+        claimedSessions: Object.values(sessions).filter(s => s.agentName).length,
+        adminClients: adminClients.length,
+        activeClientStreams: Object.keys(clientConnections).length,
+        uptime: process.uptime(),
+        sessionTimeout: SESSION_CLAIM_TIMEOUT / 1000, // in seconds
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Session Statistics with timeout data
+app.get("/livechat/stats", (req, res) => {
+    const sessionArray = Object.values(sessions);
+    const now = Date.now();
+    
+    const stats = {
+        total: sessionArray.length,
+        byRole: {
+            sales: sessionArray.filter(s => s.requestedRole === 'sales').length,
+            consultant: sessionArray.filter(s => s.requestedRole === 'consultant').length,
+            support: sessionArray.filter(s => s.requestedRole === 'support').length,
+            account: sessionArray.filter(s => s.requestedRole === 'account').length
+        },
+        byStatus: {
+            waiting: sessionArray.filter(s => !s.agentName && s.status !== 'timed_out').length,
+            claimed: sessionArray.filter(s => s.agentName).length,
+            timed_out: sessionArray.filter(s => s.status === 'timed_out').length
+        },
+        waiting: sessionArray.filter(s => !s.agentName && s.status !== 'timed_out').length,
+        active: sessionArray.filter(s => s.agentName).length,
+        adminConnections: adminClients.length,
+        // Calculate average wait time for claimed sessions
+        averageWaitTime: (() => {
+            const claimedSessions = sessionArray.filter(s => s.agentName && s.claimedAt);
+            if (claimedSessions.length === 0) return 0;
+            
+            const totalWaitTime = claimedSessions.reduce((total, session) => {
+                const waitTime = new Date(session.claimedAt).getTime() - new Date(session.createdAt).getTime();
+                return total + waitTime;
+            }, 0);
+            
+            return Math.floor(totalWaitTime / claimedSessions.length / 1000); // in seconds
+        })(),
+        timestamp: new Date().toISOString()
+    };
+
+    res.json(stats);
+});
+
+// -----------------------------------------------------
+// DEBUG ENDPOINTS (Updated with timeout support)
+// -----------------------------------------------------
+
+app.get("/debug/admin", (req, res) => {
+    const sessionArray = Object.values(sessions);
+    const now = Date.now();
+    
+    res.json({
+        adminConnections: adminClients.length,
+        sessions: sessionArray.length,
+        sessionDetails: sessionArray.map(s => {
+            const sessionAge = now - new Date(s.createdAt).getTime();
+            const timeRemaining = Math.max(0, SESSION_CLAIM_TIMEOUT - sessionAge);
+            
+            return {
+                id: s.id,
+                userName: s.userName,
+                requestedRole: s.requestedRole,
+                agentName: s.agentName,
+                messagesCount: s.messages.length,
+                lastActivity: s.lastActivity,
+                status: s.status,
+                timeRemaining: Math.ceil(timeRemaining / 1000),
+                createdAt: s.createdAt,
+                timeoutAt: s.timeoutAt,
+                warningSent: s.warningSent
+            };
+        })
+    });
+});
+
+app.get("/debug/session/:sessionId", (req, res) => {
+    const sessionId = req.params.sessionId;
+    
+    if (!sessions[sessionId]) {
+        return res.status(404).json({ error: "Session not found" });
+    }
+
+    const session = sessions[sessionId];
+    const sessionAge = Date.now() - new Date(session.createdAt).getTime();
+    const timeRemaining = Math.max(0, SESSION_CLAIM_TIMEOUT - sessionAge);
+
+    res.json({
+        session: {
+            ...session,
+            timeRemaining: Math.ceil(timeRemaining / 1000),
+            minutesWaiting: Math.floor(sessionAge / 60000)
+        },
+        hasClientStreams: !!clientConnections[sessionId],
+        clientStreamCount: clientConnections[sessionId] ? clientConnections[sessionId].length : 0,
+        adminClientCount: adminClients.length
+    });
+});
+
+app.post("/debug/test-message", (req, res) => {
+    const { sessionId, text, from = "client" } = req.body;
+    
+    if (!sessions[sessionId]) {
+        return res.status(404).json({ error: "Session not found" });
+    }
+
+    const msg = {
+        from,
+        text: text || "Test message from debug endpoint",
+        time: Date.now(),
+        timestamp: new Date().toISOString()
+    };
+
+    sessions[sessionId].messages.push(msg);
+    sessions[sessionId].lastActivity = new Date();
+    
+    pushToClients(sessionId, msg);
+
+    notifyAdmins({
+        type: "message",
+        sessionId,
+        from,
+        text: msg.text,
+        userName: sessions[sessionId].userName,
+        requestedRole: sessions[sessionId].requestedRole,
+        timestamp: new Date().toISOString()
+    });
+
+    res.json({ success: true, message: "Test message sent" });
+});
+
+app.post("/debug/force-notify", (req, res) => {
+    const { message = "Test notification" } = req.body;
+    
+    console.log("🔧 Sending forced notification to admins");
+    
+    notifyAdmins({
+        type: "test_notification",
+        message,
+        timestamp: new Date().toISOString(),
+        adminConnections: adminClients.length,
+        testData: {
+            sessionCount: Object.keys(sessions).length,
+            activeSessions: Object.values(sessions).map(s => ({
+                id: s.id,
+                userName: s.userName,
+                role: s.requestedRole,
+                agent: s.agentName,
+                status: s.status
+            }))
+        }
+    });
+    
+    res.json({ 
+        success: true, 
+        message: "Forced notification sent",
+        adminConnections: adminClients.length,
+        activeSessions: Object.keys(sessions).length
+    });
+});
+
+app.get("/debug/sessions", (req, res) => {
+    const sessionList = Object.values(sessions).map(session => {
+        const sessionAge = Date.now() - new Date(session.createdAt).getTime();
+        const timeRemaining = Math.max(0, SESSION_CLAIM_TIMEOUT - sessionAge);
+        
+        return {
+            id: session.id,
+            userName: session.userName,
+            requestedRole: session.requestedRole,
+            agentName: session.agentName,
+            messagesCount: session.messages.length,
+            lastActivity: session.lastActivity,
+            createdAt: session.createdAt,
+            status: session.status,
+            timeRemaining: Math.ceil(timeRemaining / 1000),
+            isUrgent: timeRemaining <= 30000
+        };
+    });
+    
+    res.json({
+        totalSessions: sessionList.length,
+        sessions: sessionList,
+        adminConnections: adminClients.length,
+        sessionTimeout: SESSION_CLAIM_TIMEOUT / 1000, // in seconds
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.post("/debug/send-test-to-admin", (req, res) => {
+    const { sessionId, message = "Test message from debug" } = req.body;
+    
+    console.log("🔧 Sending test message to admins for session:", sessionId);
+    
+    if (!sessionId) {
+        return res.status(400).json({ error: "Session ID required" });
+    }
+    
+    const testPayload = {
+        type: "message",
+        sessionId: sessionId,
+        from: "user",
+        text: message,
+        name: "Test User",
+        userName: "Test User", 
+        timestamp: new Date().toISOString(),
+        message: message,
+        debug: true
+    };
+    
+    notifyAdmins(testPayload);
+    
+    res.json({ 
+        success: true, 
+        message: "Test message sent to admins",
+        adminConnections: adminClients.length,
+        payload: testPayload
+    });
+});
+
+// Debug endpoint to check current state
+app.get("/debug/chat-state", (req, res) => {
+    res.json({
+        server_time: new Date().toISOString(),
+        database: {
+            prompts_count: 'Run SELECT COUNT(*) FROM chatbot_prompts',
+            sales_prompt: 'Run SELECT * FROM chatbot_prompts WHERE agent_type="sales" AND is_active=1'
+        },
+        endpoints: {
+            test_sales: 'POST /n8n/get-prompt with {"agent_type": "sales"}',
+            test_general: 'POST /n8n/get-prompt with {"agent_type": "general"}'
+        },
+        instructions: {
+            step1: 'Check browser console for debug logs',
+            step2: 'Test directly: curl -X POST https://livechat-backend-3sft.onrender.com/n8n/get-prompt -H "Content-Type: application/json" -d \'{"agent_type": "sales"}\'',
+            step3: 'Check n8n workflow execution logs'
+        }
+    });
+});
+
+// -----------------------------------------------------
+// ROOT ENDPOINT
+// -----------------------------------------------------
+app.get("/", (req, res) => {
+    res.json({
+        message: "iHub Combined Server (AI + Live Chat + Database)",
+        version: "1.0.0",
+        endpoints: {
+            ai: {
+                generate: "POST /generate",
+                greeting: "GET /api/chat/greeting",
+                updateGreeting: "POST /api/chat/update-greeting"
+            },
+            liveChat: {
+                requestSession: "POST /livechat/request",
+                clientSSE: "GET /livechat/stream?sessionId=ID",
+                adminSSE: "GET /livechat/admin/stream",
+                sendMessage: "POST /livechat/send",
+                adminSend: "POST /livechat/admin-send",
+                claimSession: "POST /livechat/claim",
+                endSession: "POST /livechat/end-session",
+                sessions: "GET /livechat/sessions",
+                getMessages: "GET /livechat/session/:sessionId/messages",
+                stats: "GET /livechat/stats",
+                health: "GET /health"
+            },
+            debug: {
+                admin: "GET /debug/admin",
+                sessions: "GET /debug/sessions",
+                testMessage: "POST /debug/test-message"
+            }
+        },
+        features: {
+            sessionTimeout: "2 minutes for unclaimed sessions",
+            warnings: "30-second warning before timeout",
+            sessionStatus: "waiting, claimed, timed_out"
+        }
+    });
+});
+
+
+
+app.get("/livechat/session/:sessionId/messages", (req, res) => {
+    const sessionId = req.params.sessionId;
+    
+    if (!sessions[sessionId]) {
+        return res.status(404).json({ 
+            success: false, 
+            error: 'Session not found' 
+        });
+    }
+    
+    const session = sessions[sessionId];
+    
+    res.json({
+        success: true,
+        sessionId: sessionId,
+        userName: session.userName,
+        agentName: session.agentName,
+        status: session.status,
+        messages: session.messages || [],
+        createdAt: session.createdAt,
+        lastActivity: session.lastActivity
+    });
+});
+
+app.get('/admin/sessions', (req, res) => {
+    const activeSessions = Object.values(sessions).map(session => ({
+        id: session.id,
+        userName: session.userName,
+        userEmail: session.userEmail,
+        requestedRole: session.requestedRole,
+        status: session.status,
+        waitingTime: Date.now() - session.createdAt
+    }));
+    
+    res.json(activeSessions);
+});
+
+// ==============================
+// START VOICE WEBSOCKET SERVER
+// ==============================
+startVoiceServer(server); // Kyle Local STT&TTS UPDATE: Enabled
+// -----------------------------------------------------
+// START SERVER
+// -----------------------------------------------------
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log("=== iHub Combined Server ===");
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🧠 AI Endpoint: POST /generate`);
+    console.log(`💬 Live Chat Admin: GET /livechat/admin/stream`);
+    console.log(`📊 Database: Connected to ihub_crm`);
+    console.log(`⏰ Session Timeout: ${SESSION_CLAIM_TIMEOUT/1000} seconds (2 minutes)`);
+    console.log(`✅ All endpoints preserved and functional`);
+    console.log("=============================");
+});
