@@ -556,14 +556,10 @@ async function getAgentFromDB(agentType) {
     return null;
   }
 }
-
 async function runGeminiTurn(session, userText) {
-  // Kyle Gemini FIX: Create a model instance per-turn that includes the
-  // system prompt via systemInstruction (the correct Gemini API approach).
-  // Previously the system prompt was incorrectly jammed into geminiHistory
-  // as a bare user message with no model reply, which caused API errors.
+  // Using the newer 2.5-flash model
   const sessionModel = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash", 
     systemInstruction: session.geminiSystemPrompt || "You are a helpful assistant."
   });
 
@@ -579,7 +575,7 @@ async function runGeminiTurn(session, userText) {
     const response = await result.response;
     const text = response.text();
 
-    // Update history (only real user/model turns — NOT the system prompt)
+    // Update history (only real user/model turns)
     session.geminiHistory = [
       ...(session.geminiHistory || []),
       { role: "user", parts: [{ text: userText }] },
@@ -592,7 +588,6 @@ async function runGeminiTurn(session, userText) {
     return "I'm having trouble thinking right now.";
   }
 }
-
 // Kyle Local STT&TTS UPDATE: Added buildFullSystemPrompt for voice server
 function buildFullSystemPromptLocal(prompt) {
   if (!prompt) {
