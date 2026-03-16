@@ -297,7 +297,7 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 // ======================================================
 
 
-function pcmToWav(pcmBuffer, sampleRate = 16000) {
+function pcmToWav(pcmBuffer, sampleRate = 48000) {
   const stream = new PassThrough();
   const writer = new wav.Writer({
     channels: 1,
@@ -782,7 +782,7 @@ export function startVoiceServer(server) {
             //   return;
             // }
 
-            if (totalSize < 64000) {
+            if (totalSize < 192000) {
               return;
             }
 
