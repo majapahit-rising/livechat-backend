@@ -785,7 +785,7 @@ export function startVoiceServer(server) {
               ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
             // wait until enough audio has accumulated before sending to STT
-            if (totalSize < 48000) {
+            if (totalSize < 16000) {
               return;
             }
 
@@ -833,7 +833,7 @@ export function startVoiceServer(server) {
             ws.audioBuffer = [];
             ws.isProcessing = true;
 
-            const wavStream = pcmToWav(audioData, 48000);
+            const wavStream = pcmToWav(audioData, 16000);
 
             const chunks = [];
             for await (const chunk of wavStream) {
@@ -878,14 +878,14 @@ export function startVoiceServer(server) {
             if (audio && ws.readyState === 1) {
 
               console.log("🔊 Sending AI audio:", audio.length);
-              ws.aiSpeaking = true;
+              // ws.aiSpeaking = true;
               
               ws.send(JSON.stringify({ type: "audio-start" }));
               ws.send(audio);
               ws.send(JSON.stringify({ type: "audio-end" }));
-              setTimeout(()=>{
-                ws.aiSpeaking = false;
-              }, 1200);
+              // setTimeout(()=>{
+              //   ws.aiSpeaking = false;
+              // }, 1200);
 
             }
 
