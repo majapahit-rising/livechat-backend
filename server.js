@@ -783,13 +783,13 @@ export function startVoiceServer(server) {
               ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
             // wait until enough audio has accumulated before sending to STT
-            if (totalSize < 16000) {
-              return;
-            }
-
-            // if (totalSize < 8000) {
+            // if (totalSize < 16000) {
             //   return;
             // }
+
+            if (totalSize < 64000) {
+              return;
+            }
 
             // drop chunk if a pipeline is already running — prevents duplicate TTS
             if (ws.isProcessing) {
@@ -831,7 +831,8 @@ export function startVoiceServer(server) {
             ws.audioBuffer = [];
             ws.isProcessing = true;
 
-            const wavStream = pcmToWav(audioData, 16000);
+            // const wavStream = pcmToWav(audioData, 16000);
+            const wavStream = pcmToWav(audioData, 48000);
 
             const chunks = [];
             for await (const chunk of wavStream) {
