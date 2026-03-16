@@ -438,7 +438,6 @@ function readWavSampleRate(buf) {
 
   return buf.readUInt32LE(24);
 }
-console.log("TTS sample rate:", readWavSampleRate(audio));
 
 async function generateTTS(text) {
 
@@ -698,14 +697,14 @@ export function startVoiceServer(server) {
           if (welcomeAudio && ws.readyState === 1) {
 
             console.log("[DEBUG] Sending welcome audio to client...");
-            // ws.send(welcomeAudio);
-            let pcm = welcomeAudio.slice(44);
+            ws.send(welcomeAudio);
+            // let pcm = welcomeAudio.slice(44);
             
-            if (pcm.length % 2 !== 0) {
-              pcm = pcm.slice(0, pcm.length - 1);
-            }
+            // if (pcm.length % 2 !== 0) {
+            //   pcm = pcm.slice(0, pcm.length - 1);
+            // }
 
-            ws.send(pcm);
+            // ws.send(pcm);
             console.log("[DEBUG] Welcome audio sent.");
 
           } else {
@@ -761,6 +760,7 @@ export function startVoiceServer(server) {
               raw.byteOffset,
               raw.byteLength / 4
             );
+            console.log("RAW BYTES:", raw.length);
             
             const audioData = float32ToInt16(floatData);
             if (!audioData || audioData.length < 16000) {
@@ -816,15 +816,16 @@ export function startVoiceServer(server) {
 
             if (audio && ws.readyState === 1) {
 
-              let pcm = audio.slice(44);
+              // let pcm = audio.slice(44);
 
-              if (pcm.length % 2 !== 0) {
-                pcm = pcm.slice(0, pcm.length - 1);
-              }
+              // if (pcm.length % 2 !== 0) {
+              //   pcm = pcm.slice(0, pcm.length - 1);
+              // }
 
-              console.log("🔊 Sending AI audio:", pcm.length);
+              // console.log("🔊 Sending AI audio:", pcm.length);
 
-              ws.send(pcm);
+              // ws.send(pcm);
+              ws.send(audio);
 
             }
 
