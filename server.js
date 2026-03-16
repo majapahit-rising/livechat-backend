@@ -738,13 +738,14 @@ export function startVoiceServer(server) {
 
           try {
 
-            ws.audioBuffer.push(msg);
+            // ws.audioBuffer.push(msg);
+            ws.audioBuffer.push(Buffer.from(msg));
 
             const totalSize =
               ws.audioBuffer.reduce((a,b)=>a+b.length,0);
 
             // wait until enough audio has accumulated before sending to STT
-            if (totalSize < 8000) {
+            if (totalSize < 16000) {
               return;
             }
 
@@ -762,21 +763,32 @@ export function startVoiceServer(server) {
             // const floatData = new Float32Array(
             //   Buffer.concat(ws.audioBuffer).buffer
             // );
+            // const raw = Buffer.concat(ws.audioBuffer);
+
+            // const floatData = new Float32Array(
+            //   raw.buffer,
+            //   raw.byteOffset,
+            //   raw.byteLength / 4
+            // );
+            // console.log("RAW BYTES:", raw.length);
+            
+            // const audioData = float32ToInt16(floatData);
+            // if (!audioData || audioData.length < 8000) {
+            //   console.log("⚠️ Audio too small, skipping STT");
+            //   ws.audioBuffer = [];
+            //   return;
+            // }
             const raw = Buffer.concat(ws.audioBuffer);
 
-            const floatData = new Float32Array(
-              raw.buffer,
-              raw.byteOffset,
-              raw.byteLength / 4
-            );
             console.log("RAW BYTES:", raw.length);
             
-            const audioData = float32ToInt16(floatData);
-            if (!audioData || audioData.length < 8000) {
-              console.log("⚠️ Audio too small, skipping STT");
-              ws.audioBuffer = [];
-              return;
-            }
+            // mic sudah mengirim INT16 PCM
+            const audioData = raw;
+            
+            // if (!audioData || audioData.length < 16000) {
+            //   console.log("⚠️ Waiting for more audio...");
+            //   return;
+            // }
 
             ws.audioBuffer = [];
             ws.isProcessing = true;
