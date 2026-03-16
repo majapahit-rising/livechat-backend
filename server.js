@@ -782,7 +782,12 @@ export function startVoiceServer(server) {
             //   return;
             // }
 
-            if (totalSize < 192000) {
+            const now = Date.now();
+            const silenceGap = now - ws.lastAudioTime;
+            ws.lastAudioTime = now;
+            
+            // tunggu user selesai bicara
+            if (totalSize < 16000 || silenceGap < 700) {
               return;
             }
 
@@ -812,6 +817,11 @@ export function startVoiceServer(server) {
             //   return;
             // }
             const raw = Buffer.concat(ws.audioBuffer);
+
+            if (raw.length < 32000) {
+              ws.audioBuffer = [];
+              return;
+            }
 
             console.log("RAW BYTES:", raw.length);
             
