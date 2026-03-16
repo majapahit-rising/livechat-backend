@@ -438,6 +438,7 @@ function readWavSampleRate(buf) {
 
   return buf.readUInt32LE(24);
 }
+console.log("TTS sample rate:", readWavSampleRate(audio));
 
 async function generateTTS(text) {
 
