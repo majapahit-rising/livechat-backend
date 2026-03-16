@@ -769,7 +769,7 @@ export function startVoiceServer(server) {
             
             const transcript = await transcribeAudio(wavBuffer);
 
-            iif (!transcript) {
+            if (!transcript) {
               ws.isProcessing = false;
               return;
             }
