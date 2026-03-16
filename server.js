@@ -784,7 +784,7 @@ export function startVoiceServer(server) {
 
            const now = Date.now();
 
-            if (totalSize < 192000) {
+            if (totalSize < 384000) {
               return;
             }
 
