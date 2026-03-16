@@ -296,7 +296,7 @@ async function insertLearningQueue({ sessionId, question, answer }) {
 // ======================================================
 
 
-function pcmToWav(pcmBuffer, sampleRate) {
+function pcmToWav(pcmBuffer, sampleRate = 16000) {
   const stream = new PassThrough();
   const writer = new wav.Writer({
     channels: 1,
@@ -313,18 +313,17 @@ async function transcribeAudio(buffer) {
   try {
     const form = new FormData();
     // Pastikan buffer adalah Buffer Node.js
-    form.append("file", buffer, {
+    form.append("audio_file", buffer, {
       filename: "audio.wav",
       contentType: "audio/wav"
     });
-    form.append("model", "whisper-1");
 
     const res = await axios.post(WHISPER_URL, form, {
       headers: { ...form.getHeaders() },
       timeout: 15000 
     });
 
-    return res.data.text || null;
+    return res.data || null;
   } catch (err) {
     // Menangani error 502 dari Cloudflare/Host
     if (err.response?.status === 502) {
@@ -431,9 +430,8 @@ async function generateTTS(text) {
       KOKORO_URL,
       {
         input: text,
-        voice: "am_echo",
-        speed: 1.1,
-        sample_rate: KOKORO_SAMPLE_RATE
+        voice: "af_sky",
+        model: "kokoro"
       },
       {
         headers: {
