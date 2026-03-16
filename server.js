@@ -315,14 +315,22 @@ async function transcribeAudio(buffer) {
     // Kyle STT FIX: Whisper expects multipart/form-data with a 'file' field,
     // not raw binary with Content-Type: audio/wav.
     const form = new FormData();
-    form.append("audio", buffer, "audio.wav");
-    form.append("model", "whisper-1");
 
+    form.append("file", buffer, {
+      filename: "audio.wav",
+      contentType: "audio/wav"
+    });
+    
+    form.append("model", "whisper-1");
+    
     const res = await axios.post(
       WHISPER_URL,
       form,
       {
-        headers: form.getHeaders(),
+        headers: {
+          ...form.getHeaders()
+        },
+        maxBodyLength: Infinity,
         timeout: 15000
       }
     );
@@ -689,7 +697,8 @@ export function startVoiceServer(server) {
 
             console.log("[DEBUG] Sending welcome audio to client...");
             // ws.send(welcomeAudio);
-            const pcm = welcomeAudio.slice(44);
+            let pcm = welcomeAudio.slice(44);
+            
             if (pcm.length % 2 !== 0) {
               pcm = pcm.slice(0, pcm.length - 1);
             }
@@ -805,7 +814,7 @@ export function startVoiceServer(server) {
 
             if (audio && ws.readyState === 1) {
 
-              const pcm = audio.slice(44);
+              let pcm = audio.slice(44);
 
               if (pcm.length % 2 !== 0) {
                 pcm = pcm.slice(0, pcm.length - 1);
