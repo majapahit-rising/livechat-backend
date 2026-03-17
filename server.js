@@ -98,39 +98,563 @@ const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 
 
-import wav from "wav"; // Kyle Local STT&TTS UPDATE: Uncommented
-import { PassThrough } from "stream"; // Kyle Local STT&TTS UPDATE: Uncommented
-import { WebSocketServer } from "ws"; // Kyle Local STT&TTS UPDATE: Uncommented
-import FormData from "form-data"; // Kyle STT FIX: needed for multipart/form-data upload to Whisper
+// import wav from "wav";
+// import { PassThrough } from "stream";
+// import { WebSocketServer } from "ws";
 
-// Kyle Local STT&TTS UPDATE: Google Gemini Imports
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { spawn } from "child_process";
+// // ======================================================
+// // CONFIG
+// // ======================================================
+
+
+// const WHISPER_URL = "https://renata-wrongful-nontemporizingly.ngrok-free.dev/asr";
+// const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
+// const KOKORO_URL = "http://51.68.124.50:8000/tts";
+
+
+
+// // ======================================================
+// // AI CALL SESSIONS
+// // ======================================================
+
+// const callSessions = new Map();
+
+// // ======================================================
+// // WEBSOCKET CONNECTION
+// // ======================================================
+
+// const extractPostcode = (text) => {
+//   if (!text) return null;
+
+//   const clean = text
+//     .toLowerCase()
+//     .replace(/[^a-z0-9\s]/g, " ");
+
+//   const numericMatch = clean.match(/\b\d{4}\b/);
+//   if (numericMatch) return numericMatch[0];
+
+//   const wordMap = {
+//     zero: "0",
+//     one: "1",
+//     two: "2",
+//     three: "3",
+//     four: "4",
+//     five: "5",
+//     six: "6",
+//     seven: "7",
+//     eight: "8",
+//     nine: "9"
+//   };
+
+//   const words = clean.split(/\s+/);
+
+//   let digits = "";
+
+//   for (let w of words) {
+//     if (wordMap[w]) {
+//       digits += wordMap[w];
+//     }
+//   }
+
+//   if (digits.length === 4) return digits;
+
+//   return null;
+// };
+
+// function shouldSwitchToSales(text) {
+
+//   if (!text) return false;
+
+//   const lower = text.toLowerCase();
+
+//   const triggers = [
+//     "order",
+//     "i want",
+//     "i need",
+//     "book",
+//     "hire",
+//     "get a bin"
+//   ];
+
+//   return triggers.some(t => lower.includes(t));
+// }
+
+// const extractDeliveryDate = (text) => {
+//   if (!text) return null;
+
+//   const match = text.match(
+//     /\b(\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i
+//   );
+
+//   return match ? match[1] : null;
+// };
+
+// const extractPickupDate = (text) => {
+//   if (!text) return null;
+
+//   const match = text.match(
+//     /\b(pickup|pick up|collection)\s+(on\s+)?(\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i
+//   );
+
+//   return match ? match[3] : null;
+// };
+
+// async function summarizeConversation(sessionId) {
+//   try {
+//     const rows = await queryAsync(
+//       `
+//       SELECT user_message, ai_response
+//       FROM chatbot_conversations
+//       WHERE session_id = ?
+//       ORDER BY created_at ASC
+//       `,
+//       [sessionId]
+//     );
+
+//     if (!rows.length) {
+//       return "Session ended with no recorded conversation.";
+//     }
+
+//     const conversationText = rows
+//       .map((r) => {
+//         let text = "";
+
+//         if (r.user_message) text += `User: ${r.user_message}\n`;
+//         if (r.ai_response) text += `AI: ${r.ai_response}\n`;
+
+//         return text;
+//       })
+//       .join("\n");
+
+//     if (!conversationText.trim()) {
+//       return "Session had empty messages.";
+//     }
+
+//     const aiResp = await openai.responses.create({
+//       model: "gpt-4.1-mini",
+//       input: `
+// Summarize this support call in 3 concise sentences.
+// Focus on:
+// - Main intent
+// - Key data mentioned
+// - Outcome
+
+// Conversation:
+// ${conversationText}
+// `
+//     });
+
+//     return aiResp.output?.[0]?.content?.[0]?.text || null;
+//   } catch (err) {
+//     console.error("❌ SUMMARY ERROR:", err.message);
+//     return "Summary generation failed.";
+//   }
+// }
+
+// async function insertLearningQueue({ sessionId, question, answer }) {
+//   try {
+//     await queryAsync(
+//       `
+//       INSERT INTO chatbot_learning_queue
+//       (
+//         source_type,
+//         source_id,
+//         proposed_question,
+//         proposed_answer,
+//         confidence_score,
+//         status,
+//         created_at,
+//         updated_at
+//       )
+//       VALUES (?, ?, ?, ?, ?, 'pending_review', NOW(), NOW())
+//       `,
+//       [
+//         "conversation",
+//         sessionId,
+//         question,
+//         answer,
+//         0.8
+//       ]
+//     );
+
+//     console.log("🧠 Learning queue inserted");
+//   } catch (err) {
+//     console.error("❌ Learning queue insert failed:", err);
+//   }
+// }
+
+// // ======================================================
+// // STT
+// // ======================================================
+
+// async function transcribeAudio(buffer) {
+
+//   try {
+
+//     const res = await axios.post(
+//       WHISPER_URL,
+//       buffer,
+//       {
+//         headers: {
+//           "Content-Type": "application/octet-stream"
+//         },
+//         timeout: 15000
+//       }
+//     );
+
+//     if (typeof res.data !== "object") {
+//       console.log("⚠️ STT returned non JSON");
+//       return null;
+//     }
+
+//     return res.data.text || null;
+
+//   } catch (err) {
+
+//     console.error(
+//       "❌ STT ERROR:",
+//       err.response?.status,
+//       err.response?.data || err.message
+//     );
+
+//     return null;
+
+//   }
+
+// }
+
+// // ======================================================
+// // AI (N8N)
+// // ======================================================
+
+// async function askN8N(userInput, session) {
+
+//   try {
+
+//     const res = await axios.post(
+//       N8N_WEBHOOK,
+//       {
+//         agent_type: 'sales',
+//         message: userInput,
+//         conversation_history: session.history.slice(-10),
+//         context: session.context
+//       }
+//     );
+
+//     const data = res.data;
+
+//     if (data.context) {
+//       session.context = {
+//         ...session.context,
+//         ...data.context
+//       };
+//     }
+
+//     return data.reply || "Sorry, I couldn't process that.";
+
+//   } catch (err) {
+
+//     console.error("❌ N8N ERROR:", err.message);
+//     return "Sorry, something went wrong.";
+
+//   }
+
+// }
+
+// // ======================================================
+// // TTS
+// // ======================================================
+
+// function pcmToWav(pcmBuffer, sampleRate = 24000) {
+
+//   const stream = new PassThrough();
+
+//   const writer = new wav.Writer({
+//     channels: 1,
+//     sampleRate: sampleRate,
+//     bitDepth: 16
+//   });
+
+//   writer.pipe(stream);
+
+//   writer.write(pcmBuffer);
+//   writer.end();
+
+//   return stream;
+// }
+
+// async function generateTTS(text) {
+
+//   try {
+
+//     console.log("🎤 GENERATE TTS:", text);
+
+//     const res = await axios.post(
+//       KOKORO_URL,
+//       {
+//         text: text,
+//         voice: "am_echo"
+//       },
+//       {
+//         headers: {
+//           "Content-Type": "application/json"
+//         },
+//         responseType: "arraybuffer"
+//       }
+//     );
+
+//     console.log("✅ TTS BYTES:", res.data.byteLength);
+
+//     const pcmBuffer = Buffer.from(res.data);
+
+//     const wavStream = pcmToWav(pcmBuffer, 24000);
+    
+//     const chunks = [];
+    
+//     for await (const chunk of wavStream) {
+//       chunks.push(chunk);
+//     }
+    
+//     return Buffer.concat(chunks);
+
+//   } catch (err) {
+
+//     console.error(
+//       "❌ TTS ERROR:",
+//       err.response?.status,
+//       err.response?.data || err.message
+//     );
+
+//     return null;
+
+//   }
+
+// }
+
+// // ======================================================
+// // WEBSOCKET SERVER
+// // ======================================================
+
+// export function startVoiceServer(server) {
+
+//   const wss = new WebSocketServer({
+//     server,
+//     path: "/ws/deepcall"
+//   });
+
+//   wss.on("connection", (ws) => {
+
+//     ws.sessionId = null;
+//     ws.callState = "WELCOME";
+//     ws.audioBuffer = [];
+
+//     console.log("📞 Client connected");
+
+//     ws.on("message", async (msg) => {
+
+//       let data = null;
+
+//       try {
+//         data = JSON.parse(msg.toString());
+//       } catch {}
+
+//       // =====================================
+//       // START CALL
+//       // =====================================
+
+//       if (data?.type === "start-call") {
+
+//         console.log("🚀 START CALL RECEIVED");
+
+//         ws.sessionId = data.session_id;
+
+//         const session = {
+
+//           agent: "general",
+
+//           history: [],
+
+//           context: {
+//             agent_type: "general",
+//             postcode: null,
+//             waste_type_id: null,
+//             selected_bin_size_id: null,
+//             delivery_date: null,
+//             pickup_date: null
+//           }
+
+//         };
+
+//         callSessions.set(ws.sessionId, session);
+
+//         ws.callState = "ACTIVE";
+
+//         const welcomeText = "Hello, how can I help you today?";
+
+//         ws.send(JSON.stringify({
+//           type: "ai-text",
+//           text: welcomeText
+//         }));
+
+//         const welcomeAudio = await generateTTS(welcomeText);
+
+//         if (welcomeAudio && ws.readyState === 1) {
+
+//           console.log("🔊 Sending welcome audio");
+
+//           ws.send(welcomeAudio);
+
+//         }
+
+//         return;
+
+//       }
+
+//       // =====================================
+//       // AUDIO RECEIVED
+//       // =====================================
+
+//       if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
+//         console.log("AUDIO CHUNK RECEIVED:", msg.length);
+
+//         if (ws.callState !== "ACTIVE") return;
+
+//         const session = callSessions.get(ws.sessionId);
+//         if (!session) return;
+
+//         try {
+
+//           ws.audioBuffer.push(msg);
+
+//           const totalSize =
+//             ws.audioBuffer.reduce((a,b)=>a+b.length,0);
+
+//           // tunggu audio cukup sebelum STT
+//           if (totalSize < 32000) {
+//             return;
+//           }
+
+//           const audioData = Buffer.concat(ws.audioBuffer);
+//           if (!audioData || audioData.length < 16000) {
+//             console.log("⚠️ Audio too small, skipping STT");
+//             ws.audioBuffer = [];
+//             return;
+//           }
+
+//           ws.audioBuffer = [];
+
+//           // const transcript =
+//           //   await transcribeAudio(audioData);
+//           const wavStream = pcmToWav(audioData, 16000);
+
+//           const chunks = [];
+//           for await (const chunk of wavStream) {
+//             chunks.push(chunk);
+//           }
+          
+//           const wavBuffer = Buffer.concat(chunks);
+          
+//           const transcript = await transcribeAudio(wavBuffer);
+
+//           if (!transcript) return;
+
+//           console.log("🗣️ User:", transcript);
+
+//           ws.send(JSON.stringify({
+//             type: "user-text",
+//             text: transcript
+//           }));
+
+//           session.history.push({
+//             role: "user",
+//             content: transcript
+//           });
+
+//           const aiReply =
+//             await askN8N(transcript, session);
+
+//           ws.send(JSON.stringify({
+//             type: "ai-text",
+//             text: aiReply
+//           }));
+
+//           session.history.push({
+//             role: "assistant",
+//             content: aiReply
+//           });
+
+//           const audio =
+//             await generateTTS(aiReply);
+
+//           if (audio && ws.readyState === 1) {
+
+//             console.log("🔊 Sending AI audio:", audio.length);
+
+//             ws.send(audio);
+
+//           }
+
+//         } catch (err) {
+
+//           console.error(
+//             "❌ AUDIO PIPELINE ERROR:",
+//             err
+//           );
+
+//         }
+
+//       }
+
+//     });
+
+//     ws.on("close", () => {
+
+//       console.log("❌ Client disconnected", ws.sessionId);
+
+//       callSessions.delete(ws.sessionId);
+
+//     });
+
+//   });
+
+// }
+
+
+import { WebSocketServer } from "ws";
 
 // ======================================================
-// CONFIG (Kyle Local STT&TTS UPDATE)
+// CONFIG
 // ======================================================
 
-const WHISPER_URL = "https://voice.skendern8n.com/stt"; // Kyle Local STT&TTS UPDATE: Updated URL
-// const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot"; // Declared later
-const KOKORO_URL = "https://voice.skendern8n.com/tts"; // Kyle Local STT&TTS UPDATE: Updated URL
-
-// Kyle Local STT&TTS UPDATE: Gemini Config
-const GEMINI_API_KEY = process.env.GEMINI_KEY;
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-
+const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
 
 // ======================================================
-// AI CALL SESSIONS
+// ELEVENLABS CONFIG
 // ======================================================
 
-const callSessions = new Map();
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
+const ELEVENLABS_VOICE_ID =
+  process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ";
 
-// ======================================================
-// WEBSOCKET CONNECTION
-// ======================================================
+if (!ELEVENLABS_API_KEY) throw new Error("Missing ELEVENLABS_API_KEY");
+if (!ELEVENLABS_AGENT_ID) throw new Error("Missing ELEVENLABS_AGENT_ID");
+
+async function getElevenLabsSignedUrl() {
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${ELEVENLABS_AGENT_ID}`,
+    {
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY
+      }
+    }
+  );
+
+  if (!res.ok) throw new Error(`Signed URL failed: ${res.status}`);
+
+  const body = await res.json();
+  return body.signed_url;
+}
 
 const extractPostcode = (text) => {
   if (!text) return null;
@@ -207,6 +731,21 @@ const extractPickupDate = (text) => {
 
   return match ? match[3] : null;
 };
+
+const wss = new WebSocketServer({
+  server,
+  path: "/ws/deepcall"
+});
+
+// ======================================================
+// AI CALL SESSIONS
+// ======================================================
+
+const callSessions = new Map();
+
+// ======================================================
+// WEBSOCKET CONNECTION
+// ======================================================
 
 async function summarizeConversation(sessionId) {
   try {
@@ -291,721 +830,6 @@ async function insertLearningQueue({ sessionId, question, answer }) {
     console.error("❌ Learning queue insert failed:", err);
   }
 }
-
-// ======================================================
-// STT
-// ======================================================
-
-
-function pcmToWav(pcmBuffer, sampleRate = 48000) {
-  const stream = new PassThrough();
-  const writer = new wav.Writer({
-    channels: 1,
-    sampleRate: sampleRate,
-    bitDepth: 16
-  });
-  writer.pipe(stream);
-  writer.write(pcmBuffer);
-  writer.end();
-  return stream;
-}
-
-async function transcribeAudio(buffer) {
-  try {
-    const form = new FormData();
-    // Pastikan buffer adalah Buffer Node.js
-    form.append("audio_file", buffer, {
-      filename: "audio.wav",
-      contentType: "audio/wav"
-    });
-
-    const res = await axios.post(WHISPER_URL, form, {
-      headers: { ...form.getHeaders() },
-      timeout: 15000 
-    });
-
-    return res.data || null;
-  } catch (err) {
-    // Menangani error 502 dari Cloudflare/Host
-    if (err.response?.status === 502) {
-      console.error("❌ STT SERVER OFFLINE: Host voice.skendern8n.com tidak merespons (Bad Gateway).");
-    } else {
-      console.error("❌ STT ERROR:", err.message);
-    }
-    return null;
-  }
-}
-
-// ======================================================
-// AI (N8N)
-// ======================================================
-
-async function askN8N(userInput, session) {
-
-  try {
-
-    const res = await axios.post(
-      N8N_WEBHOOK,
-      {
-        agent_type: 'sales',
-        message: userInput,
-        conversation_history: session.history.slice(-10),
-        context: session.context
-      }
-    );
-
-    const data = res.data;
-
-    if (data.context) {
-      session.context = {
-        ...session.context,
-        ...data.context
-      };
-    }
-
-    return data.reply || "Sorry, I couldn't process that.";
-
-  } catch (err) {
-
-    console.error("❌ N8N ERROR:", err.message);
-    return "Sorry, something went wrong.";
-
-  }
-
-}
-
-// ======================================================
-// TTS
-// ======================================================
-
-// function pcmToWav(pcmBuffer, sampleRate = 24000) {
-
-//   const stream = new PassThrough();
-
-//   const writer = new wav.Writer({
-//     channels: 1,
-//     sampleRate: sampleRate,
-//     bitDepth: 16
-//   });
-
-//   writer.pipe(stream);
-
-//   writer.write(pcmBuffer);
-//   writer.end();
-
-//   return stream;
-// }
-
-// Read the sample rate Kokoro actually used from the WAV fmt chunk.
-// WAV format: "RIFF"(4) + fileSize(4) + "WAVE"(4) + "fmt "(4) + chunkSize(4)
-// + audioFormat(2) + numChannels(2) + sampleRate(4) + ...
-// function readWavSampleRate(wavBuffer) {
-//   try {
-//     // fmt chunk starts at byte 20, sample rate is at byte 24
-//     return wavBuffer.readUInt32LE(24);
-//   } catch {
-//     return null;
-//   }
-// }
-
-function readWavSampleRate(buf) {
-  if (
-    buf.slice(0,4).toString() !== "RIFF" ||
-    buf.slice(8,12).toString() !== "WAVE"
-  ) {
-    return null;
-  }
-
-  return buf.readUInt32LE(24);
-}
-
-
-
-async function generateTTS(text) {
-  try {
-    console.log("[DEBUG] Generating TTS and converting to Raw PCM...");
-
-    const res = await axios.post(
-      KOKORO_URL,
-      {
-        input: text,
-        voice: "af_sky",
-        model: "kokoro"
-      },
-      {
-        headers: { "Content-Type": "application/json" },
-        responseType: "arraybuffer"
-      }
-    );
-
-    const inputBuffer = Buffer.from(res.data);
-    
-    // Gunakan FFmpeg untuk konversi ke Raw PCM 16-bit Little Endian
-    return new Promise((resolve, reject) => {
-      const ffmpeg = spawn("ffmpeg", [
-        "-i", "pipe:0",          // Ambil input dari Kokoro (apapun formatnya: MP3/WAV/PCM)
-        "-f", "s16le",           // Output format: Signed 16-bit Little Endian (Mentah)
-        "-acodec", "pcm_s16le",  // Codec PCM
-        "-ar", "48000",          // Paksa sample rate ke 48kHz
-        "-ac", "1",              // Paksa ke Mono
-        "pipe:1"                 // Kirim hasil ke stdout
-      ]);
-
-      let pcmChunks = [];
-      ffmpeg.stdout.on("data", (chunk) => pcmChunks.push(chunk));
-      ffmpeg.stderr.on("data", (data) => { /* debug ffmpeg jika perlu: console.log(data.toString()) */ });
-
-      ffmpeg.on("close", (code) => {
-        if (code === 0) {
-          const finalPcm = Buffer.concat(pcmChunks);
-          console.log(`✅ [DEBUG] TTS PCM Ready: ${finalPcm.length} bytes at 48000Hz`);
-          resolve(finalPcm);
-        } else {
-          console.error("[DEBUG] FFmpeg failed with code", code);
-          reject(new Error("FFmpeg conversion failed"));
-        }
-      });
-
-      ffmpeg.stdin.write(inputBuffer);
-      ffmpeg.stdin.end();
-    });
-
-  } catch (err) {
-    console.error("❌ [DEBUG] TTS FAILED:", err.message);
-    return null;
-  }
-}
-
-// async function generateTTS(text) {
-
-//   try {
-
-//     console.log("[DEBUG] Attempting to generate TTS audio...");
-
-//     const KOKORO_SAMPLE_RATE = 48000;
-
-//     const res = await axios.post(
-//       KOKORO_URL,
-//       {
-//         input: text,
-//         voice: "af_sky",
-//         model: "kokoro"
-//       },
-//       {
-//         headers: {
-//           "Content-Type": "application/json"
-//         },
-//         responseType: "arraybuffer"
-//       }
-//     );
-
-//     console.log("[DEBUG] TTS response content-type:", res.headers["content-type"]);
-//     let wavBuffer = Buffer.from(res.data);
-//     console.log("[DEBUG] TTS raw response first 12 bytes:", wavBuffer.slice(0, 12).toString("hex"), "| as ASCII:", wavBuffer.slice(0, 4).toString());
-//     let detectedRate = readWavSampleRate(wavBuffer);
-
-//     // Kokoro may return raw PCM without a WAV header — wrap it if needed
-//     if (!detectedRate) {
-//       console.log("[DEBUG] TTS returned raw PCM (no WAV header). Wrapping with WAV header at", KOKORO_SAMPLE_RATE, "Hz");
-//       const chunks = [];
-//       const wavStream = pcmToWav(wavBuffer, KOKORO_SAMPLE_RATE);
-//       for await (const chunk of wavStream) {
-//         chunks.push(chunk);
-//       }
-//       wavBuffer = Buffer.concat(chunks);
-//       detectedRate = readWavSampleRate(wavBuffer);
-//     }
-
-//     console.log(`[DEBUG] TTS audio ready. Bytes: ${wavBuffer.length}, Sample rate: ${detectedRate ?? "unknown"}Hz`);
-
-//     return wavBuffer;
-
-//   } catch (err) {
-
-//     console.error(
-//       "❌ [DEBUG] TTS GENERATION FAILED:",
-//       err.response?.status,
-//       err.response?.data ? new TextDecoder().decode(err.response.data) : err.message
-//     );
-
-//     return null;
-
-//   }
-
-// }
-
-// ======================================================
-// GEMINI BRAIN (Kyle Local STT&TTS UPDATE: Added)
-// ======================================================
-
-async function getAgentFromDB(agentType) { 
-  try {
-    console.log(`[DEBUG] Attempting to get agent '${agentType}' from DB...`);
-    const rows = await queryAsync(
-      `SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1`,
-      [agentType]
-    );
-    if (rows.length) {
-        console.log(`[DEBUG] Found agent data for '${agentType}'.`);
-        return rows[0];
-    }
-    console.log(`[DEBUG] No agent data found for '${agentType}'.`);
-    return null;
-  } catch (err) {
-    console.error("[DEBUG] DB Error getting agent:", err);
-    return null;
-  }
-}
-async function runGeminiTurn(session, userText) {
-  // Using the newer 2.5-flash model
-  const sessionModel = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash", 
-    systemInstruction: session.geminiSystemPrompt || "You are a helpful assistant."
-  });
-
-  const chat = sessionModel.startChat({
-    history: session.geminiHistory || [],
-    generationConfig: {
-      maxOutputTokens: 200,
-    },
-  });
-
-  try {
-    const result = await chat.sendMessage(userText);
-    const response = await result.response;
-    const text = response.text();
-
-    // Update history (only real user/model turns)
-    session.geminiHistory = [
-      ...(session.geminiHistory || []),
-      { role: "user", parts: [{ text: userText }] },
-      { role: "model", parts: [{ text: text }] },
-    ];
-
-    return text;
-  } catch (e) {
-    console.error("Gemini Error:", e);
-    return "I'm having trouble thinking right now.";
-  }
-}
-// Kyle Local STT&TTS UPDATE: Added buildFullSystemPrompt for voice server
-function buildFullSystemPromptLocal(prompt) {
-  if (!prompt) {
-      console.log("[DEBUG] No prompt data provided, using default prompt.");
-      return "You are a helpful assistant.";
-  }
-  console.log("[DEBUG] Building full system prompt from DB data.");
-  return `
-You are ${prompt.identity || 'a helpful assistant'}.
-
-ROLE
-${prompt.role_description || ''}
-
-SYSTEM STATES
-
-STATE: GENERAL
-- Answer general questions about waste bins
-- Provide information
-- Be helpful
-
-STATE: SALES
-- Collect order information
-- postcode
-- bin size
-- delivery date
-- pickup date
-- customer details
-
-STATE TRANSITION
-Switch to SALES when the user wants to:
-- order
-- hire
-- book
-- get a bin
-- rent a bin
-
-IMPORTANT RULE
-The current state is defined by context.agent_type.
-
-If context.agent_type = general → operate in GENERAL mode
-If context.agent_type = sales → operate in SALES mode
-
-BASE KNOWLEDGE
-${prompt.context_knowledge || ""}
-
-GOALS
-${prompt.primary_goals || ''}
-
-LANGUAGE
-${prompt.language || 'English'}
-
-TONE
-${prompt.tone || 'friendly'}
-
-RESPONSE FORMAT
-${prompt.response_format || 'Clear and concise.'}
-
-GUIDELINES
-${prompt.do_guidelines || ""}
-
-RESTRICTIONS
-${prompt.dont_guidelines || ""}
-
-Always follow the current state.
-`.trim();
-}
-
-
-// ======================================================
-// WEBSOCKET SERVER (Kyle Local STT&TTS UPDATE: Main Logic)
-// ======================================================
-
-export function startVoiceServer(server) {
-
-  const wss = new WebSocketServer({
-    server,
-    path: "/ws/deepcall"
-  });
-
-  wss.on("connection", (ws) => {
-
-    ws.sessionId = null;
-    ws.callState = "WELCOME";
-    ws.audioBuffer = [];
-    ws.isProcessing = false; // lock to prevent concurrent STT→Gemini→TTS pipelines
-
-    console.log("📞 Client connected (Local Mode)");
-
-    // Kyle Local STT&TTS UPDATE: Diagnostic Test
-    try {
-        console.log("[DIAGNOSTIC] Sending 'server-ready' message immediately upon connection.");
-        ws.send(JSON.stringify({ type: "server-ready" }));
-    } catch (e) {
-        console.error("[DIAGNOSTIC] Failed to send 'server-ready' message:", e);
-    }
-
-
-    ws.on("message", async (msg) => {
-
-      try {
-        let data = null;
-
-        try {
-          data = JSON.parse(msg.toString());
-          console.log("[DIAGNOSTIC] Received message from client:", data.type);
-        } catch {}
-
-        // =====================================
-        // START CALL
-        // =====================================
-
-        if (data?.type === "start-call") {
-
-          console.log("🚀 [DEBUG] START-CALL event received. Beginning setup...");
-
-          ws.sessionId = data.session_id;
-
-          // Kyle Local STT&TTS UPDATE: Load General Agent
-          const promptData = await getAgentFromDB('general');
-          const systemPrompt = buildFullSystemPromptLocal(promptData);
-
-          const session = {
-            agent: "general",
-            history: [],
-            geminiHistory: [],           // Kyle Gemini FIX: start with empty history
-            geminiSystemPrompt: systemPrompt, // system prompt passed via systemInstruction, not history
-            context: {
-              agent_type: "general",
-              ...data.context
-            }
-          };
-
-          callSessions.set(ws.sessionId, session);
-          console.log("[DEBUG] Session created and stored.");
-
-          // Don't set ACTIVE yet — prevent mic audio from being processed
-          // while we generate and send the welcome TTS
-          ws.callState = "WELCOME";
-
-          const welcomeText = "Hi! I'm listening. How can I help you today?";
-
-          console.log("[DEBUG] Sending welcome text to client...");
-          ws.send(JSON.stringify({
-            type: "ai-text",
-            text: welcomeText
-          }));
-          console.log("[DEBUG] Welcome text sent.");
-
-          const welcomeAudio = await generateTTS(welcomeText);
-
-          if (welcomeAudio && ws.readyState === 1) {
-
-            console.log("[DEBUG] Sending welcome audio to client...");
-            ws.send(JSON.stringify({ type: "audio-start" }));
-            ws.send(welcomeAudio);
-            ws.send(JSON.stringify({ type: "audio-end" }));
-            console.log("[DEBUG] Welcome audio sent.");
-            ws.send(JSON.stringify({ type: "call-ready" }));
-
-          } else {
-             console.log("❌ [DEBUG] Failed to send welcome audio. TTS might have failed or WebSocket closed.");
-          }
-
-          // NOW accept mic audio
-          ws.callState = "ACTIVE";
-          console.log("✅ [DEBUG] START-CALL setup complete. Mic now active.");
-          return;
-
-        }
-
-        // =====================================
-        // AUDIO RECEIVED
-        // =====================================
-
-        if (Buffer.isBuffer(msg) || msg instanceof ArrayBuffer) {
-
-          if (ws.callState !== "ACTIVE") return;
-
-          const session = callSessions.get(ws.sessionId);
-          if (!session) return;
-
-          try {
-
-            // ws.audioBuffer.push(msg);
-            ws.audioBuffer.push(Buffer.from(msg));
-
-            const totalSize =
-              ws.audioBuffer.reduce((a,b)=>a+b.length,0);
-
-            // wait until enough audio has accumulated before sending to STT
-            // if (totalSize < 16000) {
-            //   return;
-            // }
-
-           const now = Date.now();
-
-            if (totalSize < 256000) {
-              return;
-            }
-
-            // drop chunk if a pipeline is already running — prevents duplicate TTS
-            if (ws.isProcessing) {
-              ws.audioBuffer = [];
-              return;
-            }
-
-            // const audioData = Buffer.concat(ws.audioBuffer);
-            // const floatData = new Float32Array(
-            //   Buffer.concat(ws.audioBuffer).buffer
-            // );
-            // const raw = Buffer.concat(ws.audioBuffer);
-
-            // const floatData = new Float32Array(
-            //   raw.buffer,
-            //   raw.byteOffset,
-            //   raw.byteLength / 4
-            // );
-            // console.log("RAW BYTES:", raw.length);
-            
-            // const audioData = float32ToInt16(floatData);
-            // if (!audioData || audioData.length < 8000) {
-            //   console.log("⚠️ Audio too small, skipping STT");
-            //   ws.audioBuffer = [];
-            //   return;
-            // }
-            const raw = Buffer.concat(ws.audioBuffer);
-
-            if (raw.length < 32000) {
-              ws.audioBuffer = [];
-              return;
-            }
-
-            console.log("RAW BYTES:", raw.length);
-            
-            // mic sudah mengirim INT16 PCM
-            const audioData = raw;
-            
-            // if (!audioData || audioData.length < 16000) {
-            //   console.log("⚠️ Waiting for more audio...");
-            //   return;
-            // }
-
-            ws.audioBuffer = [];
-            ws.isProcessing = true;
-
-            // const wavStream = pcmToWav(audioData, 16000);
-            const wavStream = pcmToWav(audioData, 48000);
-
-            const chunks = [];
-            for await (const chunk of wavStream) {
-              chunks.push(chunk);
-            }
-            
-            const wavBuffer = Buffer.concat(chunks);
-            
-            const transcript = await transcribeAudio(wavBuffer);
-
-            if (!transcript) {
-              ws.isProcessing = false;
-              return;
-            }
-
-            console.log("🗣️ User:", transcript);
-
-            ws.send(JSON.stringify({
-              type: "user-text",
-              text: transcript
-            }));
-
-            session.history.push({
-              role: "user",
-              content: transcript
-            });
-
-            const aiReply = await runGeminiTurn(session, transcript);
-
-            ws.send(JSON.stringify({
-              type: "ai-text",
-              text: aiReply
-            }));
-
-            session.history.push({
-              role: "assistant",
-              content: aiReply
-            });
-
-            const audio = await generateTTS(aiReply);
-
-            if (audio && ws.readyState === 1) {
-
-              console.log("🔊 Sending AI audio:", audio.length);
-              ws.send(JSON.stringify({ type: "audio-start" }));
-              ws.send(audio);
-              ws.send(JSON.stringify({ type: "audio-end" }));
-
-            }
-
-          } catch (err) {
-
-            console.error(
-              "❌ AUDIO PIPELINE ERROR:",
-              err
-            );
-
-          } finally {
-
-            ws.isProcessing = false; // always release lock so next turn can proceed
-
-          }
-
-        }
-      } catch (err) {
-          console.error("❌ [DEBUG] FATAL WEBSOCKET ERROR:", err.message, err.stack);
-          ws.close(1011, "Internal Server Error");
-      }
-    });
-
-    ws.on("close", (code, reason) => {
-
-      console.log(`❌ Client disconnected (code: ${code}, reason: ${reason ? reason.toString() : 'No reason given'})`, ws.sessionId);
-
-      callSessions.delete(ws.sessionId);
-
-    });
-
-  });
-
-}
-
-
-// import { WebSocketServer } from "ws"; // Kyle Local STT&TTS UPDATE: Moved up
-
-// ======================================================
-// CONFIG
-// ======================================================
-
-const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot";
-
-// ======================================================
-// ELEVENLABS CONFIG (Kyle Local STT&TTS UPDATE: DISABLED)
-// ======================================================
-
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
-const ELEVENLABS_VOICE_ID =
-  process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ";
-
-// if (!ELEVENLABS_API_KEY) throw new Error("Missing ELEVENLABS_API_KEY");
-// if (!ELEVENLABS_AGENT_ID) throw new Error("Missing ELEVENLABS_AGENT_ID");
-
-async function getElevenLabsSignedUrl() {
-  const res = await fetch(
-    `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${ELEVENLABS_AGENT_ID}`,
-    {
-      headers: {
-        "xi-api-key": ELEVENLABS_API_KEY
-      }
-    }
-  );
-
-  if (!res.ok) throw new Error(`Signed URL failed: ${res.status}`);
-
-  const body = await res.json();
-  return body.signed_url;
-}
-
-// Kyle Local STT&TTS UPDATE: Duplicate declarations below - commented out (already declared in local block above)
-
-// const extractPostcode = (text) => {
-//   if (!text) return null;
-//   const clean = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
-//   const numericMatch = clean.match(/\b\d{4}\b/);
-//   if (numericMatch) return numericMatch[0];
-//   const wordMap = { zero:"0",one:"1",two:"2",three:"3",four:"4",five:"5",six:"6",seven:"7",eight:"8",nine:"9" };
-//   const words = clean.split(/\s+/);
-//   let digits = "";
-//   for (let w of words) { if (wordMap[w]) digits += wordMap[w]; }
-//   if (digits.length === 4) return digits;
-//   return null;
-// };
-
-// function shouldSwitchToSales(text) {
-//   if (!text) return false;
-//   const lower = text.toLowerCase();
-//   const triggers = ["order","i want","i need","book","hire","get a bin"];
-//   return triggers.some(t => lower.includes(t));
-// }
-
-// const extractDeliveryDate = (text) => {
-//   if (!text) return null;
-//   const match = text.match(/\b(\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i);
-//   return match ? match[1] : null;
-// };
-
-// const extractPickupDate = (text) => {
-//   if (!text) return null;
-//   const match = text.match(/\b(pickup|pick up|collection)\s+(on\s+)?(\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i);
-//   return match ? match[3] : null;
-// };
-
-// Kyle Local STT&TTS UPDATE: Old ElevenLabs WSS disabled - using startVoiceServer instead
-// const wss = new WebSocketServer({
-//   server,
-//   path: "/ws/deepcall"
-// });
-
-// ======================================================
-// AI CALL SESSIONS
-// ======================================================
-
-// Kyle Local STT&TTS UPDATE: Duplicate declarations below - commented out (already declared in local block above)
-// const callSessions = new Map();
-
-// Kyle Local STT&TTS UPDATE: summarizeConversation already declared above
-// async function summarizeConversation(sessionId) { ... }
-
-// Kyle Local STT&TTS UPDATE: insertLearningQueue already declared above  
-// async function insertLearningQueue({ sessionId, question, answer }) { ... }
 
 async function speakWelcome(text) {
   const format = "pcm_16000";
@@ -1377,800 +1201,798 @@ async function handleAgentSwitch(ws, newAgentType) {
 }
 
 
+// ======================================================
+// WEBSOCKET SERVER
+// ======================================================
+
+wss.on("connection", (ws) => {
+
+  ws.sessionId = null;
+  ws.sessionReady = false;
+  ws.elWs = null;
+  ws.callState = "WELCOME";
+
+  console.log("📞 Client connected", ws.sessionId);
+
+  ws.on("message", async (msg) => {
+
+    let data = null;
+
+    try {
+      data = JSON.parse(
+        typeof msg === "string" ? msg : msg.toString()
+      );
+    } catch {
+      data = null;
+    }
+
+    if (data?.type === "start-call") {
+      console.log("🚀 START CALL RECEIVED:", data.session_id);
+    }
 
 
-// DISABLED: // ======================================================
-// DISABLED: // WEBSOCKET SERVER
-// DISABLED: // ======================================================
-// DISABLED: 
-// DISABLED: wss.on("connection", (ws) => {
-// DISABLED: 
-// DISABLED:   ws.sessionId = null;
-// DISABLED:   ws.sessionReady = false;
-// DISABLED:   ws.elWs = null;
-// DISABLED:   ws.callState = "WELCOME";
-// DISABLED: 
-// DISABLED:   console.log("📞 Client connected", ws.sessionId);
-// DISABLED: 
-// DISABLED:   ws.on("message", async (msg) => {
-// DISABLED: 
-// DISABLED:     let data = null;
-// DISABLED: 
-// DISABLED:     try {
-// DISABLED:       data = JSON.parse(
-// DISABLED:         typeof msg === "string" ? msg : msg.toString()
-// DISABLED:       );
-// DISABLED:     } catch {
-// DISABLED:       data = null;
-// DISABLED:     }
-// DISABLED: 
-// DISABLED:     if (data?.type === "start-call") {
-// DISABLED:       console.log("🚀 START CALL RECEIVED:", data.session_id);
-// DISABLED:     }
-// DISABLED: 
-// DISABLED: 
-// DISABLED:     if (data?.type === "start-call") {
-// DISABLED: 
-// DISABLED:       ws.sessionId = data.session_id;
-// DISABLED:       ws.welcomeAudioSent = false;
-// DISABLED:       ws.callState = "WELCOME";
-// DISABLED:       ws.elReady = false;
-// DISABLED: 
-// DISABLED:       if (ws.elWs) {
-// DISABLED:         try {
-// DISABLED:           ws.elWs.close();
-// DISABLED:         } catch {}
-// DISABLED:         ws.elWs = null;
-// DISABLED:       }
-// DISABLED: 
-// DISABLED:       ws.sessionReady = true;
-// DISABLED: 
-// DISABLED:       // const requestedAgent = data.agent || "sales";
-// DISABLED:       const requestedAgent = "general";
-// DISABLED: 
-// DISABLED:       const rows = await queryAsync(
-// DISABLED:         `
-// DISABLED:         SELECT
-// DISABLED:           id,
-// DISABLED:           agent_type,
-// DISABLED:           identity,
-// DISABLED:           role_description,
-// DISABLED:           primary_goals,
-// DISABLED:           context_knowledge,
-// DISABLED:           language,
-// DISABLED:           tone,
-// DISABLED:           response_format,
-// DISABLED:           do_guidelines,
-// DISABLED:           dont_guidelines
-// DISABLED:         FROM chatbot_prompts
-// DISABLED:         WHERE agent_type = ?
-// DISABLED:         ORDER BY id DESC
-// DISABLED:         LIMIT 1
-// DISABLED:         `,
-// DISABLED:         [requestedAgent]
-// DISABLED:         );
-// DISABLED: 
-// DISABLED:       let prompt = rows[0];
-// DISABLED: 
-// DISABLED:       if (!prompt) {
-// DISABLED: 
-// DISABLED:         const fallback = await queryAsync(
-// DISABLED:           `
-// DISABLED:           SELECT
-// DISABLED:             id,
-// DISABLED:             agent_type,
-// DISABLED:             identity,
-// DISABLED:             role_description,
-// DISABLED:             primary_goals,
-// DISABLED:             context_knowledge,
-// DISABLED:             language,
-// DISABLED:             tone,
-// DISABLED:             response_format,
-// DISABLED:             do_guidelines,
-// DISABLED:             dont_guidelines
-// DISABLED:           FROM chatbot_prompts
-// DISABLED:           WHERE agent_type = 'sales'
-// DISABLED:           ORDER BY id DESC
-// DISABLED:           LIMIT 1
-// DISABLED:           `
-// DISABLED:         );
-// DISABLED: 
-// DISABLED:         if (!fallback.length) {
-// DISABLED:           console.error("❌ No active prompt found");
-// DISABLED: 
-// DISABLED:           ws.send(
-// DISABLED:             JSON.stringify({
-// DISABLED:               type: "ai-text",
-// DISABLED:               text: "Sorry, no agent available."
-// DISABLED:             })
-// DISABLED:           );
-// DISABLED: 
-// DISABLED:           return;
-// DISABLED:         }
-// DISABLED: 
-// DISABLED:         prompt = fallback[0];
-// DISABLED:       }
-// DISABLED: 
-// DISABLED: 
-// DISABLED:       const systemPrompt = buildFullSystemPrompt(prompt);
-// DISABLED: 
-// DISABLED:       const incomingContext = data.context || {};
-// DISABLED: 
-// DISABLED:       const finalContext = {
-// DISABLED: 
-// DISABLED:         agent_type: prompt.agent_type,
-// DISABLED:         postcode: incomingContext.postcode || null,
-// DISABLED:         waste_type_id: incomingContext.waste_type_id || null,
-// DISABLED:         selected_bin_size_id: incomingContext.selected_bin_size_id || null,
-// DISABLED:         leadId: incomingContext.leadId || null,
-// DISABLED: 
-// DISABLED:         delivery_date: incomingContext.delivery_date || null,
-// DISABLED:         hire_days: incomingContext.hire_days || null,
-// DISABLED:         pickup_date: incomingContext.pickup_date || null,
-// DISABLED: 
-// DISABLED:         streetNumber: incomingContext.streetNumber || null,
-// DISABLED:         streetName: incomingContext.streetName || null,
-// DISABLED:         suburb: incomingContext.suburb || null,
-// DISABLED:         state: incomingContext.state || null,
-// DISABLED:         country: incomingContext.country || null,
-// DISABLED:         fullAddress: incomingContext.fullAddress || null,
-// DISABLED: 
-// DISABLED:         name: incomingContext.name || "Guest",
-// DISABLED:         email: incomingContext.email || null,
-// DISABLED:         phoneNumber: incomingContext.phoneNumber || null,
-// DISABLED:         note: incomingContext.note || "none"
-// DISABLED:       };
-// DISABLED: 
-// DISABLED:       callSessions.set(ws.sessionId, {
-// DISABLED:         agent: prompt.agent_type,
-// DISABLED:         promptId: prompt.id,
-// DISABLED:         systemPrompt,
-// DISABLED:         activePrompt: systemPrompt,
-// DISABLED:         history: [],
-// DISABLED:         context: finalContext,
-// DISABLED:         agentLocked: false
-// DISABLED:       });
-// DISABLED: 
-// DISABLED:       await queryAsync(
-// DISABLED:         `
-// DISABLED:         INSERT INTO chatbot_conversation_sessions
-// DISABLED:         (
-// DISABLED:           session_id,
-// DISABLED:           conversation_id,
-// DISABLED:           agent_type,
-// DISABLED:           user_name,
-// DISABLED:           user_ip,
-// DISABLED:           started_at,
-// DISABLED:           total_messages,
-// DISABLED:           ai_messages
-// DISABLED:         )
-// DISABLED:         VALUES (?, ?, ?, ?, ?, NOW(), 0, 0)
-// DISABLED:         `,
-// DISABLED:         [
-// DISABLED:           ws.sessionId,
-// DISABLED:           ws.sessionId,
-// DISABLED:           prompt.agent_type,
-// DISABLED:           "Guest",
-// DISABLED:           ws._socket?.remoteAddress || null
-// DISABLED:         ]
-// DISABLED:       );
-// DISABLED: 
-// DISABLED:       try {
-// DISABLED: 
-// DISABLED:         console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
-// DISABLED: 
-// DISABLED:         const signedUrl = await getElevenLabsSignedUrl();
-// DISABLED: 
-// DISABLED:         const elWs = new WebSocket(signedUrl);
-// DISABLED: 
-// DISABLED: 
-// DISABLED:         elWs.sessionId = ws.sessionId;
-// DISABLED: 
-// DISABLED:         console.log("🔌 ElevenLabs WS instance created");
-// DISABLED: 
-// DISABLED:         ws.elWs = elWs;
-// DISABLED: 
-// DISABLED:         elWs.on("open", async () => {
-// DISABLED: 
-// DISABLED:           console.log("🟢 ElevenLabs OPEN for session:", ws.sessionId);
-// DISABLED:           console.log("🟢 Connected");
-// DISABLED: 
-// DISABLED:           elWs.send(
-// DISABLED:             JSON.stringify({
-// DISABLED:               type: "conversation_initiation_client_data",
-// DISABLED:               conversation_config_override: {
-// DISABLED:                 agent: {
-// DISABLED:                   prompt: {
-// DISABLED:                     prompt: systemPrompt
-// DISABLED:                   },
-// DISABLED:                   language: "en",
-// DISABLED:                   tools: [
-// DISABLED:                     {
-// DISABLED:                       type: "webhook",
-// DISABLED:                       name: "N8NAiResponse",
-// DISABLED:                       url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
-// DISABLED:                       method: "POST",
-// DISABLED:                       // description:
-// DISABLED:                       //   "Mandatory tool to get any response. Call this with user_input and the full context object.",
-// DISABLED:                       parameters: {
-// DISABLED:                         type: "object",
-// DISABLED:                         properties: {
-// DISABLED:                           user_input: {
-// DISABLED:                             type: "string",
-// DISABLED:                             description:
-// DISABLED:                               "The full message from the user"
-// DISABLED:                           },
-// DISABLED:                           conversation_history: {
-// DISABLED:                             type: "array",
-// DISABLED:                             description: "Recent conversation history",
-// DISABLED:                             items: {
-// DISABLED:                               type: "object",
-// DISABLED:                               properties: {
-// DISABLED:                                 role: { type: "string" },
-// DISABLED:                                 content: { type: "string" }
-// DISABLED:                               }
-// DISABLED:                             }
-// DISABLED:                           },
-// DISABLED:                           context: {
-// DISABLED:                             type: "object",
-// DISABLED:                             description:
-// DISABLED:                               "Full session context for n8n processing",
-// DISABLED:                             properties: {
-// DISABLED:                               agent_type: { type: "string" },
-// DISABLED:                               postcode: { type: "string" },
-// DISABLED:                               waste_type_id: { type: "integer" },
-// DISABLED:                               selected_bin_size_id: { type: "integer" },
-// DISABLED:                               delivery_date: { type: "string" },
-// DISABLED:                               pickup_date: { type: "string" },
-// DISABLED:                               hire_days: { type: "string" },
-// DISABLED:                               leadId: { type: "integer" },
-// DISABLED:                               suburb: { type: "string" },
-// DISABLED:                               state: { type: "string" },
-// DISABLED:                               country: { type: "string" },
-// DISABLED:                               fullAddress: { type: "string" },
-// DISABLED:                               name: { type: "string" },
-// DISABLED:                               note: { type: "string" }
-// DISABLED:                             }
-// DISABLED:                           }
-// DISABLED:                         },
-// DISABLED:                         required: [
-// DISABLED:                           "user_input",                          
-// DISABLED:                           "conversation_history",
-// DISABLED:                           "context"
-// DISABLED:                         ]
-// DISABLED:                       }
-// DISABLED:                     }
-// DISABLED:                   ]
-// DISABLED:                 }
-// DISABLED:               },
-// DISABLED:               // dynamic_variables: finalContext
-// DISABLED:               dynamic_variables: {
-// DISABLED:                 ...finalContext,
-// DISABLED:                 system_prompt: systemPrompt
-// DISABLED:               }
-// DISABLED:             })
-// DISABLED:           );
-// DISABLED: 
-// DISABLED:           const rows = await queryAsync(
-// DISABLED:             `
-// DISABLED:             SELECT message_text
-// DISABLED:             FROM chatbot_welcome_messages
-// DISABLED:             WHERE is_active = 1
-// DISABLED:             LIMIT 1
-// DISABLED:             `
-// DISABLED:           );
-// DISABLED: 
-// DISABLED:           if (!rows.length) return;
-// DISABLED: 
-// DISABLED:           const welcomeText = rows[0].message_text.trim();
-// DISABLED: 
-// DISABLED:           try {
-// DISABLED: 
-// DISABLED:             console.log("🎤 Generating welcome TTS for:", ws.sessionId);
-// DISABLED: 
-// DISABLED:             const pcmWelcome = await speakWelcome(welcomeText);
-// DISABLED: 
-// DISABLED:             if (ws.readyState === WebSocket.OPEN) {
-// DISABLED: 
-// DISABLED:               ws.send(
-// DISABLED:                 JSON.stringify({
-// DISABLED:                   type: "ai-text",
-// DISABLED:                   text: welcomeText
-// DISABLED:                 })
-// DISABLED:               );
-// DISABLED: 
-// DISABLED:               console.log("📤 Welcome text sent to browser");
-// DISABLED: 
-// DISABLED:               const silence = Buffer.alloc(16000 * 2 * 0.25);
-// DISABLED: 
-// DISABLED:               ws.send(silence);
-// DISABLED:               ws.send(pcmWelcome);
-// DISABLED: 
-// DISABLED:               const durationMs =
-// DISABLED:                 (pcmWelcome.length / 2 / 16000) * 1000;
-// DISABLED: 
-// DISABLED:               setTimeout(() => {
-// DISABLED: 
-// DISABLED:                 ws.callState = "ACTIVE";
-// DISABLED:                 ws.welcomeAudioSent = true;
-// DISABLED: 
-// DISABLED:                 console.log("✅ Welcome selesai, mic dibuka");
-// DISABLED: 
-// DISABLED:               }, durationMs + 100);
-// DISABLED:             }
-// DISABLED: 
-// DISABLED:           } catch (err) {
-// DISABLED:             console.error("Error REST TTS:", err);
-// DISABLED:           }
-// DISABLED:         });
-// DISABLED: 
-// DISABLED:         elWs.on("message", async (elMsg) => {
-// DISABLED: 
-// DISABLED:           if (!ws.sessionId || ws.callState === "ENDED") {
-// DISABLED:             return;
-// DISABLED:           }
-// DISABLED: 
-// DISABLED:           try {
-// DISABLED: 
-// DISABLED:             const event = JSON.parse(elMsg.toString());
-// DISABLED: 
-// DISABLED:             console.log("📩 EL EVENT:", event.type);
-// DISABLED: 
-// DISABLED:             const session = callSessions.get(ws.sessionId);
-// DISABLED: 
-// DISABLED:             if (!session) {
-// DISABLED:               console.warn("⚠️ Session missing in Map. Ignoring EL event.");
-// DISABLED:               return;
-// DISABLED:             }
-// DISABLED: 
-// DISABLED:             switch (event.type) {
-// DISABLED: 
-// DISABLED:               case "conversation_initiation_metadata": {
-// DISABLED:                 ws.elReady = true;
-// DISABLED:                 console.log("EL READY (Metadata received)");
-// DISABLED:                 break;
-// DISABLED:               }
-// DISABLED: 
-// DISABLED:               case "tool_call_result": {
-// DISABLED: 
-// DISABLED:                 try {
-// DISABLED:               
-// DISABLED:                   const toolOutput =
-// DISABLED:                     event.tool_call_result_event?.output;
-// DISABLED:               
-// DISABLED:                   if (!toolOutput) break;
-// DISABLED:               
-// DISABLED:                   // ==============================
-// DISABLED:                   // UPDATE CONTEXT
-// DISABLED:                   // ==============================
-// DISABLED:               
-// DISABLED:                   if (toolOutput.context) {
-// DISABLED:                     session.context = {
-// DISABLED:                       ...session.context,
-// DISABLED:                       ...toolOutput.context
-// DISABLED:                     };
-// DISABLED:               
-// DISABLED:                     console.log("🔄 Context synced:", session.context);
-// DISABLED:                   }
-// DISABLED:               
-// DISABLED:                   // ==============================
-// DISABLED:                   // SEND N8N RESPONSE
-// DISABLED:                   // ==============================
-// DISABLED:               
-// DISABLED:                   if (toolOutput.reply) {
-// DISABLED:               
-// DISABLED:                     const text = toolOutput.reply;
-// DISABLED:               
-// DISABLED:                     console.log("📦 N8N Response:", text);
-// DISABLED:               
-// DISABLED:                     if (ws.readyState === WebSocket.OPEN) {
-// DISABLED:                       ws.send(JSON.stringify({
-// DISABLED:                         type: "ai-text",
-// DISABLED:                         text
-// DISABLED:                       }));
-// DISABLED:                     }
-// DISABLED:               
-// DISABLED:                     session.history.push({
-// DISABLED:                       role: "assistant",
-// DISABLED:                       content: text
-// DISABLED:                     });
-// DISABLED:               
-// DISABLED:                     if (session.history.length > 20) {
-// DISABLED:                       session.history.shift();
-// DISABLED:                     }
-// DISABLED:               
-// DISABLED:                   }
-// DISABLED:               
-// DISABLED:                 } catch (err) {
-// DISABLED:                   console.error("Tool result parse error:", err);
-// DISABLED:                 }
-// DISABLED:               
-// DISABLED:                 break;
-// DISABLED:               }
-// DISABLED: 
-// DISABLED:               case "user_transcript": {
-// DISABLED: 
-// DISABLED:                 try {
-// DISABLED: 
-// DISABLED:                   const text =
-// DISABLED:                     event.user_transcription_event.user_transcript;
-// DISABLED:                   
-// DISABLED: 
-// DISABLED:                         if (session.agent === "general" && shouldSwitchToSales(text)) {
-// DISABLED: 
-// DISABLED:                           console.log("🔁 SWITCHING MODE: general → sales");
-// DISABLED:                         
-// DISABLED:                           await handleAgentSwitch(ws, "sales");
-// DISABLED:                           return;
-// DISABLED:                         }
-// DISABLED:                       
-// DISABLED:                       // }
-// DISABLED: 
-// DISABLED:                       console.log("🗣️ User:", text);
-// DISABLED:     
-// DISABLED:                       if (ws.readyState === WebSocket.OPEN) {
-// DISABLED:                         ws.send(
-// DISABLED:                           JSON.stringify({
-// DISABLED:                             type: "user-text",
-// DISABLED:                             text
-// DISABLED:                           })
-// DISABLED:                         );
-// DISABLED:                       }
-// DISABLED:     
-// DISABLED:                       if (!session) {
-// DISABLED:                         console.warn("⚠ No session found");
-// DISABLED:                         break;
-// DISABLED:                       }
-// DISABLED:     
-// DISABLED:                       session.history.push({
-// DISABLED:                         role: "user",
-// DISABLED:                         content: text
-// DISABLED:                       });
-// DISABLED:     
-// DISABLED:                       if (session.history.length > 20) {
-// DISABLED:                         session.history.shift();
-// DISABLED:                       }
-// DISABLED:     
-// DISABLED:                       session.lastUserMessage = text;
-// DISABLED:     
-// DISABLED:                       session.context = session.context || {};
-// DISABLED:     
-// DISABLED:                       const extractedPostcode =
-// DISABLED:                         extractPostcode(text);
-// DISABLED:     
-// DISABLED:                       if (extractedPostcode) {
-// DISABLED:                         session.context.postcode = extractedPostcode;
-// DISABLED:                         console.log(
-// DISABLED:                           "✅ Postcode extracted:",
-// DISABLED:                           extractedPostcode
-// DISABLED:                         );
-// DISABLED:                       }
-// DISABLED:     
-// DISABLED:                       const deliveryDate =
-// DISABLED:                         extractDeliveryDate(text);
-// DISABLED:     
-// DISABLED:                       if (deliveryDate) {
-// DISABLED:                         session.context.delivery_date =
-// DISABLED:                           deliveryDate;
-// DISABLED:     
-// DISABLED:                         console.log(
-// DISABLED:                           "📦 Delivery date extracted:",
-// DISABLED:                           deliveryDate
-// DISABLED:                         );
-// DISABLED:                       }
-// DISABLED:     
-// DISABLED:                       const pickupDate =
-// DISABLED:                         extractPickupDate(text);
-// DISABLED:     
-// DISABLED:                       if (pickupDate) {
-// DISABLED:                         session.context.pickup_date =
-// DISABLED:                           pickupDate;
-// DISABLED:     
-// DISABLED:                         console.log(
-// DISABLED:                           "🚛 Pickup date extracted:",
-// DISABLED:                           pickupDate
-// DISABLED:                         );
-// DISABLED:                       }
-// DISABLED:     
-// DISABLED:                       console.log(
-// DISABLED:                         "📦 Final Context updated in Node:",
-// DISABLED:                         session.context
-// DISABLED:                       );
-// DISABLED: 
-// DISABLED:                       console.log(
-// DISABLED:                         "🔄 Syncing updated context to ElevenLabs..."
-// DISABLED:                       );
-// DISABLED:   
-// DISABLED:                       ws.elWs.send(
-// DISABLED:                         JSON.stringify({
-// DISABLED:                           // type: "client_tool_outputs",
-// DISABLED:                           type: "dynamic_variables",
-// DISABLED:                           dynamic_variables: {
-// DISABLED:                             conversation_history: session.history.slice(-10),
-// DISABLED:                             system_prompt: session.activePrompt,
-// DISABLED:                             ...session.context
-// DISABLED:                           }
-// DISABLED:                         })
-// DISABLED:                       );
-// DISABLED: 
-// DISABLED:                       } catch (err) {
-// DISABLED:                         console.error(
-// DISABLED:                           "❌ user_transcript error:",
-// DISABLED:                           err
-// DISABLED:                         );
-// DISABLED:                       }
-// DISABLED:       
-// DISABLED:                       break;
-// DISABLED:                     }
-// DISABLED: 
-// DISABLED:               case "agent_response": {
-// DISABLED: 
-// DISABLED:                 const text =
-// DISABLED:                   event.agent_response_event.agent_response;
-// DISABLED: 
-// DISABLED:                 console.log("🤖 Agent:", text);
-// DISABLED: 
-// DISABLED:                 if (ws.readyState === WebSocket.OPEN) {
-// DISABLED:                   ws.send(
-// DISABLED:                     JSON.stringify({
-// DISABLED:                       type: "ai-text",
-// DISABLED:                       text
-// DISABLED:                     })
-// DISABLED:                   );
-// DISABLED:                 }
-// DISABLED: 
-// DISABLED:                 if (!session) break;
-// DISABLED: 
-// DISABLED:                 session.history.push({
-// DISABLED:                   role: "assistant",
-// DISABLED:                   content: text
-// DISABLED:                 });
-// DISABLED: 
-// DISABLED:                 if (session.history.length > 20) {
-// DISABLED:                   session.history.shift();
-// DISABLED:                 }
-// DISABLED: 
-// DISABLED:                 const userMessage =
-// DISABLED:                   session.lastUserMessage || null;
-// DISABLED: 
-// DISABLED:                 await queryAsync(
-// DISABLED:                   `
-// DISABLED:                   INSERT INTO chatbot_conversations
-// DISABLED:                   (
-// DISABLED:                     session_id,
-// DISABLED:                     agent_type,
-// DISABLED:                     prompt_id,
-// DISABLED:                     user_message,
-// DISABLED:                     ai_response,
-// DISABLED:                     confidence,
-// DISABLED:                     resolved,
-// DISABLED:                     created_at
-// DISABLED:                   )
-// DISABLED:                   VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-// DISABLED:                   `,
-// DISABLED:                   [
-// DISABLED:                     ws.sessionId,
-// DISABLED:                     session.agent,
-// DISABLED:                     session.promptId,
-// DISABLED:                     userMessage,
-// DISABLED:                     text,
-// DISABLED:                     0.9
-// DISABLED:                   ]
-// DISABLED:                 );
-// DISABLED: 
-// DISABLED:                 await queryAsync(
-// DISABLED:                   `
-// DISABLED:                   UPDATE chatbot_conversation_sessions
-// DISABLED:                   SET
-// DISABLED:                     total_messages = total_messages + 1,
-// DISABLED:                     ai_messages = ai_messages + 1
-// DISABLED:                   WHERE session_id = ?
-// DISABLED:                   `,
-// DISABLED:                   [ws.sessionId]
-// DISABLED:                 );
-// DISABLED: 
-// DISABLED:                 if (userMessage) {
-// DISABLED:                   await insertLearningQueue({
-// DISABLED:                     sessionId: ws.sessionId,
-// DISABLED:                     question: userMessage,
-// DISABLED:                     answer: text
-// DISABLED:                   });
-// DISABLED:                 }
-// DISABLED: 
-// DISABLED:                 session.lastUserMessage = null;
-// DISABLED: 
-// DISABLED:                 break;
-// DISABLED:               }
-// DISABLED: 
-// DISABLED:               case "audio": {
-// DISABLED: 
-// DISABLED:                 const pcm = Buffer.from(
-// DISABLED:                   event.audio_event.audio_base_64,
-// DISABLED:                   "base64"
-// DISABLED:                 );
-// DISABLED: 
-// DISABLED:                 if (!ws.welcomeAudioSent) {
-// DISABLED:                   console.warn(
-// DISABLED:                     "⛔ ConvAI mencoba bicara tapi REST belum selesai. Skipping..."
-// DISABLED:                   );
-// DISABLED:                   break;
-// DISABLED:                 }
-// DISABLED: 
-// DISABLED:                 if (ws.readyState === WebSocket.OPEN) {
-// DISABLED:                   ws.send(pcm);
-// DISABLED: 
-// DISABLED:                   console.log(
-// DISABLED:                     "🔊 ConvAI Audio sent to browser:",
-// DISABLED:                     pcm.length,
-// DISABLED:                     "bytes"
-// DISABLED:                   );
-// DISABLED:                 }
-// DISABLED: 
-// DISABLED:                 break;
-// DISABLED:               }
-// DISABLED: 
-// DISABLED:               case "interruption": {
-// DISABLED: 
-// DISABLED:                 console.log("⚡ Interruption detected");
-// DISABLED: 
-// DISABLED:                 if (ws.readyState === WebSocket.OPEN) {
-// DISABLED:                   ws.send(
-// DISABLED:                     JSON.stringify({
-// DISABLED:                       type: "interruption"
-// DISABLED:                     })
-// DISABLED:                   );
-// DISABLED:                 }
-// DISABLED: 
-// DISABLED:                 break;
-// DISABLED:               }
-// DISABLED: 
-// DISABLED:               case "ping": {
-// DISABLED: 
-// DISABLED:                 if (elWs.readyState === WebSocket.OPEN) {
-// DISABLED:                   ws.elWs.send(
-// DISABLED:                     JSON.stringify({
-// DISABLED:                       type: "pong",
-// DISABLED:                       event_id: event.ping_event.event_id
-// DISABLED:                     })
-// DISABLED:                   );
-// DISABLED:                 }
-// DISABLED: 
-// DISABLED:                 break;
-// DISABLED:               }
-// DISABLED: 
-// DISABLED:               case "vad_score":
-// DISABLED:               case "internal_tentative_agent_response":
-// DISABLED:                 break;
-// DISABLED: 
-// DISABLED:               default:
-// DISABLED:                 console.log(
-// DISABLED:                   "📩 ElevenLabs event:",
-// DISABLED:                   event.type
-// DISABLED:                 );
-// DISABLED:             }
-// DISABLED: 
-// DISABLED:           } catch (err) {
-// DISABLED:             console.error(
-// DISABLED:               "❌ ElevenLabs parse error:",
-// DISABLED:               err
-// DISABLED:             );
-// DISABLED:           }
-// DISABLED:         });
-// DISABLED: 
-// DISABLED:         elWs.on("close", () => {
-// DISABLED:           console.log(
-// DISABLED:             "❌ ElevenLabs disconnected for session",
-// DISABLED:             elWs.sessionId
-// DISABLED:           );
-// DISABLED:         });
-// DISABLED: 
-// DISABLED:         elWs.on("error", (err) => {
-// DISABLED:           console.error(
-// DISABLED:             "❌ ElevenLabs error:",
-// DISABLED:             err.message
-// DISABLED:           );
-// DISABLED:         });
-// DISABLED: 
-// DISABLED:       } catch (err) {
-// DISABLED: 
-// DISABLED:         console.error(
-// DISABLED:           "❌ ElevenLabs connection failed:",
-// DISABLED:           err
-// DISABLED:         );
-// DISABLED: 
-// DISABLED:         ws.send(
-// DISABLED:           JSON.stringify({
-// DISABLED:             type: "ai-text",
-// DISABLED:             text:
-// DISABLED:               "Sorry, I'm having trouble connecting. Please try again."
-// DISABLED:           })
-// DISABLED:         );
-// DISABLED:       }
-// DISABLED: 
-// DISABLED:       console.log("🎯 Active agent:", prompt.agent_type);
-// DISABLED: 
-// DISABLED:       return;
-// DISABLED:     }
-// DISABLED: 
-// DISABLED:     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
-// DISABLED: 
-// DISABLED:       if (ws.callState !== "ACTIVE") {
-// DISABLED:         return;
-// DISABLED:       }
-// DISABLED: 
-// DISABLED:       if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
-// DISABLED: 
-// DISABLED:       if (ws.elWs.readyState === WebSocket.OPEN) {
-// DISABLED:         ws.elWs.send(
-// DISABLED:           JSON.stringify({
-// DISABLED:             user_audio_chunk: Buffer.from(msg).toString("base64")
-// DISABLED:           })
-// DISABLED:         );
-// DISABLED:       }
-// DISABLED: 
-// DISABLED:       return;
-// DISABLED:     }
-// DISABLED:   });
-// DISABLED: 
-// DISABLED:   ws.on("close", async () => {
-// DISABLED: 
-// DISABLED:     const sessionId = ws.sessionId;
-// DISABLED: 
-// DISABLED:     console.log("❌ Client disconnected", sessionId);
-// DISABLED: 
-// DISABLED:     if (!sessionId) {
-// DISABLED:       console.log(
-// DISABLED:         "⚠️ No sessionId on close, skipping cleanup"
-// DISABLED:       );
-// DISABLED:       return;
-// DISABLED:     }
-// DISABLED: 
-// DISABLED:     try {
-// DISABLED: 
-// DISABLED:       console.log(
-// DISABLED:         "🧹 Cleaning up ElevenLabs for:",
-// DISABLED:         sessionId
-// DISABLED:       );
-// DISABLED: 
-// DISABLED:       const summary =
-// DISABLED:         await summarizeConversation(sessionId);
-// DISABLED: 
-// DISABLED:       await queryAsync(
-// DISABLED:         `
-// DISABLED:         UPDATE chatbot_conversation_sessions
-// DISABLED:         SET
-// DISABLED:           ended_at = NOW(),
-// DISABLED:           session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
-// DISABLED:           conversation_summary = ?
-// DISABLED:         WHERE session_id = ?
-// DISABLED:         `,
-// DISABLED:         [
-// DISABLED:           summary,
-// DISABLED:           sessionId
-// DISABLED:         ]
-// DISABLED:       );
-// DISABLED: 
-// DISABLED:     } catch (err) {
-// DISABLED:       console.error("❌ Session close error:", err);
-// DISABLED:     }
-// DISABLED: 
-// DISABLED:     if (ws.elWs) {
-// DISABLED:       try {
-// DISABLED:         ws.elWs.close();
-// DISABLED:       } catch {}
-// DISABLED: 
-// DISABLED:       ws.elWs = null;
-// DISABLED:     }
-// DISABLED: 
-// DISABLED:     callSessions.delete(sessionId);
-// DISABLED: 
-// DISABLED:     ws.sessionId = null;
-// DISABLED:     ws.sessionReady = false;
-// DISABLED:     ws.callState = "ENDED";
-// DISABLED:     ws.welcomeAudioSent = false;
-// DISABLED:     ws.elReady = false;
-// DISABLED:   });
-// DISABLED: });
+    if (data?.type === "start-call") {
+
+      ws.sessionId = data.session_id;
+      ws.welcomeAudioSent = false;
+      ws.callState = "WELCOME";
+      ws.elReady = false;
+
+      if (ws.elWs) {
+        try {
+          ws.elWs.close();
+        } catch {}
+        ws.elWs = null;
+      }
+
+      ws.sessionReady = true;
+
+      // const requestedAgent = data.agent || "sales";
+      const requestedAgent = "general";
+
+      const rows = await queryAsync(
+        `
+        SELECT
+          id,
+          agent_type,
+          identity,
+          role_description,
+          primary_goals,
+          context_knowledge,
+          language,
+          tone,
+          response_format,
+          do_guidelines,
+          dont_guidelines
+        FROM chatbot_prompts
+        WHERE agent_type = ?
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+        [requestedAgent]
+        );
+
+      let prompt = rows[0];
+
+      if (!prompt) {
+
+        const fallback = await queryAsync(
+          `
+          SELECT
+            id,
+            agent_type,
+            identity,
+            role_description,
+            primary_goals,
+            context_knowledge,
+            language,
+            tone,
+            response_format,
+            do_guidelines,
+            dont_guidelines
+          FROM chatbot_prompts
+          WHERE agent_type = 'sales'
+          ORDER BY id DESC
+          LIMIT 1
+          `
+        );
+
+        if (!fallback.length) {
+          console.error("❌ No active prompt found");
+
+          ws.send(
+            JSON.stringify({
+              type: "ai-text",
+              text: "Sorry, no agent available."
+            })
+          );
+
+          return;
+        }
+
+        prompt = fallback[0];
+      }
+
+
+      const systemPrompt = buildFullSystemPrompt(prompt);
+
+      const incomingContext = data.context || {};
+
+      const finalContext = {
+
+        agent_type: prompt.agent_type,
+        postcode: incomingContext.postcode || null,
+        waste_type_id: incomingContext.waste_type_id || null,
+        selected_bin_size_id: incomingContext.selected_bin_size_id || null,
+        leadId: incomingContext.leadId || null,
+
+        delivery_date: incomingContext.delivery_date || null,
+        hire_days: incomingContext.hire_days || null,
+        pickup_date: incomingContext.pickup_date || null,
+
+        streetNumber: incomingContext.streetNumber || null,
+        streetName: incomingContext.streetName || null,
+        suburb: incomingContext.suburb || null,
+        state: incomingContext.state || null,
+        country: incomingContext.country || null,
+        fullAddress: incomingContext.fullAddress || null,
+
+        name: incomingContext.name || "Guest",
+        email: incomingContext.email || null,
+        phoneNumber: incomingContext.phoneNumber || null,
+        note: incomingContext.note || "none"
+      };
+
+      callSessions.set(ws.sessionId, {
+        agent: prompt.agent_type,
+        promptId: prompt.id,
+        systemPrompt,
+        activePrompt: systemPrompt,
+        history: [],
+        context: finalContext,
+        agentLocked: false
+      });
+
+      await queryAsync(
+        `
+        INSERT INTO chatbot_conversation_sessions
+        (
+          session_id,
+          conversation_id,
+          agent_type,
+          user_name,
+          user_ip,
+          started_at,
+          total_messages,
+          ai_messages
+        )
+        VALUES (?, ?, ?, ?, ?, NOW(), 0, 0)
+        `,
+        [
+          ws.sessionId,
+          ws.sessionId,
+          prompt.agent_type,
+          "Guest",
+          ws._socket?.remoteAddress || null
+        ]
+      );
+
+      try {
+
+        console.log("🧩 Creating NEW ElevenLabs connection for:", ws.sessionId);
+
+        const signedUrl = await getElevenLabsSignedUrl();
+
+        const elWs = new WebSocket(signedUrl);
+
+
+        elWs.sessionId = ws.sessionId;
+
+        console.log("🔌 ElevenLabs WS instance created");
+
+        ws.elWs = elWs;
+
+        elWs.on("open", async () => {
+
+          console.log("🟢 ElevenLabs OPEN for session:", ws.sessionId);
+          console.log("🟢 Connected");
+
+          elWs.send(
+            JSON.stringify({
+              type: "conversation_initiation_client_data",
+              conversation_config_override: {
+                agent: {
+                  prompt: {
+                    prompt: systemPrompt
+                  },
+                  language: "en",
+                  tools: [
+                    {
+                      type: "webhook",
+                      name: "N8NAiResponse",
+                      url: "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-chatbot",
+                      method: "POST",
+                      // description:
+                      //   "Mandatory tool to get any response. Call this with user_input and the full context object.",
+                      parameters: {
+                        type: "object",
+                        properties: {
+                          user_input: {
+                            type: "string",
+                            description:
+                              "The full message from the user"
+                          },
+                          conversation_history: {
+                            type: "array",
+                            description: "Recent conversation history",
+                            items: {
+                              type: "object",
+                              properties: {
+                                role: { type: "string" },
+                                content: { type: "string" }
+                              }
+                            }
+                          },
+                          context: {
+                            type: "object",
+                            description:
+                              "Full session context for n8n processing",
+                            properties: {
+                              agent_type: { type: "string" },
+                              postcode: { type: "string" },
+                              waste_type_id: { type: "integer" },
+                              selected_bin_size_id: { type: "integer" },
+                              delivery_date: { type: "string" },
+                              pickup_date: { type: "string" },
+                              hire_days: { type: "string" },
+                              leadId: { type: "integer" },
+                              suburb: { type: "string" },
+                              state: { type: "string" },
+                              country: { type: "string" },
+                              fullAddress: { type: "string" },
+                              name: { type: "string" },
+                              note: { type: "string" }
+                            }
+                          }
+                        },
+                        required: [
+                          "user_input",                          
+                          "conversation_history",
+                          "context"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              // dynamic_variables: finalContext
+              dynamic_variables: {
+                ...finalContext,
+                system_prompt: systemPrompt
+              }
+            })
+          );
+
+          const rows = await queryAsync(
+            `
+            SELECT message_text
+            FROM chatbot_welcome_messages
+            WHERE is_active = 1
+            LIMIT 1
+            `
+          );
+
+          if (!rows.length) return;
+
+          const welcomeText = rows[0].message_text.trim();
+
+          try {
+
+            console.log("🎤 Generating welcome TTS for:", ws.sessionId);
+
+            const pcmWelcome = await speakWelcome(welcomeText);
+
+            if (ws.readyState === WebSocket.OPEN) {
+
+              ws.send(
+                JSON.stringify({
+                  type: "ai-text",
+                  text: welcomeText
+                })
+              );
+
+              console.log("📤 Welcome text sent to browser");
+
+              const silence = Buffer.alloc(16000 * 2 * 0.25);
+
+              ws.send(silence);
+              ws.send(pcmWelcome);
+
+              const durationMs =
+                (pcmWelcome.length / 2 / 16000) * 1000;
+
+              setTimeout(() => {
+
+                ws.callState = "ACTIVE";
+                ws.welcomeAudioSent = true;
+
+                console.log("✅ Welcome selesai, mic dibuka");
+
+              }, durationMs + 100);
+            }
+
+          } catch (err) {
+            console.error("Error REST TTS:", err);
+          }
+        });
+
+        elWs.on("message", async (elMsg) => {
+
+          if (!ws.sessionId || ws.callState === "ENDED") {
+            return;
+          }
+
+          try {
+
+            const event = JSON.parse(elMsg.toString());
+
+            console.log("📩 EL EVENT:", event.type);
+
+            const session = callSessions.get(ws.sessionId);
+
+            if (!session) {
+              console.warn("⚠️ Session missing in Map. Ignoring EL event.");
+              return;
+            }
+
+            switch (event.type) {
+
+              case "conversation_initiation_metadata": {
+                ws.elReady = true;
+                console.log("EL READY (Metadata received)");
+                break;
+              }
+
+              case "tool_call_result": {
+
+                try {
+              
+                  const toolOutput =
+                    event.tool_call_result_event?.output;
+              
+                  if (!toolOutput) break;
+              
+                  // ==============================
+                  // UPDATE CONTEXT
+                  // ==============================
+              
+                  if (toolOutput.context) {
+                    session.context = {
+                      ...session.context,
+                      ...toolOutput.context
+                    };
+              
+                    console.log("🔄 Context synced:", session.context);
+                  }
+              
+                  // ==============================
+                  // SEND N8N RESPONSE
+                  // ==============================
+              
+                  if (toolOutput.reply) {
+              
+                    const text = toolOutput.reply;
+              
+                    console.log("📦 N8N Response:", text);
+              
+                    if (ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify({
+                        type: "ai-text",
+                        text
+                      }));
+                    }
+              
+                    session.history.push({
+                      role: "assistant",
+                      content: text
+                    });
+              
+                    if (session.history.length > 20) {
+                      session.history.shift();
+                    }
+              
+                  }
+              
+                } catch (err) {
+                  console.error("Tool result parse error:", err);
+                }
+              
+                break;
+              }
+
+              case "user_transcript": {
+
+                try {
+
+                  const text =
+                    event.user_transcription_event.user_transcript;
+                  
+
+                        if (session.agent === "general" && shouldSwitchToSales(text)) {
+
+                          console.log("🔁 SWITCHING MODE: general → sales");
+                        
+                          await handleAgentSwitch(ws, "sales");
+                          return;
+                        }
+                      
+                      // }
+
+                      console.log("🗣️ User:", text);
+    
+                      if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(
+                          JSON.stringify({
+                            type: "user-text",
+                            text
+                          })
+                        );
+                      }
+    
+                      if (!session) {
+                        console.warn("⚠ No session found");
+                        break;
+                      }
+    
+                      session.history.push({
+                        role: "user",
+                        content: text
+                      });
+    
+                      if (session.history.length > 20) {
+                        session.history.shift();
+                      }
+    
+                      session.lastUserMessage = text;
+    
+                      session.context = session.context || {};
+    
+                      const extractedPostcode =
+                        extractPostcode(text);
+    
+                      if (extractedPostcode) {
+                        session.context.postcode = extractedPostcode;
+                        console.log(
+                          "✅ Postcode extracted:",
+                          extractedPostcode
+                        );
+                      }
+    
+                      const deliveryDate =
+                        extractDeliveryDate(text);
+    
+                      if (deliveryDate) {
+                        session.context.delivery_date =
+                          deliveryDate;
+    
+                        console.log(
+                          "📦 Delivery date extracted:",
+                          deliveryDate
+                        );
+                      }
+    
+                      const pickupDate =
+                        extractPickupDate(text);
+    
+                      if (pickupDate) {
+                        session.context.pickup_date =
+                          pickupDate;
+    
+                        console.log(
+                          "🚛 Pickup date extracted:",
+                          pickupDate
+                        );
+                      }
+    
+                      console.log(
+                        "📦 Final Context updated in Node:",
+                        session.context
+                      );
+
+                      console.log(
+                        "🔄 Syncing updated context to ElevenLabs..."
+                      );
+  
+                      ws.elWs.send(
+                        JSON.stringify({
+                          // type: "client_tool_outputs",
+                          type: "dynamic_variables",
+                          dynamic_variables: {
+                            conversation_history: session.history.slice(-10),
+                            system_prompt: session.activePrompt,
+                            ...session.context
+                          }
+                        })
+                      );
+
+                      } catch (err) {
+                        console.error(
+                          "❌ user_transcript error:",
+                          err
+                        );
+                      }
+      
+                      break;
+                    }
+
+              case "agent_response": {
+
+                const text =
+                  event.agent_response_event.agent_response;
+
+                console.log("🤖 Agent:", text);
+
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "ai-text",
+                      text
+                    })
+                  );
+                }
+
+                if (!session) break;
+
+                session.history.push({
+                  role: "assistant",
+                  content: text
+                });
+
+                if (session.history.length > 20) {
+                  session.history.shift();
+                }
+
+                const userMessage =
+                  session.lastUserMessage || null;
+
+                await queryAsync(
+                  `
+                  INSERT INTO chatbot_conversations
+                  (
+                    session_id,
+                    agent_type,
+                    prompt_id,
+                    user_message,
+                    ai_response,
+                    confidence,
+                    resolved,
+                    created_at
+                  )
+                  VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
+                  `,
+                  [
+                    ws.sessionId,
+                    session.agent,
+                    session.promptId,
+                    userMessage,
+                    text,
+                    0.9
+                  ]
+                );
+
+                await queryAsync(
+                  `
+                  UPDATE chatbot_conversation_sessions
+                  SET
+                    total_messages = total_messages + 1,
+                    ai_messages = ai_messages + 1
+                  WHERE session_id = ?
+                  `,
+                  [ws.sessionId]
+                );
+
+                if (userMessage) {
+                  await insertLearningQueue({
+                    sessionId: ws.sessionId,
+                    question: userMessage,
+                    answer: text
+                  });
+                }
+
+                session.lastUserMessage = null;
+
+                break;
+              }
+
+              case "audio": {
+
+                const pcm = Buffer.from(
+                  event.audio_event.audio_base_64,
+                  "base64"
+                );
+
+                if (!ws.welcomeAudioSent) {
+                  console.warn(
+                    "⛔ ConvAI mencoba bicara tapi REST belum selesai. Skipping..."
+                  );
+                  break;
+                }
+
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(pcm);
+
+                  console.log(
+                    "🔊 ConvAI Audio sent to browser:",
+                    pcm.length,
+                    "bytes"
+                  );
+                }
+
+                break;
+              }
+
+              case "interruption": {
+
+                console.log("⚡ Interruption detected");
+
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "interruption"
+                    })
+                  );
+                }
+
+                break;
+              }
+
+              case "ping": {
+
+                if (elWs.readyState === WebSocket.OPEN) {
+                  ws.elWs.send(
+                    JSON.stringify({
+                      type: "pong",
+                      event_id: event.ping_event.event_id
+                    })
+                  );
+                }
+
+                break;
+              }
+
+              case "vad_score":
+              case "internal_tentative_agent_response":
+                break;
+
+              default:
+                console.log(
+                  "📩 ElevenLabs event:",
+                  event.type
+                );
+            }
+
+          } catch (err) {
+            console.error(
+              "❌ ElevenLabs parse error:",
+              err
+            );
+          }
+        });
+
+        elWs.on("close", () => {
+          console.log(
+            "❌ ElevenLabs disconnected for session",
+            elWs.sessionId
+          );
+        });
+
+        elWs.on("error", (err) => {
+          console.error(
+            "❌ ElevenLabs error:",
+            err.message
+          );
+        });
+
+      } catch (err) {
+
+        console.error(
+          "❌ ElevenLabs connection failed:",
+          err
+        );
+
+        ws.send(
+          JSON.stringify({
+            type: "ai-text",
+            text:
+              "Sorry, I'm having trouble connecting. Please try again."
+          })
+        );
+      }
+
+      console.log("🎯 Active agent:", prompt.agent_type);
+
+      return;
+    }
+
+    if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
+
+      if (ws.callState !== "ACTIVE") {
+        return;
+      }
+
+      if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
+
+      if (ws.elWs.readyState === WebSocket.OPEN) {
+        ws.elWs.send(
+          JSON.stringify({
+            user_audio_chunk: Buffer.from(msg).toString("base64")
+          })
+        );
+      }
+
+      return;
+    }
+  });
+
+  ws.on("close", async () => {
+
+    const sessionId = ws.sessionId;
+
+    console.log("❌ Client disconnected", sessionId);
+
+    if (!sessionId) {
+      console.log(
+        "⚠️ No sessionId on close, skipping cleanup"
+      );
+      return;
+    }
+
+    try {
+
+      console.log(
+        "🧹 Cleaning up ElevenLabs for:",
+        sessionId
+      );
+
+      const summary =
+        await summarizeConversation(sessionId);
+
+      await queryAsync(
+        `
+        UPDATE chatbot_conversation_sessions
+        SET
+          ended_at = NOW(),
+          session_duration = TIMESTAMPDIFF(SECOND, started_at, NOW()),
+          conversation_summary = ?
+        WHERE session_id = ?
+        `,
+        [
+          summary,
+          sessionId
+        ]
+      );
+
+    } catch (err) {
+      console.error("❌ Session close error:", err);
+    }
+
+    if (ws.elWs) {
+      try {
+        ws.elWs.close();
+      } catch {}
+
+      ws.elWs = null;
+    }
+
+    callSessions.delete(sessionId);
+
+    ws.sessionId = null;
+    ws.sessionReady = false;
+    ws.callState = "ENDED";
+    ws.welcomeAudioSent = false;
+    ws.elReady = false;
+  });
+});
 
 
 
@@ -6442,7 +6264,7 @@ app.get('/admin/sessions', (req, res) => {
 // ==============================
 // START VOICE WEBSOCKET SERVER
 // ==============================
-startVoiceServer(server); // Kyle Local STT&TTS UPDATE: Enabled
+// startVoiceServer(server);
 // -----------------------------------------------------
 // START SERVER
 // -----------------------------------------------------
