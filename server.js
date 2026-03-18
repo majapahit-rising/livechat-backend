@@ -1166,7 +1166,8 @@ async function handleAgentSwitch(ws, newAgentType) {
 
   console.log(`🔁 Switching agent → ${newAgentType}`);
 
-  const rows = await queryAsync(` SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1 `, [newAgentType] );
+  // const rows = await queryAsync(` SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1 `, [newAgentType] );
+  const rows = await queryAsync(` SELECT * FROM chatbot_prompts WHERE id = 10 LIMIT 1 `, [newAgentType] );
 
   if (!rows.length) return;
 
