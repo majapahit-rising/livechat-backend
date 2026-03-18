@@ -1166,8 +1166,8 @@ async function handleAgentSwitch(ws, newAgentType) {
 
   console.log(`🔁 Switching agent → ${newAgentType}`);
 
-  // const rows = await queryAsync(` SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1 `, [newAgentType] );
-  const rows = await queryAsync(` SELECT * FROM chatbot_prompts WHERE id = 10 LIMIT 1 `, [newAgentType] );
+  const rows = await queryAsync(` SELECT * FROM chatbot_prompts WHERE agent_type = ? ORDER BY id DESC LIMIT 1 `, [newAgentType] );
+  // const rows = await queryAsync(` SELECT * FROM chatbot_prompts WHERE id = 10 LIMIT 1 `, [newAgentType] );
 
   if (!rows.length) return;
 
@@ -1182,8 +1182,8 @@ async function handleAgentSwitch(ws, newAgentType) {
   ws.elWs.send(JSON.stringify({
     type: "dynamic_variables",
     dynamic_variables: {
-      ...session.context
-      // system_prompt: newPrompt
+      ...session.context,
+      system_prompt: newPrompt
     }
   }));
 
@@ -1458,8 +1458,8 @@ wss.on("connection", (ws) => {
               },
               // dynamic_variables: finalContext
               dynamic_variables: {
-                ...finalContext
-                // system_prompt: systemPrompt
+                ...finalContext,
+                system_prompt: systemPrompt
               }
             })
           );
@@ -1700,7 +1700,7 @@ wss.on("connection", (ws) => {
                           type: "dynamic_variables",
                           dynamic_variables: {
                             conversation_history: session.history.slice(-10),
-                            // system_prompt: session.activePrompt,
+                            system_prompt: session.activePrompt,
                             ...session.context
                           }
                         })
