@@ -1923,11 +1923,12 @@ wss.on("connection", (ws) => {
       if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
 
       if (ws.elWs.readyState === WebSocket.OPEN) {
-        ws.elWs.send(
-          JSON.stringify({
-            user_audio_chunk: Buffer.from(msg).toString("base64")
-          })
-        );
+        ws.elWs.send(JSON.stringify({
+          type: "audio",
+          audio_event: {
+            audio_base_64: Buffer.from(msg).toString("base64")
+          }
+        }));
       }
 
       return;
