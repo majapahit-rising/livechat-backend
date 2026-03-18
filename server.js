@@ -1512,13 +1512,12 @@ wss.on("connection", (ws) => {
                 (pcmWelcome.length / 2 / 16000) * 1000;
 
               setTimeout(() => {
+
                 ws.callState = "ACTIVE";
                 ws.welcomeAudioSent = true;
-              
-                ws.send(JSON.stringify({
-                  type: "ready-for-audio"
-                }));
-              
+
+                console.log("✅ Welcome selesai, mic dibuka");
+
               }, durationMs + 100);
             }
 
@@ -1916,30 +1915,19 @@ wss.on("connection", (ws) => {
     }
 
     if (msg instanceof Buffer || msg instanceof ArrayBuffer) {
-      console.log("📥 BACKEND RECEIVED AUDIO:", msg.length);
 
       if (ws.callState !== "ACTIVE") {
-        console.log("⛔ DROPPED: callState =", ws.callState);
         return;
       }
 
-      if (!ws.sessionReady || !ws.elWs || !ws.elReady) {
-        console.log("⛔ DROPPED: EL not ready", {
-          sessionReady: ws.sessionReady,
-          elWs: !!ws.elWs,
-          elReady: ws.elReady
-        });
-        return;
-      }
+      if (!ws.sessionReady || !ws.elWs || !ws.elReady) return;
 
       if (ws.elWs.readyState === WebSocket.OPEN) {
-        console.log("➡️ FORWARD TO EL");
-        ws.elWs.send(JSON.stringify({
-          type: "audio",
-          audio_event: {
-            audio_base_64: Buffer.from(msg).toString("base64")
-          }
-        }));
+        ws.elWs.send(
+          JSON.stringify({
+            user_audio_chunk: Buffer.from(msg).toString("base64")
+          })
+        );
       }
 
       return;
