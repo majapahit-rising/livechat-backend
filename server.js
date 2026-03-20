@@ -1239,7 +1239,7 @@ wss.on("connection", (ws) => {
       ws.sessionReady = true;
 
       // const requestedAgent = data.agent || "sales";
-      const requestedAgent = "general";
+      const requestedAgent = "sales";
 
       const rows = await queryAsync(
         `
