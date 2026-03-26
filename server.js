@@ -3143,67 +3143,67 @@ app.post("/push/register", (req, res) => {
   // ======================================================
   // IDENTITY EXTRACTOR (BACKEND SOURCE OF TRUTH)
   // ======================================================
-  // function extractIdentity(text = "") {
-  //   let name = null;
-  //   let email = null;
-  //   let phone = null;
+  function extractIdentity(text = "") {
+    let name = null;
+    let email = null;
+    let phone = null;
 
-  //   // NAME
-  //   const nameMatch = text.match(
-  //     /\b(?:my\s*(?:full\s*)?name\s*(?:is)?|i am|i'm)\s+([a-z][a-z\s'-]{1,40})/i
-  //   );
-  //   if (nameMatch) name = nameMatch[1].trim();
+    // NAME
+    const nameMatch = text.match(
+      /\b(?:my\s*(?:full\s*)?name\s*(?:is)?|i am|i'm)\s+([a-z][a-z\s'-]{1,40})/i
+    );
+    if (nameMatch) name = nameMatch[1].trim();
 
-  //   // EMAIL
-  //   const emailMatch = text.match(
-  //     /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i
-  //   );
-  //   if (emailMatch) email = emailMatch[0];
+    // EMAIL
+    const emailMatch = text.match(
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i
+    );
+    if (emailMatch) email = emailMatch[0];
 
-  //   // PHONE
-  //   const phoneMatch = text.match(/\b\d{8,15}\b/);
-  //   if (phoneMatch) phone = phoneMatch[0];
+    // PHONE
+    const phoneMatch = text.match(/\b\d{8,15}\b/);
+    if (phoneMatch) phone = phoneMatch[0];
 
-  //   return { name, email, phone };
-  // }
-
-   function extractIdentityFromHistory(history = []) {
-  let name = null;
-  let email = null;
-  let phone = null;
-
-  for (let i = history.length - 1; i >= 0; i--) {
-    const item = history[i];
-
-    // ambil dari context dulu (paling clean)
-    if (item.context) {
-      if (!name && item.context.name && item.context.name !== "Guest") {
-        name = item.context.name;
-      }
-
-      if (!email && item.context.email) {
-        email = item.context.email;
-      }
-
-      if (!phone && item.context.phoneNumber) {
-        phone = item.context.phoneNumber;
-      }
-    }
-
-    // fallback: extract dari user message lama
-    if (item.user) {
-      const parsed = extractIdentity(item.user);
-
-      if (!name && parsed.name) name = parsed.name;
-      if (!email && parsed.email) email = parsed.email;
-      if (!phone && parsed.phone) phone = parsed.phone;
-    }
-
-    if (name && email && phone) break;
+    return { name, email, phone };
   }
 
-  return { name, email, phone };
-}
+//    function extractIdentityFromHistory(history = []) {
+//   let name = null;
+//   let email = null;
+//   let phone = null;
+
+//   for (let i = history.length - 1; i >= 0; i--) {
+//     const item = history[i];
+
+//     // ambil dari context dulu (paling clean)
+//     if (item.context) {
+//       if (!name && item.context.name && item.context.name !== "Guest") {
+//         name = item.context.name;
+//       }
+
+//       if (!email && item.context.email) {
+//         email = item.context.email;
+//       }
+
+//       if (!phone && item.context.phoneNumber) {
+//         phone = item.context.phoneNumber;
+//       }
+//     }
+
+//     // fallback: extract dari user message lama
+//     if (item.user) {
+//       const parsed = extractIdentity(item.user);
+
+//       if (!name && parsed.name) name = parsed.name;
+//       if (!email && parsed.email) email = parsed.email;
+//       if (!phone && parsed.phone) phone = parsed.phone;
+//     }
+
+//     if (name && email && phone) break;
+//   }
+
+//   return { name, email, phone };
+// }
 
   
 
@@ -3254,43 +3254,43 @@ console.log("Waste Type in request:", context?.waste_type_id);
     // ======================================================
     // BACKEND IDENTITY EXTRACTION
     // ======================================================
-    // const parsed = extractIdentity(message);
+    const parsed = extractIdentity(message);
  const historyIdentity = extractIdentityFromHistory(conversation_history);
-    // const finalUserName =
-    //   parsed.name ||
-    //   user_name ||
-    //   "Guest";
-
-    // const finalUserEmail =
-    //   parsed.email ||
-    //   user_email ||
-    //   null;
-
-    // const finalUserPhone =
-    //   parsed.phone ||
-    //   user_phone ||
-    //   null;
-
     const finalUserName =
-  parsed.name ||
-  user_name ||
-  historyIdentity.name ||
-  context?.name ||
-  null;
+      parsed.name ||
+      user_name ||
+      null;
 
-const finalUserEmail =
-  parsed.email ||
-  user_email ||
-  historyIdentity.email ||
-  context?.email ||
-  null;
+    const finalUserEmail =
+      parsed.email ||
+      user_email ||
+      null;
 
-const finalUserPhone =
-  parsed.phone ||
-  user_phone ||
-  historyIdentity.phone ||
-  context?.phoneNumber ||
-  null;
+    const finalUserPhone =
+      parsed.phone ||
+      user_phone ||
+      null;
+
+//     const finalUserName =
+//   parsed.name ||
+//   user_name ||
+//   historyIdentity.name ||
+//   context?.name ||
+//   null;
+
+// const finalUserEmail =
+//   parsed.email ||
+//   user_email ||
+//   historyIdentity.email ||
+//   context?.email ||
+//   null;
+
+// const finalUserPhone =
+//   parsed.phone ||
+//   user_phone ||
+//   historyIdentity.phone ||
+//   context?.phoneNumber ||
+//   null;
 
     // ======================================================
       // RESOLVE ACTIVE PROMPT (SOURCE OF TRUTH)
