@@ -3255,7 +3255,7 @@ console.log("Waste Type in request:", context?.waste_type_id);
     // BACKEND IDENTITY EXTRACTION
     // ======================================================
     const parsed = extractIdentity(message);
- const historyIdentity = extractIdentityFromHistory(conversation_history);
+ // const historyIdentity = extractIdentityFromHistory(conversation_history);
     const finalUserName =
       parsed.name ||
       user_name ||
