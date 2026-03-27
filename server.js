@@ -619,6 +619,19 @@ const SESSION_CLAIM_TIMEOUT = 2 * 60 * 1000; // 2 minutes for unclaimed sessions
 
 // }
 
+function getNextDay(dayName) {
+    const today = new Date();
+    const days = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    const targetDay = days[dayName.toLowerCase()];
+    const currentDay = today.getDay();
+    let diff = (targetDay - currentDay + 7) % 7;
+    if (diff === 0) diff = 7;
+    const result = new Date(today);
+    result.setDate(today.getDate() + diff);
+    // Kita return string langsung agar rapi di prompt
+    return result.toLocaleDateString("en-AU", { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 
 import { WebSocketServer } from "ws";
 
@@ -632,13 +645,26 @@ const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-ch
 // ELEVENLABS CONFIG
 // ======================================================
 
-const todayDate = new Date().toISOString().split("T")[0]; 
-const todayReadable = new Date().toLocaleDateString("en-AU", {
-  weekday: "long",
-  year: "numeric",
-  month: "long",
-  day: "numeric"
-});
+// const todayDate = new Date().toISOString().split("T")[0]; 
+// const todayReadable = new Date().toLocaleDateString("en-AU", {
+//   weekday: "long",
+//   year: "numeric",
+//   month: "long",
+//   day: "numeric"
+// });
+
+// 2. Persiapkan Variabel
+const today = new Date();
+const todayDate = today.toISOString().split("T")[0];
+const todayReadable = today.toLocaleDateString("en-AU", { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+const nextWeekDate = new Date();
+nextWeekDate.setDate(today.getDate() + 7);
+const nextWeekReadable = nextWeekDate.toLocaleDateString("en-AU", { day: 'numeric', month: 'long', year: 'numeric' });
+
+const nextMonthDate = new Date();
+nextMonthDate.setMonth(today.getMonth() + 1);
+const nextMonthReadable = nextMonthDate.toLocaleDateString("en-AU", { month: 'long', year: 'numeric' });
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
@@ -903,6 +929,13 @@ You are ${prompt.identity}.
 CURRENT DATE
 - Today is {{today_date}}
 - Human readable: {{today_readable}}
+- Next Monday: {{next_monday}}
+- Next Tuesday: {{next_tuesday}}
+- Next Wednesday: {{next_wednesday}}
+- Next Thursday: {{next_thursday}}
+- Next Friday: {{next_friday}}
+- Next Week: {{next_week}}
+- Next Month: {{next_month}}
 
 ROLE
 ${prompt.role_description}
@@ -1196,8 +1229,15 @@ async function handleAgentSwitch(ws, newAgentType) {
     dynamic_variables: {
       ...session.context,
       system_prompt: newPrompt,
-  today_date: todayDate,
-  today_readable: todayReadable
+      today_date: todayDate,
+      today_readable: todayReadable,
+      next_monday: getNextDay("monday"),
+      next_tuesday: getNextDay("tuesday"),
+      next_wednesday: getNextDay("wednesday"),
+      next_thursday: getNextDay("thursday"),
+      next_friday: getNextDay("friday"),
+      next_week: nextWeekReadable,
+      next_month: nextMonthReadable
     }
   }));
 
@@ -1474,8 +1514,15 @@ wss.on("connection", (ws) => {
               dynamic_variables: {
                 ...finalContext,
                 system_prompt: systemPrompt,
-  today_date: todayDate,
-  today_readable: todayReadable
+                today_date: todayDate,
+                today_readable: todayReadable,
+                next_monday: getNextDay("monday"),
+                next_tuesday: getNextDay("tuesday"),
+                next_wednesday: getNextDay("wednesday"),
+                next_thursday: getNextDay("thursday"),
+                next_friday: getNextDay("friday"),
+                next_week: nextWeekReadable,
+                next_month: nextMonthReadable
               }
             })
           );
@@ -1717,8 +1764,15 @@ wss.on("connection", (ws) => {
                           dynamic_variables: {
                             conversation_history: session.history.slice(-10),
                             system_prompt: session.activePrompt,
-  today_date: todayDate,
-  today_readable: todayReadable,
+                            today_date: todayDate,
+                            today_readable: todayReadable,
+                            next_monday: getNextDay("monday"),
+                            next_tuesday: getNextDay("tuesday"),
+                            next_wednesday: getNextDay("wednesday"),
+                            next_thursday: getNextDay("thursday"),
+                            next_friday: getNextDay("friday"),
+                            next_week: nextWeekReadable,
+                            next_month: nextMonthReadable,
                             ...session.context
                           }
                         })
