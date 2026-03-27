@@ -632,6 +632,14 @@ const N8N_WEBHOOK = "https://n8n.ihubtechnologies.com.au/webhook/wastevantage-ch
 // ELEVENLABS CONFIG
 // ======================================================
 
+const todayDate = new Date().toISOString().split("T")[0]; 
+const todayReadable = new Date().toLocaleDateString("en-AU", {
+  weekday: "long",
+  year: "numeric",
+  month: "long",
+  day: "numeric"
+});
+
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
 const ELEVENLABS_VOICE_ID =
@@ -891,6 +899,10 @@ process.on("uncaughtException", (err) => {
 function buildFullSystemPrompt(prompt) {
   return `
 You are ${prompt.identity}.
+
+CURRENT DATE
+- Today is {{today_date}}
+- Human readable: {{today_readable}}
 
 ROLE
 ${prompt.role_description}
@@ -1183,7 +1195,9 @@ async function handleAgentSwitch(ws, newAgentType) {
     type: "dynamic_variables",
     dynamic_variables: {
       ...session.context,
-      system_prompt: newPrompt
+      system_prompt: newPrompt,
+  today_date: todayDate,
+  today_readable: todayReadable
     }
   }));
 
@@ -1459,7 +1473,9 @@ wss.on("connection", (ws) => {
               // dynamic_variables: finalContext
               dynamic_variables: {
                 ...finalContext,
-                system_prompt: systemPrompt
+                system_prompt: systemPrompt,
+  today_date: todayDate,
+  today_readable: todayReadable
               }
             })
           );
@@ -1701,6 +1717,8 @@ wss.on("connection", (ws) => {
                           dynamic_variables: {
                             conversation_history: session.history.slice(-10),
                             system_prompt: session.activePrompt,
+  today_date: todayDate,
+  today_readable: todayReadable,
                             ...session.context
                           }
                         })
